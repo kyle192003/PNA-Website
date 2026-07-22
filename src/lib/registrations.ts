@@ -1,0 +1,472 @@
+import { promises as fs } from "fs";
+import path from "path";
+import { randomBytes } from "crypto";
+import { v4 as uuidv4 } from "uuid";
+import { conference, type RegistrationCategory } from "@/lib/conference";
+import { getEventById } from "@/lib/events";
+import {
+  resolveFeeTier,
+  resolvePaymentAmount,
+  type FeeTier,
+} from "@/lib/registration-fees";
+import type {
+  AdminStats,
+  CheckInStatus,
+  PaymentStatus,
+  RegistrationInput,
+  RegistrationRecord,
+} from "@/lib/types/admin";
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_FILE = path.join(DATA_DIR, "registrations.json");
+
+async function ensureDataFile(): Promise<void> {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    await fs.access(DATA_FILE);
+  } catch {
+    await fs.writeFile(DATA_FILE, JSON.stringify([], null, 2), "utf-8");
+  }
+}
+
+function createCheckInToken(): string {
+  return randomBytes(24).toString("base64url");
+}
+
+function deriveLegacyPayment(
+  raw: RegistrationRecord
+): { feeTier: FeeTier; paymentAmount: number } {
+  const category = (raw.category in conference.registration.fees
+    ? raw.category
+    : "member") as RegistrationCategory;
+  const feeTier: FeeTier = raw.feeTier === "regular" ? "regular" : "early";
+  const paymentAmount =
+    typeof raw.paymentAmount === "number" && Number.isFinite(raw.paymentAmount)
+      ? raw.paymentAmount
+      : resolvePaymentAmount(category, feeTier, null);
+  return { feeTier, paymentAmount };
+}
+
+function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
+  const now = raw.createdAt ?? new Date().toISOString();
+  const { feeTier, paymentAmount } = deriveLegacyPayment(raw);
+  return {
+    ...raw,
+    eventId: raw.eventId ?? null,
+    middleInitial: raw.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
+    feeTier,
+    paymentAmount,
+    paymentStatus: raw.paymentStatus ?? "pending",
+    receiptUrl: raw.receiptUrl ?? null,
+    receiptUploadedAt: raw.receiptUploadedAt ?? null,
+    paymentNotes: raw.paymentNotes ?? "",
+    adminNotes: raw.adminNotes ?? "",
+    checkInToken: raw.checkInToken || createCheckInToken(),
+    checkInStatus: raw.checkInStatus === "checked_in" ? "checked_in" : "pending",
+    checkedInAt: raw.checkedInAt ?? null,
+    checkedInBy: raw.checkedInBy ?? null,
+    reminder3dSentAt: raw.reminder3dSentAt ?? null,
+    reminder2dSentAt: raw.reminder2dSentAt ?? null,
+    reminder0dSentAt: raw.reminder0dSentAt ?? null,
+    evaluationInviteSentAt: raw.evaluationInviteSentAt ?? null,
+    evaluationSubmittedAt: raw.evaluationSubmittedAt ?? null,
+    evaluationRating:
+      typeof raw.evaluationRating === "number" && Number.isFinite(raw.evaluationRating)
+        ? raw.evaluationRating
+        : null,
+    evaluationFeedback: raw.evaluationFeedback ?? "",
+    evaluationAnswers:
+      raw.evaluationAnswers && typeof raw.evaluationAnswers === "object"
+        ? raw.evaluationAnswers
+        : {},
+    certificateSentAt: raw.certificateSentAt ?? null,
+    promotionSentEventIds: Array.isArray(raw.promotionSentEventIds)
+      ? raw.promotionSentEventIds.filter((item): item is string => typeof item === "string")
+      : [],
+    updatedAt: raw.updatedAt ?? now,
+  };
+}
+
+async function readRegistrations(): Promise<RegistrationRecord[]> {
+  await ensureDataFile();
+  const content = await fs.readFile(DATA_FILE, "utf-8");
+  const parsed = JSON.parse(content) as RegistrationRecord[];
+  const usedTokens = new Set<string>();
+  let needsPersist = false;
+
+  const normalized = parsed.map((raw) => {
+    const hadToken = Boolean(raw.checkInToken);
+    const next = normalizeRegistration(raw);
+
+    if (!hadToken || usedTokens.has(next.checkInToken)) {
+      let token = next.checkInToken;
+      while (!token || usedTokens.has(token)) {
+        token = createCheckInToken();
+      }
+      next.checkInToken = token;
+      needsPersist = true;
+    }
+
+    usedTokens.add(next.checkInToken);
+    return next;
+  });
+
+  if (needsPersist) {
+    await writeRegistrations(normalized);
+  }
+
+  return normalized;
+}
+
+async function writeRegistrations(registrations: RegistrationRecord[]): Promise<void> {
+  await ensureDataFile();
+  await fs.writeFile(DATA_FILE, JSON.stringify(registrations, null, 2), "utf-8");
+}
+
+function generateReferenceNumber(): string {
+  const year = new Date().getFullYear();
+  const random = Math.floor(10000 + Math.random() * 90000);
+  return `PNA-${year}-${random}`;
+}
+
+export async function createRegistration(
+  input: RegistrationInput
+): Promise<RegistrationRecord> {
+  const registrations = await readRegistrations();
+
+  const duplicate = registrations.find(
+    (r) => r.email.toLowerCase() === input.email.toLowerCase()
+  );
+  if (duplicate) {
+    throw new Error("A registration with this email address already exists.");
+  }
+
+  // Ensure unique check-in token
+  let checkInToken = createCheckInToken();
+  while (registrations.some((r) => r.checkInToken === checkInToken)) {
+    checkInToken = createCheckInToken();
+  }
+
+  const event = input.eventId ? await getEventById(input.eventId) : null;
+  const feeTier =
+    input.feeTier === "regular" || input.feeTier === "early"
+      ? input.feeTier
+      : resolveFeeTier(event);
+  const paymentAmount =
+    typeof input.paymentAmount === "number" && Number.isFinite(input.paymentAmount)
+      ? input.paymentAmount
+      : resolvePaymentAmount(input.category, feeTier, event);
+
+  const now = new Date().toISOString();
+  const registration: RegistrationRecord = {
+    id: uuidv4(),
+    referenceNumber: generateReferenceNumber(),
+    eventId: input.eventId ?? null,
+    firstName: input.firstName.trim(),
+    lastName: input.lastName.trim(),
+    middleInitial: input.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
+    email: input.email.trim().toLowerCase(),
+    phone: input.phone.trim(),
+    organization: input.organization.trim(),
+    position: input.position.trim(),
+    category: input.category,
+    feeTier,
+    paymentAmount,
+    address: input.address.trim(),
+    city: input.city.trim(),
+    province: input.province.trim(),
+    dietaryRequirements: input.dietaryRequirements?.trim() ?? "",
+    specialNeeds: input.specialNeeds?.trim() ?? "",
+    agreeToTerms: input.agreeToTerms,
+    paymentStatus: "pending",
+    receiptUrl: null,
+    receiptUploadedAt: null,
+    paymentNotes: "",
+    adminNotes: "",
+    checkInToken,
+    checkInStatus: "pending",
+    checkedInAt: null,
+    checkedInBy: null,
+    reminder3dSentAt: null,
+    reminder2dSentAt: null,
+    reminder0dSentAt: null,
+    evaluationInviteSentAt: null,
+    evaluationSubmittedAt: null,
+    evaluationRating: null,
+    evaluationFeedback: "",
+    evaluationAnswers: {},
+    certificateSentAt: null,
+    promotionSentEventIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  registrations.push(registration);
+  await writeRegistrations(registrations);
+  return registration;
+}
+
+export async function getRegistrationByReference(
+  referenceNumber: string
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  return (
+    registrations.find(
+      (r) => r.referenceNumber.toUpperCase() === referenceNumber.toUpperCase()
+    ) ?? null
+  );
+}
+
+export async function getRegistrationById(
+  id: string
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  return registrations.find((r) => r.id === id) ?? null;
+}
+
+export async function getRegistrationByCheckInToken(
+  token: string
+): Promise<RegistrationRecord | null> {
+  if (!token.trim()) return null;
+  const registrations = await readRegistrations();
+  return registrations.find((r) => r.checkInToken === token.trim()) ?? null;
+}
+
+export async function getAllRegistrations(): Promise<RegistrationRecord[]> {
+  const registrations = await readRegistrations();
+  return registrations.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+export async function updateRegistrationPayment(
+  id: string,
+  updates: {
+    paymentStatus?: PaymentStatus;
+    adminNotes?: string;
+    paymentNotes?: string;
+    receiptUrl?: string | null;
+    receiptUploadedAt?: string | null;
+  }
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  registrations[index] = {
+    ...registrations[index],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function markRegistrationCheckedIn(
+  id: string,
+  checkedInBy: string | null
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const current = registrations[index];
+  if (current.checkInStatus === "checked_in") {
+    return current;
+  }
+
+  registrations[index] = {
+    ...current,
+    checkInStatus: "checked_in",
+    checkedInAt: new Date().toISOString(),
+    checkedInBy,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function markReminderSent(
+  id: string,
+  window: "3d" | "2d" | "0d"
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const now = new Date().toISOString();
+  const field =
+    window === "3d"
+      ? "reminder3dSentAt"
+      : window === "2d"
+        ? "reminder2dSentAt"
+        : "reminder0dSentAt";
+
+  registrations[index] = {
+    ...registrations[index],
+    [field]: now,
+    updatedAt: now,
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function markEvaluationInviteSent(id: string): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const now = new Date().toISOString();
+  registrations[index] = {
+    ...registrations[index],
+    evaluationInviteSentAt: registrations[index].evaluationInviteSentAt ?? now,
+    updatedAt: now,
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function submitRegistrationEvaluation(
+  id: string,
+  answers: Record<string, string | number>
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  let rating: number | null = null;
+  for (const value of Object.values(answers)) {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 5) {
+      rating = parsed;
+      break;
+    }
+  }
+
+  const feedback =
+    typeof answers.feedback === "string"
+      ? answers.feedback
+      : Object.entries(answers).find(([key, value]) => key.includes("feedback") && typeof value === "string")?.[1]?.toString() ?? "";
+
+  const now = new Date().toISOString();
+  registrations[index] = {
+    ...registrations[index],
+    evaluationSubmittedAt: now,
+    evaluationRating: Number.isFinite(rating) ? (rating as number) : null,
+    evaluationFeedback: feedback,
+    evaluationAnswers: answers,
+    updatedAt: now,
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function markCertificateSent(id: string): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const now = new Date().toISOString();
+  registrations[index] = {
+    ...registrations[index],
+    certificateSentAt: now,
+    updatedAt: now,
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+export async function markPromotionSent(
+  id: string,
+  promotedEventId: string
+): Promise<RegistrationRecord | null> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const current = registrations[index];
+  if (current.promotionSentEventIds.includes(promotedEventId)) {
+    return current;
+  }
+
+  const now = new Date().toISOString();
+  registrations[index] = {
+    ...current,
+    promotionSentEventIds: [...current.promotionSentEventIds, promotedEventId],
+    updatedAt: now,
+  };
+
+  await writeRegistrations(registrations);
+  return registrations[index];
+}
+
+/** Persist any lazily backfilled check-in tokens (for legacy records). */
+export async function persistNormalizedRegistrations(): Promise<number> {
+  const before = await fs.readFile(DATA_FILE, "utf-8").catch(() => "[]");
+  const registrations = await readRegistrations();
+  await writeRegistrations(registrations);
+  const after = JSON.stringify(registrations, null, 2);
+  return before === after ? 0 : registrations.length;
+}
+
+export async function deleteRegistration(id: string): Promise<boolean> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return false;
+
+  registrations.splice(index, 1);
+  await writeRegistrations(registrations);
+  return true;
+}
+
+export async function submitReceipt(
+  referenceNumber: string,
+  receiptUrl: string
+): Promise<RegistrationRecord | null> {
+  const registration = await getRegistrationByReference(referenceNumber);
+  if (!registration) return null;
+
+  // pending, receipt_issue, rejected, and receipt_submitted can re-upload.
+  if (registration.paymentStatus === "paid") {
+    throw new Error("This registration is already marked as paid.");
+  }
+
+  return updateRegistrationPayment(registration.id, {
+    receiptUrl,
+    receiptUploadedAt: new Date().toISOString(),
+    paymentStatus: "receipt_submitted",
+    paymentNotes: "",
+  });
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  const registrations = await readRegistrations();
+  const { getAllEvents } = await import("@/lib/events");
+  const events = await getAllEvents();
+
+  return {
+    totalParticipants: registrations.length,
+    paid: registrations.filter((r) => r.paymentStatus === "paid").length,
+    pending: registrations.filter((r) => r.paymentStatus === "pending").length,
+    receiptSubmitted: registrations.filter((r) => r.paymentStatus === "receipt_submitted")
+      .length,
+    receiptIssue: registrations.filter((r) => r.paymentStatus === "receipt_issue").length,
+    rejected: registrations.filter((r) => r.paymentStatus === "rejected").length,
+    activeEvents: events.filter((e) => e.status === "open").length,
+    upcomingEvents: events.filter((e) => e.status === "upcoming").length,
+  };
+}
+
+export async function countParticipantsUnderReview(): Promise<number> {
+  const registrations = await readRegistrations();
+  return registrations.filter((registration) => registration.paymentStatus === "receipt_submitted")
+    .length;
+}
+
+export type { RegistrationInput, RegistrationRecord, PaymentStatus, CheckInStatus };
