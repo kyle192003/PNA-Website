@@ -1,0 +1,12 @@
+{
+  "subject": "Certificate of Participation, {{event}}",
+  "fileType": "image",
+  "imageUrl": "/uploads/certificates/certificate-template.png",
+  "namePosXPercent": 50.62022680558571,
+  "namePosYPercent": 46.21584785490465,
+  "nameWidthPercent": 62.851134937923085,
+  "nameHeightPercent": 10,
+  "nameColor": "#0b2f55",
+  "nameFontWeight": 700,
+  "updatedAt": "2026-07-16T10:42:46.478Z"
+}
