@@ -1,0 +1,48 @@
+name: Commit convention
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  check-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require Feature / Update / Fix prefixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^(Feature|Update|Fix): .+'
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            COMMITS=$(git log --format=%s "$BASE..$HEAD")
+          else
+            COMMITS=$(git log -1 --format=%s)
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to check."
+            exit 0
+          fi
+
+          FAILED=0
+          while IFS= read -r msg; do
+            [ -z "$msg" ] && continue
+            if ! echo "$msg" | grep -Eq "$PATTERN"; then
+              echo "Invalid commit message: $msg"
+              echo "Use: Feature: ..., Update: ..., or Fix: ..."
+              FAILED=1
+            else
+              echo "OK: $msg"
+            fi
+          done <<< "$COMMITS"
+
+          exit "$FAILED"
