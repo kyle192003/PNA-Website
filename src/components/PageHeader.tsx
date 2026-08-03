@@ -7,6 +7,8 @@ interface PageHeaderProps {
   subtitle?: string;
   showRegisterCta?: boolean;
   registerEventId?: string;
+  /** Optional hero background image. Defaults to the conference poster. */
+  imageSrc?: string;
 }
 
 export function PageHeader({
@@ -14,12 +16,13 @@ export function PageHeader({
   subtitle,
   showRegisterCta = false,
   registerEventId,
+  imageSrc = conference.hero.video.poster,
 }: PageHeaderProps) {
   return (
     <section className="about-editorial-hero pna-reveal">
       <div className="about-editorial-hero-media" aria-hidden="true">
         <Image
-          src={conference.hero.video.poster}
+          src={imageSrc}
           alt=""
           fill
           sizes="100vw"

@@ -144,12 +144,9 @@ export function Header({
                   priority
                 />
               </span>
-              <span
-                className={`pna-navbar-editorial-name font-display${
-                  brandOnly ? "" : " d-none d-md-inline"
-                }`}
-              >
-                {conference.organization}
+              <span className="pna-navbar-editorial-name font-display text-truncate">
+                <span className="d-md-none">{conference.shortName}</span>
+                <span className="d-none d-md-inline">{conference.organization}</span>
               </span>
             </Link>
 
