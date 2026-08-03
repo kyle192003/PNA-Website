@@ -59,8 +59,8 @@ export function Modal({
         aria-labelledby={title ? "modal-title" : undefined}
         className={`relative w-full rounded-2xl bg-surface border border-accent/25 shadow-2xl shadow-accent-deep/20 animate-fade-in-up ${
           useContainedLayout
-            ? "flex flex-col h-[min(90vh,880px)] max-h-[min(90vh,880px)] overflow-hidden"
-            : "overflow-y-auto max-h-[min(90vh,880px)]"
+            ? "flex flex-col h-[min(92dvh,880px)] max-h-[min(92dvh,880px)] overflow-hidden"
+            : "overflow-y-auto max-h-[min(92dvh,880px)]"
         } ${
           size === "large"
             ? "max-w-6xl"

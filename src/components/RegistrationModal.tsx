@@ -1,17 +1,20 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { RegistrationForm } from "@/components/RegistrationForm";
 import { RegistrationSidebar } from "@/components/RegistrationSidebar";
+import { RegistrationStepper } from "@/components/RegistrationStepper";
 import { conference } from "@/lib/conference";
+import {
+  REGISTRATION_STEPS,
+  type RegistrationStepState,
+} from "@/lib/registration-steps";
 
-const REGISTRATION_STEPS = [
-  "Personal",
-  "Professional",
-  "Address",
-  "Payment",
-  "Review",
-] as const;
+const INITIAL_STEPS: RegistrationStepState[] = REGISTRATION_STEPS.map((label, index) => ({
+  label,
+  status: index === 0 ? "active" : "pending",
+}));
 
 interface RegistrationModalProps {
   open: boolean;
@@ -20,8 +23,22 @@ interface RegistrationModalProps {
 }
 
 export function RegistrationModal({ open, onClose, eventId = null }: RegistrationModalProps) {
+  const [steps, setSteps] = useState<RegistrationStepState[]>(INITIAL_STEPS);
+
+  const handleStepStatesChange = useCallback((next: RegistrationStepState[]) => {
+    setSteps(next);
+  }, []);
+
   return (
-    <Modal open={open} onClose={onClose} size="large" hideHeader contentClassName="p-0">
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="large"
+      hideHeader
+      containScroll
+      contentClassName="p-0"
+      dialogClassName="registration-modal-dialog"
+    >
       <div className="registration-modal-layout">
         <div className="registration-modal-main">
           <div className="registration-modal-main-header">
@@ -41,30 +58,19 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
             </button>
           </div>
 
-          <div className="registration-modal-stepper" aria-label="Registration progress">
-            {REGISTRATION_STEPS.map((label, index) => {
-              const step = index + 1;
-              const isActive = step === 1;
-              const isComplete = false;
-
-              return (
-                <div
-                  key={label}
-                  className={`registration-modal-step${isActive ? " is-active" : ""}${isComplete ? " is-complete" : ""}`}
-                >
-                  <span className="registration-modal-step-index">{step}</span>
-                  <span className="registration-modal-step-label">{label}</span>
-                </div>
-              );
-            })}
-          </div>
+          <RegistrationStepper steps={steps} />
 
           <div className="registration-modal-form">
-            <RegistrationForm eventId={eventId} onCompleted={onClose} onBack={onClose} />
+            <RegistrationForm
+              eventId={eventId}
+              onCompleted={onClose}
+              onBack={onClose}
+              onStepStatesChange={handleStepStatesChange}
+            />
           </div>
         </div>
 
-        <RegistrationSidebar eventId={eventId} />
+        <RegistrationSidebar eventId={eventId} showPaymentQr={false} />
       </div>
     </Modal>
   );

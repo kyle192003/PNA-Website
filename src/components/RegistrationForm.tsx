@@ -10,7 +10,11 @@ import {
 import type { FeeTier } from "@/lib/types/admin";
 import {
   getEmailValidationError,
-  getPhoneValidationError,
+  getNameLengthError,
+  getRegistrationPhoneValidationError,
+  NAME_LIMITS,
+  toPhMobileInternational,
+  toPhMobileLocalDigits,
 } from "@/lib/form-validation";
 import {
   clearRegistrationDraft,
@@ -25,8 +29,18 @@ import {
 } from "@/components/RegistrationSuccessModal";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
+import { SuccessDialog } from "@/components/ui/SuccessDialog";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect } from "@/components/ui/PnaSelect";
+import { PhLocationSuggest } from "@/components/PhLocationSuggest";
+import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
+import type { PhPlaceSuggestion } from "@/lib/ph-locations";
+import {
+  REGISTRATION_STEPS,
+  type RegistrationFormPhase,
+  type RegistrationStepState,
+  type RegistrationStepStatus,
+} from "@/lib/registration-steps";
 
 interface FormData extends RegistrationInput {
   category: RegistrationCategory | "";
@@ -51,22 +65,155 @@ const initialFormData: FormData = {
   agreeToTerms: false,
 };
 
+type FormFieldKey = keyof FormData;
+
+function getFieldError(field: FormFieldKey, data: FormData): string | undefined {
+  switch (field) {
+    case "lastName":
+      return getNameLengthError(data.lastName, "lastName", "Surname") ?? undefined;
+    case "firstName":
+      return getNameLengthError(data.firstName, "firstName", "First name") ?? undefined;
+    case "email":
+      return getEmailValidationError(data.email) ?? undefined;
+    case "phone":
+      return getRegistrationPhoneValidationError(data.phone) ?? undefined;
+    case "organization":
+      return data.organization.trim() ? undefined : "Organization is required";
+    case "position":
+      return data.position.trim() ? undefined : "Position/title is required";
+    case "category":
+      return data.category ? undefined : "Please select a registration category";
+    case "feeTier":
+      return data.feeTier ? undefined : "Please choose your payment amount";
+    case "address":
+      return data.address.trim() ? undefined : "Address is required";
+    case "city":
+      return data.city.trim() ? undefined : "City is required";
+    case "province":
+      return data.province.trim() ? undefined : "Province is required";
+    case "agreeToTerms":
+      return data.agreeToTerms ? undefined : "You must agree to the terms and conditions";
+    default:
+      return undefined;
+  }
+}
+
+const LIVE_VALIDATE_FIELDS: FormFieldKey[] = [
+  "lastName",
+  "firstName",
+  "email",
+  "phone",
+  "organization",
+  "position",
+  "category",
+  "feeTier",
+  "address",
+  "city",
+  "province",
+  "agreeToTerms",
+];
+
+const DETAILS_VALIDATE_FIELDS: FormFieldKey[] = [
+  "lastName",
+  "firstName",
+  "email",
+  "phone",
+  "organization",
+  "position",
+  "category",
+  "feeTier",
+  "address",
+  "city",
+  "province",
+];
+
+const SECTION_FIELDS: Record<(typeof REGISTRATION_STEPS)[number], FormFieldKey[]> = {
+  Personal: ["lastName", "firstName", "email", "phone"],
+  Professional: ["organization", "position", "category", "feeTier"],
+  Address: ["address", "city", "province"],
+  Payment: [],
+  Review: ["agreeToTerms"],
+};
+
+function getSectionStatus(
+  label: (typeof REGISTRATION_STEPS)[number],
+  data: FormData,
+  touched: Partial<Record<FormFieldKey, boolean>>,
+  receiptFile: File | null,
+  hasReceiptError: boolean,
+  phase: RegistrationFormPhase
+): RegistrationStepStatus {
+  if (label === "Payment") {
+    if (phase === "details") return "pending";
+    if (hasReceiptError) return "error";
+    if (receiptFile) return "complete";
+    return "active";
+  }
+
+  if (label === "Review") {
+    if (phase === "details") return "pending";
+    if (data.agreeToTerms) return "complete";
+    if (touched.agreeToTerms && getFieldError("agreeToTerms", data)) return "error";
+    return receiptFile ? "active" : "pending";
+  }
+
+  const fields = SECTION_FIELDS[label];
+  const fieldErrors = fields.map((field) => getFieldError(field, data));
+  const hasError = fieldErrors.some(Boolean);
+  const isComplete = fieldErrors.every((error) => !error);
+  const anyTouched = fields.some((field) => touched[field]);
+
+  if (phase === "payment" && isComplete) return "complete";
+  if (isComplete) return "complete";
+  if (anyTouched && hasError) return "error";
+  return "pending";
+}
+
+function buildStepStates(
+  data: FormData,
+  touched: Partial<Record<FormFieldKey, boolean>>,
+  receiptFile: File | null,
+  hasReceiptError: boolean,
+  phase: RegistrationFormPhase
+): RegistrationStepState[] {
+  const raw = REGISTRATION_STEPS.map((label) => ({
+    label,
+    status: getSectionStatus(label, data, touched, receiptFile, hasReceiptError, phase),
+  }));
+
+  let activeAssigned = false;
+  return raw.map((step) => {
+    if (step.status === "complete" || step.status === "error" || step.status === "active") {
+      return step;
+    }
+    if (!activeAssigned) {
+      activeAssigned = true;
+      return { ...step, status: "active" as const };
+    }
+    return step;
+  });
+}
+
 
 export function RegistrationForm({
   onCompleted,
   onBack,
+  onStepStatesChange,
   className = "",
   eventId = null,
 }: {
   onCompleted?: () => void;
   onBack?: () => void;
+  onStepStatesChange?: (steps: RegistrationStepState[]) => void;
   className?: string;
   eventId?: string | null;
 } = {}) {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [draftLoaded, setDraftLoaded] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof FormData | "receipt", string>>>({});
+  const [showDraftRestored, setShowDraftRestored] = useState(false);
+  const [formPhase, setFormPhase] = useState<RegistrationFormPhase>("details");
+  const [errors, setErrors] = useState<Partial<Record<FormFieldKey | "receipt", string>>>({});
+  const [touched, setTouched] = useState<Partial<Record<FormFieldKey, boolean>>>({});
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -85,7 +232,7 @@ export function RegistrationForm({
         lastName: draft.lastName,
         middleInitial: draft.middleInitial,
         email: draft.email,
-        phone: draft.phone,
+        phone: toPhMobileLocalDigits(draft.phone),
         organization: draft.organization,
         position: draft.position,
         category: draft.category,
@@ -97,15 +244,17 @@ export function RegistrationForm({
         specialNeeds: draft.specialNeeds,
         agreeToTerms: draft.agreeToTerms,
       });
-      setDraftRestored(true);
+      setShowDraftRestored(true);
     } else {
       setFormData(initialFormData);
-      setDraftRestored(false);
+      setShowDraftRestored(false);
     }
 
     setReceiptFile(null);
     setErrors({});
+    setTouched({});
     setSubmitError("");
+    setFormPhase("details");
     registrationMutation.reset();
     setDraftLoaded(true);
   }, [eventId]);
@@ -120,32 +269,95 @@ export function RegistrationForm({
     return () => window.clearTimeout(timeout);
   }, [draftLoaded, eventId, formData]);
 
+  useEffect(() => {
+    if (!draftLoaded) return;
+
+    const timeout = window.setTimeout(() => {
+      setErrors((prev) => {
+        const next: Partial<Record<FormFieldKey | "receipt", string>> = { ...prev };
+
+        for (const field of LIVE_VALIDATE_FIELDS) {
+          if (!touched[field]) continue;
+          const error = getFieldError(field, formData);
+          if (error) next[field] = error;
+          else delete next[field];
+        }
+
+        return next;
+      });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [draftLoaded, formData, touched]);
+
+  useEffect(() => {
+    if (!onStepStatesChange) return;
+    onStepStatesChange(
+      buildStepStates(formData, touched, receiptFile, Boolean(errors.receipt), formPhase)
+    );
+  }, [formData, touched, receiptFile, errors.receipt, formPhase, onStepStatesChange]);
+
+  function validateDetails(): boolean {
+    const newErrors: Partial<Record<FormFieldKey | "receipt", string>> = {};
+    const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
+
+    for (const field of DETAILS_VALIDATE_FIELDS) {
+      allTouched[field] = true;
+      const error = getFieldError(field, formData);
+      if (error) newErrors[field] = error;
+    }
+
+    setTouched(allTouched);
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const field of DETAILS_VALIDATE_FIELDS) {
+        if (newErrors[field]) next[field] = newErrors[field];
+        else delete next[field];
+      }
+      return next;
+    });
+    return Object.keys(newErrors).length === 0;
+  }
+
   function validate(): boolean {
-    const newErrors: Partial<Record<keyof FormData | "receipt", string>> = {};
-    if (!formData.firstName.trim()) newErrors.firstName = "First name is required";
-    if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
+    const newErrors: Partial<Record<FormFieldKey | "receipt", string>> = {};
+    const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
-    const emailError = getEmailValidationError(formData.email);
-    if (emailError) newErrors.email = emailError;
+    for (const field of LIVE_VALIDATE_FIELDS) {
+      allTouched[field] = true;
+      const error = getFieldError(field, formData);
+      if (error) newErrors[field] = error;
+    }
 
-    const phoneError = getPhoneValidationError(formData.phone);
-    if (phoneError) newErrors.phone = phoneError;
-
-    if (!formData.organization.trim()) newErrors.organization = "Organization is required";
-    if (!formData.position.trim()) newErrors.position = "Position/title is required";
-    if (!formData.category) newErrors.category = "Please select a registration category";
-    if (!formData.feeTier) newErrors.feeTier = "Please choose your payment amount";
-    if (!formData.address.trim()) newErrors.address = "Address is required";
-    if (!formData.city.trim()) newErrors.city = "City is required";
-    if (!formData.province.trim()) newErrors.province = "Province is required";
-    if (!formData.agreeToTerms) newErrors.agreeToTerms = "You must agree to the terms and conditions";
-
+    setTouched(allTouched);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }
 
+  function handleContinueToPayment() {
+    if (!validateDetails()) return;
+    setSubmitError("");
+    setFormPhase("payment");
+    window.requestAnimationFrame(() => {
+      document.getElementById("registration-form")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }
+
+  function handleBackFromPayment() {
+    setSubmitError("");
+    setFormPhase("details");
+    window.requestAnimationFrame(() => {
+      document.getElementById("registration-form")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    if (formPhase !== "payment") {
+      handleContinueToPayment();
+      return;
+    }
 
     if (!validate()) return;
 
@@ -162,8 +374,15 @@ export function RegistrationForm({
       showSuccess: false,
       action: async () => {
         try {
+          const phone = toPhMobileInternational(formData.phone);
+          if (!phone) {
+            setSubmitError("Enter a valid mobile number starting with 9 (e.g. 9606207919).");
+            return;
+          }
+
           const registration = await registrationMutation.mutateAsync({
             ...formData,
+            phone,
             eventId,
           });
 
@@ -179,7 +398,7 @@ export function RegistrationForm({
             lastName: registration.lastName,
             middleInitial: registration.middleInitial,
             email: registration.email,
-            phone: formData.phone,
+            phone,
             organization: formData.organization,
             position: formData.position,
             category: conference.registration.fees[registration.category].label,
@@ -190,9 +409,10 @@ export function RegistrationForm({
           setShowSuccessModal(true);
           clearRegistrationDraft(eventId);
           setFormData(initialFormData);
-          setDraftRestored(false);
+          setShowDraftRestored(false);
           setReceiptFile(null);
           setErrors({});
+          setFormPhase("details");
         } catch (error) {
           setSubmitError(error instanceof Error ? error.message : "Registration failed.");
           throw error;
@@ -206,15 +426,26 @@ export function RegistrationForm({
     setSuccessDetails(null);
     onCompleted?.();
   }
-  function updateField<K extends keyof FormData>(field: K, value: FormData[K]) {
+  function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
+    setTouched((prev) => ({ ...prev, [field]: true }));
     if (registrationMutation.isError) {
       registrationMutation.reset();
     }
   }
+
+  function markFieldTouched(field: FormFieldKey) {
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+    setErrors((prev) => {
+      const error = getFieldError(field, formData);
+      if (error) return { ...prev, [field]: error };
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  const isPaymentPhase = formPhase === "payment";
 
   return (
     <>
@@ -222,6 +453,14 @@ export function RegistrationForm({
         open={showSuccessModal}
         onClose={handleCloseSuccessModal}
         details={successDetails}
+      />
+
+      <SuccessDialog
+        open={showDraftRestored}
+        title="Draft restored"
+        message="Your previous entries have been restored so you can continue where you left off."
+        closeLabel="Continue"
+        onClose={() => setShowDraftRestored(false)}
       />
 
       <div className="registration-form-wrap">
@@ -240,11 +479,8 @@ export function RegistrationForm({
           </div>
         )}
 
-        {draftRestored && (
-          <p className="registration-form-draft-notice mb-0" role="status">
-            Your previous entries have been restored so you can continue where you left off.
-          </p>
-        )}
+      {!isPaymentPhase ? (
+        <>
       <fieldset className="registration-form-section">
         <legend className="registration-form-legend">
           <UserSectionIcon />
@@ -256,16 +492,22 @@ export function RegistrationForm({
             id="lastName"
             required
             value={formData.lastName}
-            onChange={(v) => updateField("lastName", v)}
+            onChange={(v) => updateField("lastName", v.slice(0, NAME_LIMITS.lastName))}
+            onBlur={() => markFieldTouched("lastName")}
             error={errors.lastName}
+            maxLength={NAME_LIMITS.lastName}
+            placeholder="Dela Cruz"
           />
           <FormField
             label="First Name"
             id="firstName"
             required
             value={formData.firstName}
-            onChange={(v) => updateField("firstName", v)}
+            onChange={(v) => updateField("firstName", v.slice(0, NAME_LIMITS.firstName))}
+            onBlur={() => markFieldTouched("firstName")}
             error={errors.firstName}
+            maxLength={NAME_LIMITS.firstName}
+            placeholder="Juan"
           />
           <FormField
             label="Middle Initial (M.I.)"
@@ -274,6 +516,7 @@ export function RegistrationForm({
             onChange={(v) => updateField("middleInitial", v.toUpperCase().slice(0, 1))}
             error={errors.middleInitial}
             placeholder="A"
+            maxLength={1}
           />
           <FormField
             label="Email Address"
@@ -282,18 +525,36 @@ export function RegistrationForm({
             required
             value={formData.email}
             onChange={(v) => updateField("email", v)}
+            onBlur={() => markFieldTouched("email")}
             error={errors.email}
+            placeholder="juandelacruz@gmail.com"
           />
-          <FormField
-            label="Phone Number"
-            id="phone"
-            type="tel"
-            required
-            placeholder="+63 9XX XXX XXXX"
-            value={formData.phone}
-            onChange={(v) => updateField("phone", v)}
-            error={errors.phone}
-          />
+          <div className="col-12 col-md-6">
+            <label htmlFor="phone" className="form-label registration-form-label">
+              Phone Number <span className="text-accent">*</span>
+            </label>
+            <div className={`registration-phone-field${errors.phone ? " is-error" : ""}`}>
+              <span className="registration-phone-prefix" aria-hidden="true">
+                +63
+              </span>
+              <input
+                type="tel"
+                id="phone"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                value={toPhMobileLocalDigits(formData.phone)}
+                onChange={(e) => updateField("phone", toPhMobileLocalDigits(e.target.value))}
+                onBlur={() => markFieldTouched("phone")}
+                placeholder="9606207919"
+                maxLength={10}
+                className={`input-dark registration-phone-input${errors.phone ? " input-dark-error" : ""}`}
+              />
+            </div>
+            <p className="registration-phone-hint mb-0">
+              Enter 10 digits starting with 9 (do not include 0).
+            </p>
+            {errors.phone && <p className="mt-1 text-xs text-red-400">{errors.phone}</p>}
+          </div>
         </div>
       </fieldset>
 
@@ -309,6 +570,7 @@ export function RegistrationForm({
             required
             value={formData.organization}
             onChange={(v) => updateField("organization", v)}
+            onBlur={() => markFieldTouched("organization")}
             error={errors.organization}
             className="col-12"
           />
@@ -318,6 +580,7 @@ export function RegistrationForm({
             required
             value={formData.position}
             onChange={(v) => updateField("position", v)}
+            onBlur={() => markFieldTouched("position")}
             error={errors.position}
           />
           <div className="col-12 col-md-6">
@@ -391,30 +654,51 @@ export function RegistrationForm({
           Address
         </legend>
         <div className="row g-3">
-          <FormField
+          <PhLocationSuggest
             label="Street Address"
             id="address"
+            type="street"
             required
             value={formData.address}
             onChange={(v) => updateField("address", v)}
+            onBlur={() => markFieldTouched("address")}
+            onSelect={(suggestion: PhPlaceSuggestion) => {
+              updateField("address", suggestion.street || suggestion.label);
+              if (suggestion.city) updateField("city", suggestion.city);
+              if (suggestion.province) updateField("province", suggestion.province);
+            }}
             error={errors.address}
+            placeholder="Start typing a street or barangay"
             className="col-12"
           />
-          <FormField
+          <PhLocationSuggest
             label="City / Municipality"
             id="city"
+            type="city"
             required
             value={formData.city}
             onChange={(v) => updateField("city", v)}
+            onBlur={() => markFieldTouched("city")}
+            onSelect={(suggestion: PhPlaceSuggestion) => {
+              updateField("city", suggestion.city || suggestion.label);
+              if (suggestion.province) updateField("province", suggestion.province);
+            }}
             error={errors.city}
+            placeholder="Start typing a city or municipality"
           />
-          <FormField
+          <PhLocationSuggest
             label="Province"
             id="province"
+            type="province"
             required
             value={formData.province}
             onChange={(v) => updateField("province", v)}
+            onBlur={() => markFieldTouched("province")}
+            onSelect={(suggestion: PhPlaceSuggestion) => {
+              updateField("province", suggestion.province || suggestion.label);
+            }}
             error={errors.province}
+            placeholder="Start typing a province"
           />
         </div>
       </fieldset>
@@ -447,16 +731,23 @@ export function RegistrationForm({
           </div>
         </div>
       </fieldset>
-
+        </>
+      ) : (
+        <>
       <fieldset className="registration-form-section">
         <legend className="registration-form-legend">
           <ReceiptSectionIcon />
           Proof of Payment
         </legend>
         <p className="registration-form-help mb-3">
-          Pay using the Accepted QR or Bank Transfer option in the sidebar, then upload your receipt
-          or screenshot here. You may also submit proof later using your reference number.
+          Pay using the QR code or bank transfer below, then upload your receipt or screenshot.
+          You may also submit proof later using your reference number.
         </p>
+
+        <div className="registration-form-payment-panel mb-4">
+          <RegistrationPaymentQr variant="form" eventId={eventId} />
+        </div>
+
         <div className="col-12">
           <label htmlFor="receipt" className="form-label registration-form-label">
             Upload Receipt <span className="registration-form-optional">(Image or PDF, max 5 MB)</span>
@@ -500,9 +791,15 @@ export function RegistrationForm({
           <p className="mt-2 mb-0 text-xs text-red-500 ps-4 ms-3">{errors.agreeToTerms}</p>
         )}
       </div>
+        </>
+      )}
 
       <div className="registration-form-footer">
-        <button type="button" className="registration-form-footer-btn registration-form-footer-btn--ghost" onClick={onBack}>
+        <button
+          type="button"
+          className="registration-form-footer-btn registration-form-footer-btn--ghost"
+          onClick={isPaymentPhase ? handleBackFromPayment : onBack}
+        >
           <span aria-hidden="true">←</span>
           Back
         </button>
@@ -518,14 +815,25 @@ export function RegistrationForm({
           <BookmarkIcon />
           Save Draft
         </button>
-        <button
-          type="submit"
-          disabled={loading || registrationMutation.isPending}
-          className="registration-form-footer-btn registration-form-footer-btn--primary"
-        >
-          {loading || registrationMutation.isPending ? "Processing..." : "Continue"}
-          <span aria-hidden="true">→</span>
-        </button>
+        {isPaymentPhase ? (
+          <button
+            type="submit"
+            disabled={loading || registrationMutation.isPending}
+            className="registration-form-footer-btn registration-form-footer-btn--primary"
+          >
+            {loading || registrationMutation.isPending ? "Processing..." : "Submit registration"}
+            <span aria-hidden="true">→</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="registration-form-footer-btn registration-form-footer-btn--primary"
+            onClick={handleContinueToPayment}
+          >
+            Next
+            <span aria-hidden="true">→</span>
+          </button>
+        )}
       </div>
       {draftSavedNotice ? (
         <p className="registration-form-draft-saved" role="status">
@@ -587,8 +895,10 @@ function FormField({
   required = false,
   value,
   onChange,
+  onBlur,
   error,
   placeholder,
+  maxLength,
   className = "col-12 col-md-6",
 }: {
   label: string;
@@ -597,8 +907,10 @@ function FormField({
   required?: boolean;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   error?: string;
   placeholder?: string;
+  maxLength?: number;
   className?: string;
 }) {
   return (
@@ -611,7 +923,9 @@ function FormField({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
+        maxLength={maxLength}
         className={`input-dark ${error ? "input-dark-error" : ""}`}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
