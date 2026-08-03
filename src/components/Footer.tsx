@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { conference } from "@/lib/conference";
-import { FooterNavLinks } from "@/components/FooterNavLinks";
 
 const footerBottomLinks = [
   { href: "/events", label: "Events" },
@@ -62,33 +61,30 @@ export function Footer() {
             </Link>
           </div>
 
-          <div className="pna-footer-column">
-            <h3 className="pna-footer-heading">Explore</h3>
-            <FooterNavLinks />
-          </div>
+          <div className="pna-footer-columns-right">
+            <div className="pna-footer-column">
+              <h3 className="pna-footer-heading">What We Offer</h3>
+              <ul className="pna-footer-list">
+                {conference.benefits.map((benefit) => (
+                  <li key={benefit.title}>{benefit.title}</li>
+                ))}
+              </ul>
+            </div>
 
-          <div className="pna-footer-column">
-            <h3 className="pna-footer-heading">What We Offer</h3>
-            <ul className="pna-footer-list">
-              {conference.benefits.map((benefit) => (
-                <li key={benefit.title}>{benefit.title}</li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="pna-footer-column">
-            <h3 className="pna-footer-heading">Registration</h3>
-            <ul className="pna-footer-list">
-              {Object.values(conference.registration.fees).map((fee) => (
-                <li key={fee.label}>{fee.label}</li>
-              ))}
-            </ul>
-            <p className="pna-footer-meta">
-              Early bird until {conference.registration.earlyBirdDeadline}
-            </p>
-            <p className="pna-footer-meta mb-0">
-              Regular registration until {conference.registration.regularDeadline}
-            </p>
+            <div className="pna-footer-column">
+              <h3 className="pna-footer-heading">Registration</h3>
+              <ul className="pna-footer-list">
+                {Object.values(conference.registration.fees).map((fee) => (
+                  <li key={fee.label}>{fee.label}</li>
+                ))}
+              </ul>
+              <p className="pna-footer-meta">
+                Early bird until {conference.registration.earlyBirdDeadline}
+              </p>
+              <p className="pna-footer-meta mb-0">
+                Regular registration until {conference.registration.regularDeadline}
+              </p>
+            </div>
           </div>
         </div>
 
