@@ -14,7 +14,14 @@ interface SidebarEvent {
   fees: typeof conference.registration.fees;
 }
 
-export function RegistrationSidebar({ eventId = null }: { eventId?: string | null }) {
+export function RegistrationSidebar({
+  eventId = null,
+  showPaymentQr = true,
+}: {
+  eventId?: string | null;
+  /** When false, QR/bank payment card is hidden (shown in the payment form step instead). */
+  showPaymentQr?: boolean;
+}) {
   const [event, setEvent] = useState<SidebarEvent | null>(null);
 
   useEffect(() => {
@@ -58,7 +65,7 @@ export function RegistrationSidebar({ eventId = null }: { eventId?: string | nul
         </ul>
       </div>
 
-      <RegistrationPaymentQr variant="sidebar" eventId={eventId} />
+      {showPaymentQr ? <RegistrationPaymentQr variant="sidebar" eventId={eventId} /> : null}
 
       <div className="registration-sidebar-card">
         <div className="registration-sidebar-card-head">
