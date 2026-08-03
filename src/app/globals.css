@@ -614,20 +614,12 @@ h1, h2, h3 {
 
 .pna-navbar-editorial-shell--brand-only {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
-@media (max-width: 991.98px) {
-  .pna-navbar-editorial-shell {
-    grid-template-columns: 1fr auto;
-  }
-
-  .pna-navbar-editorial-brand {
-    justify-content: flex-start;
-  }
-
-  .pna-navbar-editorial-end {
-    grid-column: 2;
+@media (min-width: 992px) {
+  .pna-navbar-editorial-shell--brand-only {
+    justify-content: center;
   }
 }
 
@@ -672,6 +664,33 @@ h1, h2, h3 {
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+/* Mobile: brand left, menu toggle right */
+@media (max-width: 991.98px) {
+  .pna-navbar-editorial-shell:not(.pna-navbar-editorial-shell--brand-only) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pna-navbar-editorial-shell:not(.pna-navbar-editorial-shell--brand-only) .pna-navbar-editorial-brand {
+    justify-content: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .pna-navbar-editorial-name {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    max-width: min(14rem, 48vw);
+  }
+
+  .pna-navbar-editorial-end {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
 }
 
 .pna-back-to-dashboard {
@@ -1179,16 +1198,31 @@ body.pna-mobile-nav-open {
 }
 
 /* Registration modal — sidebar + form split */
+.registration-modal-dialog {
+  width: min(100%, 72rem);
+}
+
+@media (max-width: 767.98px) {
+  .registration-modal-dialog {
+    height: min(94dvh, 880px) !important;
+    max-height: min(94dvh, 880px) !important;
+  }
+}
+
 .registration-modal-layout {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (min-width: 768px) {
   .registration-modal-layout {
     flex-direction: row;
-    height: 100%;
     overflow: hidden;
   }
 }
@@ -1292,7 +1326,7 @@ body.pna-mobile-nav-open {
 }
 
 .registration-modal-main {
-  flex: 1;
+  flex: 1 0 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1301,6 +1335,7 @@ body.pna-mobile-nav-open {
 
 @media (min-width: 768px) {
   .registration-modal-main {
+    flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
   }
@@ -1334,15 +1369,22 @@ body.pna-mobile-nav-open {
 .registration-modal-stepper {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: space-between;
+  gap: 0.25rem;
   padding: 0.85rem 1.75rem 1rem;
   border-bottom: 1px solid #e5e7eb;
   background: #fff;
   overflow-x: auto;
   flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.registration-modal-stepper::-webkit-scrollbar {
+  display: none;
 }
 
 .registration-modal-step {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -1360,6 +1402,7 @@ body.pna-mobile-nav-open {
   height: 1px;
   margin-left: 0.35rem;
   background: #dbe3ea;
+  flex-shrink: 0;
 }
 
 .registration-modal-step-index {
@@ -1373,36 +1416,146 @@ body.pna-mobile-nav-open {
   color: #64748b;
   font-size: 0.68rem;
   font-weight: 700;
+  flex-shrink: 0;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.registration-modal-step-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.registration-modal-step-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .registration-modal-step.is-active {
   color: #14532d;
 }
 
-.registration-modal-step.is-active .registration-modal-step-index {
+.registration-modal-step.is-active .registration-modal-step-index,
+.registration-modal-step-index.is-active {
   background: #14532d;
   color: #fff;
 }
 
-.registration-modal-step.is-complete .registration-modal-step-index {
-  background: #dcfce7;
+.registration-modal-step.is-complete {
   color: #166534;
 }
 
+.registration-modal-step.is-complete .registration-modal-step-index,
+.registration-modal-step-index.is-complete {
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+  animation: registration-step-pop 0.35s ease;
+}
+
+.registration-modal-step.is-error {
+  color: #b91c1c;
+}
+
+.registration-modal-step.is-error .registration-modal-step-index,
+.registration-modal-step-index.is-error {
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16);
+  animation: registration-step-shake 0.35s ease;
+}
+
+@keyframes registration-step-pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes registration-step-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
 .registration-modal-form {
-  flex: 1;
+  flex: 1 0 auto;
   padding: 1rem 1.25rem 1.5rem;
   scroll-padding-bottom: 1.5rem;
 }
 
 @media (min-width: 768px) {
   .registration-modal-form {
+    flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 1.5rem 1.75rem 2.5rem;
     scroll-padding-bottom: 2rem;
     scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .registration-modal-main-header {
+    padding: 1rem 1rem 0.85rem;
+  }
+
+  .registration-modal-page-title {
+    font-size: 1.2rem;
+  }
+
+  .registration-modal-page-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .registration-modal-stepper {
+    padding: 0.7rem 0.85rem 0.8rem;
+    gap: 0;
+  }
+
+  .registration-modal-step {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.28rem;
+    font-size: 0.58rem;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .registration-modal-step-label {
+    max-width: 4.2rem;
+  }
+
+  .registration-modal-step:not(:last-child)::after {
+    display: none;
+  }
+
+  .registration-modal-form {
+    padding: 1rem 1rem 1.75rem;
   }
 }
 
@@ -1487,6 +1640,25 @@ body.pna-mobile-nav-open {
   border-radius: 0.375rem;
 }
 
+.registration-form-payment-panel {
+  padding: 1rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  background: linear-gradient(180deg, #f8fdf9 0%, #ffffff 100%);
+}
+
+.registration-payment-qr-form .registration-sidebar-card-title {
+  margin-bottom: 0.35rem;
+}
+
+.registration-payment-qr-form .registration-sidebar-card-copy {
+  margin-bottom: 0.85rem;
+}
+
+.registration-payment-qr-form .registration-payment-qr-frame {
+  margin-bottom: 0.85rem;
+}
+
 .registration-form-label {
   margin-bottom: 0.375rem;
   font-size: 0.8125rem;
@@ -1541,6 +1713,101 @@ body.pna-mobile-nav-open {
 .registration-form .input-dark:focus,
 .registration-form select.input-dark:focus {
   background: #ffffff;
+}
+
+.registration-phone-field {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border: 1px solid rgba(21, 128, 61, 0.25);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.registration-phone-field:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+}
+
+.registration-phone-field.is-error {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.registration-phone-prefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.85rem;
+  border-right: 1px solid rgba(21, 128, 61, 0.18);
+  background: #f0fdf4;
+  color: #14532d;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.registration-phone-input {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.registration-phone-input:focus {
+  box-shadow: none !important;
+}
+
+.registration-phone-hint {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.ph-location-suggest {
+  position: relative;
+}
+
+.ph-location-suggest-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 12px 28px -16px rgba(15, 46, 28, 0.35);
+}
+
+.ph-location-suggest-option {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #14532d;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.ph-location-suggest-option:hover,
+.ph-location-suggest-option.is-active {
+  background: #f0fdf4;
+}
+
+.ph-location-suggest-empty {
+  padding: 0.75rem;
+  color: #64748b;
+  font-size: 0.8125rem;
 }
 
 .registration-sidebar-card {
@@ -2031,6 +2298,11 @@ body.pna-mobile-nav-open {
   will-change: transform;
 }
 
+.folio-hero-bg-image {
+  object-fit: cover;
+  object-position: center;
+}
+
 .folio-hero-bg-poster {
   position: absolute;
   inset: -4%;
@@ -2502,6 +2774,10 @@ body.pna-mobile-nav-open {
 .about-editorial-hero-image {
   object-fit: cover;
   object-position: center right;
+}
+
+.about-editorial-hero-image--flip-x {
+  transform: scaleX(-1);
 }
 
 .about-editorial-hero-scrim {
@@ -3657,21 +3933,34 @@ body.pna-mobile-nav-open {
 }
 
 .pna-footer-grid {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 2rem;
   padding: 2rem 0;
+}
+
+.pna-footer-columns-right {
+  display: grid;
+  gap: 2rem;
   grid-template-columns: minmax(0, 1fr);
 }
 
-@media (min-width: 768px) {
-  .pna-footer-grid {
+@media (min-width: 576px) {
+  .pna-footer-columns-right {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 992px) {
   .pna-footer-grid {
-    grid-template-columns: 1.2fr 0.9fr 1fr 1fr;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2.5rem;
+  }
+
+  .pna-footer-columns-right {
+    flex: 0 1 34rem;
     gap: 2.5rem;
   }
 }
