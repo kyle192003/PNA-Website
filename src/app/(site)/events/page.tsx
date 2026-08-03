@@ -22,6 +22,7 @@ export default async function EventsPage() {
       <PageHeader
         title="Events & Programs"
         subtitle={`Join open registrations or preview upcoming conferences and assemblies hosted by the ${conference.organization}.`}
+        imageSrc="/images/front_speak2.JPG"
       />
 
       <Section className="events-page-section">

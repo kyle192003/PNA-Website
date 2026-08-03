@@ -43,11 +43,11 @@ export default function ContactPage() {
       <section className="about-editorial-hero about-editorial-hero--compact pna-reveal">
         <div className="about-editorial-hero-media" aria-hidden="true">
           <Image
-            src={conference.hero.video.poster}
+            src="/images/registration.JPG"
             alt=""
             fill
             sizes="100vw"
-            className="about-editorial-hero-image"
+            className="about-editorial-hero-image about-editorial-hero-image--flip-x"
             priority
           />
         </div>

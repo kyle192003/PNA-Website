@@ -4,7 +4,6 @@ import { conference } from "@/lib/conference";
 import { Section } from "@/components/Section";
 import { RegisterButton } from "@/components/RegisterButton";
 import { EventsPreview } from "@/components/EventsPreview";
-import { HeroConferenceVideo } from "@/components/HeroConferenceVideo";
 import { getHomepageEvents } from "@/lib/events";
 
 export default async function HomePage() {
@@ -13,12 +12,17 @@ export default async function HomePage() {
   return (
     <div className="folio-page folio-page--editorial">
         <section className="folio-hero-cinematic">
-          <HeroConferenceVideo
-            variant="background"
-            src={conference.hero.video.src}
-            srcWebm={conference.hero.video.srcWebm}
-            poster={conference.hero.video.poster}
-          />
+          <div className="folio-hero-bg" aria-hidden="true">
+            <Image
+              src="/images/header_page.png"
+              alt=""
+              fill
+              sizes="100vw"
+              className="folio-hero-bg-media folio-hero-bg-image"
+              priority
+            />
+            <div className="folio-hero-bg-scrim" />
+          </div>
 
           <div className="folio-hero-cinematic-inner">
             <div className="folio-hero-cinematic-brand">
@@ -99,7 +103,7 @@ export default async function HomePage() {
             <div className="folio-about-media">
               <div className="folio-about-media-frame">
                 <Image
-                  src={conference.hero.video.poster}
+                  src="/images/front_speaker.JPG"
                   alt="Conference delegates at the Philippine International Convention Center"
                   fill
                   sizes="(min-width: 992px) 44vw, 100vw"
