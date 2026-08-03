@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { conference, type RegistrationCategory } from "@/lib/conference";
-import { getEmailValidationError, getPhoneValidationError } from "@/lib/form-validation";
+import {
+  getEmailValidationError,
+  getNameLengthError,
+  getRegistrationPhoneValidationError,
+  toPhMobileInternational,
+} from "@/lib/form-validation";
 import { createRegistration } from "@/lib/registrations";
 import { getActiveEvent, getOpenEventById } from "@/lib/events";
 import { sendRegistrationPendingEmail } from "@/lib/mail-templates";
@@ -30,8 +35,14 @@ export async function POST(request: Request) {
       eventId,
     } = body;
 
-    if (!firstName?.trim() || !lastName?.trim()) {
-      return NextResponse.json({ error: "Name is required." }, { status: 400 });
+    const lastNameError = getNameLengthError(lastName ?? "", "lastName", "Surname");
+    if (lastNameError) {
+      return NextResponse.json({ error: lastNameError }, { status: 400 });
+    }
+
+    const firstNameError = getNameLengthError(firstName ?? "", "firstName", "First name");
+    if (firstNameError) {
+      return NextResponse.json({ error: firstNameError }, { status: 400 });
     }
 
     const emailError = getEmailValidationError(email ?? "");
@@ -39,9 +50,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: emailError }, { status: 400 });
     }
 
-    const phoneError = getPhoneValidationError(phone ?? "");
+    const phoneError = getRegistrationPhoneValidationError(phone ?? "");
     if (phoneError) {
       return NextResponse.json({ error: phoneError }, { status: 400 });
+    }
+
+    const normalizedPhone = toPhMobileInternational(phone ?? "");
+    if (!normalizedPhone) {
+      return NextResponse.json(
+        { error: "Enter a valid mobile number starting with 9 (e.g. 9606207919)." },
+        { status: 400 }
+      );
     }
 
     if (!organization?.trim() || !position?.trim()) {
@@ -97,7 +116,7 @@ export async function POST(request: Request) {
       lastName,
       middleInitial,
       email,
-      phone,
+      phone: normalizedPhone,
       organization,
       position,
       category,
