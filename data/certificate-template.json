@@ -1,12 +1,12 @@
 {
-  "subject": "Certificate of Participation, {{event}}",
+  "subject": "Certificate of Participation: {{event}}",
   "fileType": "image",
-  "imageUrl": "/uploads/certificates/certificate-template.png",
-  "namePosXPercent": 50.62022680558571,
-  "namePosYPercent": 46.21584785490465,
-  "nameWidthPercent": 62.851134937923085,
+  "imageUrl": null,
+  "namePosXPercent": 50,
+  "namePosYPercent": 45,
+  "nameWidthPercent": 66,
   "nameHeightPercent": 10,
-  "nameColor": "#0b2f55",
+  "nameColor": "#ffffff",
   "nameFontWeight": 700,
-  "updatedAt": "2026-07-16T10:42:46.478Z"
+  "updatedAt": "1970-01-01T00:00:00.000Z"
 }
