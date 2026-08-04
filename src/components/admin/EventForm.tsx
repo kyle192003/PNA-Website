@@ -11,10 +11,15 @@ import { AdminDateInput, AdminDateRangeInput } from "@/components/admin/AdminDat
 
 interface EventFormProps {
   initial?: Partial<ConferenceEvent>;
-  onSubmit: (data: Record<string, unknown>) => Promise<void>;
+  onSubmit: (
+    data: Record<string, unknown>,
+    options?: { qrFile?: File | null }
+  ) => Promise<void>;
   submitLabel?: string;
   formId?: string;
   showBottomActions?: boolean;
+  /** Show payment QR file picker (used on create). */
+  showQrUpload?: boolean;
 }
 
 export function EventForm({
@@ -23,8 +28,10 @@ export function EventForm({
   submitLabel = "Save Event",
   formId = "admin-event-form",
   showBottomActions = true,
+  showQrUpload = false,
 }: EventFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<EventStatus>(
     initial?.status ?? (initial?.isActive ? "open" : "draft")
@@ -33,7 +40,7 @@ export function EventForm({
     initial?.featuredOnHomepage ?? false
   );
   const [datesDisplay, setDatesDisplay] = useState(
-    initial?.datesDisplay ?? conference.dates.display
+    initial?.datesDisplay ?? ""
   );
   const [earlyBirdDeadline, setEarlyBirdDeadline] = useState(
     initial?.earlyBirdDeadline ?? conference.registration.earlyBirdDeadline
@@ -41,12 +48,14 @@ export function EventForm({
   const [regularDeadline, setRegularDeadline] = useState(
     initial?.regularDeadline ?? conference.registration.regularDeadline
   );
+  const [qrPreviewUrl, setQrPreviewUrl] = useState<string | null>(null);
   const [currentFeatured, setCurrentFeatured] = useState<{ id: string; title: string } | null>(
     null
   );
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
+  const isCreate = !initial?.id;
   const canFeature = status === "open" || status === "upcoming";
   const replacesFeatured =
     featuredOnHomepage &&
@@ -76,7 +85,7 @@ export function EventForm({
       setStatus(initial.status);
     }
     setFeaturedOnHomepage(initial?.featuredOnHomepage ?? false);
-    setDatesDisplay(initial?.datesDisplay ?? conference.dates.display);
+    setDatesDisplay(initial?.datesDisplay ?? (isCreate ? "" : conference.dates.display));
     setEarlyBirdDeadline(
       initial?.earlyBirdDeadline ?? conference.registration.earlyBirdDeadline
     );
@@ -88,6 +97,7 @@ export function EventForm({
     initial?.datesDisplay,
     initial?.earlyBirdDeadline,
     initial?.regularDeadline,
+    isCreate,
   ]);
 
   useEffect(() => {
@@ -95,6 +105,19 @@ export function EventForm({
       setFeaturedOnHomepage(false);
     }
   }, [canFeature, featuredOnHomepage]);
+
+  useEffect(() => {
+    return () => {
+      if (qrPreviewUrl) URL.revokeObjectURL(qrPreviewUrl);
+    };
+  }, [qrPreviewUrl]);
+
+  function handleQrFileChange(file: File | null) {
+    setQrPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  }
 
   function buildPayload(form: HTMLFormElement) {
     const formData = new FormData(form);
@@ -122,8 +145,13 @@ export function EventForm({
     setError("");
 
     const form = e.currentTarget;
+    if (!datesDisplay.trim()) {
+      setError("Please select the event start and end dates.");
+      return;
+    }
+
     const payload = buildPayload(form);
-    const isEdit = Boolean(initial?.id);
+    const qrFile = showQrUpload ? qrFileInputRef.current?.files?.[0] ?? null : null;
     const featureMessage = replacesFeatured
       ? `"${currentFeatured?.title}" is currently featured on the homepage. This event will replace it as the only highlighted event.`
       : featuredOnHomepage
@@ -131,23 +159,23 @@ export function EventForm({
         : undefined;
 
     requestConfirm({
-      title: isEdit ? "Save event changes?" : "Create this event?",
+      title: isCreate ? "Create this event?" : "Save event changes?",
       message: featureMessage
-        ? `${isEdit ? "Are you sure you want to save changes to this event?" : "Are you sure you want to create this event?"} ${featureMessage}`
-        : isEdit
-          ? "Are you sure you want to save changes to this event?"
-          : "Are you sure you want to create this event?",
-      confirmLabel: isEdit ? "Save changes" : "Create event",
-      loadingMessage: isEdit ? "Saving event..." : "Creating event...",
-      successTitle: isEdit ? "Event updated" : "Event created",
+        ? `${isCreate ? "Are you sure you want to create this event?" : "Are you sure you want to save changes to this event?"} ${featureMessage}`
+        : isCreate
+          ? "Are you sure you want to create this event?"
+          : "Are you sure you want to save changes to this event?",
+      confirmLabel: isCreate ? "Create event" : "Save changes",
+      loadingMessage: isCreate ? "Creating event..." : "Saving event...",
+      successTitle: isCreate ? "Event created" : "Event updated",
       successMessage: replacesFeatured
         ? "Homepage highlight updated. Only this event is featured now."
-        : isEdit
-          ? "Your event changes were saved successfully."
-          : "The event was created successfully.",
+        : isCreate
+          ? "The event was created successfully."
+          : "Your event changes were saved successfully.",
       action: async () => {
         try {
-          await onSubmit(payload);
+          await onSubmit(payload, { qrFile });
           const res = await fetch("/api/admin/events");
           const data = await res.json();
           setCurrentFeatured(data.featuredHomepageEvent ?? null);
@@ -218,7 +246,12 @@ export function EventForm({
               onChange={setDatesDisplay}
               required
               disabled={loading}
-              helpText="Pick the start and end dates. The public display updates automatically."
+              disallowPastStart={isCreate}
+              helpText={
+                isCreate
+                  ? "Click a start date, then an end date. Past dates are disabled."
+                  : "Click a start date, then an end date. Same-day events are allowed."
+              }
             />
           </div>
 
@@ -352,6 +385,34 @@ export function EventForm({
               Show QR code in registration form
             </label>
           </div>
+
+          {showQrUpload ? (
+            <div className="col-12">
+              <div className="admin-qr-create-panel">
+                <p className="admin-qr-create-title">Payment QR Code</p>
+                <p className="admin-field-help mb-0">
+                  Optional. Upload the payment QR now, or add it later from the event page.
+                </p>
+                {qrPreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={qrPreviewUrl}
+                    alt="Payment QR preview"
+                    className="admin-qr-create-preview"
+                  />
+                ) : null}
+                <input
+                  ref={qrFileInputRef}
+                  type="file"
+                  name="qrFile"
+                  accept="image/*"
+                  className="admin-input"
+                  disabled={loading}
+                  onChange={(e) => handleQrFileChange(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {showBottomActions && (

@@ -15,7 +15,7 @@ export function parseEventStartDate(datesDisplay: string): string | null {
   }
 
   const rangeMatch = raw.match(
-    /^([A-Za-z]+)\s+(\d{1,2})\s*[–—-]\s*(?:[A-Za-z]+\s+)?(\d{1,2}),?\s*(\d{4})$/
+    /^([A-Za-z]+)\s+(\d{1,2})\s*(?:to|[–—-])\s*(?:[A-Za-z]+\s+)?(\d{1,2}),?\s*(\d{4})$/i
   );
   if (rangeMatch) {
     const [, month, day, , year] = rangeMatch;
@@ -51,7 +51,7 @@ export function parseEventEndDate(datesDisplay: string): string | null {
   }
 
   const rangeMatch = raw.match(
-    /^([A-Za-z]+)\s+(\d{1,2})\s*[–—-]\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),?\s*(\d{4})$/
+    /^([A-Za-z]+)\s+(\d{1,2})\s*(?:to|[–—-])\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),?\s*(\d{4})$/i
   );
   if (rangeMatch) {
     const [, startMonth, , endMonthMaybe, endDay, year] = rangeMatch;

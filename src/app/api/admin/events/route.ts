@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createEvent, getAllEvents, getFeaturedHomepageEvent } from "@/lib/events";
 import { conference } from "@/lib/conference";
+import { parseEventStartDate, todayIsoInTimeZone } from "@/lib/event-date";
 
 export async function GET() {
   const [events, featuredHomepageEvent] = await Promise.all([
@@ -28,6 +29,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const startIso = parseEventStartDate(String(body.datesDisplay));
+    if (!startIso) {
+      return NextResponse.json(
+        { error: "Please provide a valid event start date." },
+        { status: 400 }
+      );
+    }
+
+    const todayIso = todayIsoInTimeZone();
+    if (startIso < todayIso) {
+      return NextResponse.json(
+        { error: "Event start date cannot be in the past." },
+        { status: 400 }
+      );
+    }
+
     const event = await createEvent({
       title: body.title,
       theme: body.theme ?? conference.theme,
@@ -38,8 +55,7 @@ export async function POST(request: Request) {
       venueMapsUrl: body.venueMapsUrl?.trim() || null,
       earlyBirdDeadline:
         body.earlyBirdDeadline ?? conference.registration.earlyBirdDeadline,
-      regularDeadline:
-        body.regularDeadline ?? conference.registration.regularDeadline,
+      regularDeadline: body.regularDeadline ?? conference.registration.regularDeadline,
       fees,
       showQrInRegistration: Boolean(body.showQrInRegistration),
       status: body.status,
