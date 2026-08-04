@@ -166,18 +166,32 @@ export function AdminDateRangeInput({
 
     lastEmittedRef.current = value;
     const nextStart = parseEventStartDate(value) ?? "";
-    const nextEnd = parseEventEndDate(value) ?? nextStart;
-    setStartIso(nextStart);
-    setEndIso(nextEnd);
-    setPhase("start");
+    const looksLikeRange = /\d\s*(?:to|[–—-])\s*\d/i.test(value.trim());
+    const parsedEnd = parseEventEndDate(value) ?? "";
+
+    if (!nextStart) {
+      setStartIso("");
+      setEndIso("");
+      setPhase("start");
+    } else if (looksLikeRange) {
+      setStartIso(nextStart);
+      setEndIso(parsedEnd || nextStart);
+      setPhase("start");
+    } else {
+      // Single date string — treat as a complete same-day range when closed,
+      // or as start-only while the picker is open choosing an end date.
+      setStartIso(nextStart);
+      setEndIso(open ? "" : nextStart);
+      setPhase(open ? "end" : "start");
+    }
     setHoverIso(null);
 
-    const nextFocus = parseIso(nextStart || nextEnd);
+    const nextFocus = parseIso(nextStart || parsedEnd);
     if (nextFocus) {
       setViewYear(nextFocus.y);
       setViewMonth(nextFocus.m - 1);
     }
-  }, [value]);
+  }, [value, open]);
 
   useEffect(() => {
     if (open) {
@@ -304,11 +318,13 @@ export function AdminDateRangeInput({
   }
 
   const triggerText =
-    startIso && endIso
-      ? formatDateRangeDisplay(startIso, endIso)
-      : startIso
-        ? `${formatLongDate(startIso)} — select end`
-        : "Select event dates";
+    phase === "end" && startIso && !endIso
+      ? `${formatLongDate(startIso)} — select end`
+      : value.trim()
+        ? value
+        : startIso && endIso
+          ? formatDateRangeDisplay(startIso, endIso)
+          : "Select event dates";
 
   const startLabel = startIso ? formatLongDate(startIso) : "Add date";
   const endLabel = endIso ? formatLongDate(endIso) : "Add date";

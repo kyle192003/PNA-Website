@@ -7,6 +7,8 @@ import { getPublicEvents } from "@/lib/events";
 import { conference } from "@/lib/conference";
 import { PillArrowIcon } from "@/components/ui/PillArrow";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Events",
   description: `Browse open registrations and upcoming programs from the ${conference.organization}.`,

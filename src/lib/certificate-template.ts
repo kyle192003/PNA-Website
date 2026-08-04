@@ -203,7 +203,7 @@ export function buildSampleCertificateContext(
   return {
     name: "Juan Dela Cruz",
     event: event?.title ?? "2026 National Conference & General Assembly",
-    dates: event?.datesDisplay ?? "October 14 to 16, 2026",
+    dates: event?.datesDisplay ?? "October 19 to 21, 2026",
     reference: "PNA-2026-12345",
     certificateId: "PNA-2026-12345-2026",
     issuedAt: new Date().toLocaleDateString("en-US", {

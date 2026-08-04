@@ -6,8 +6,22 @@ import { RegisterButton } from "@/components/RegisterButton";
 import { EventsPreview } from "@/components/EventsPreview";
 import { getHomepageEvents } from "@/lib/events";
 
+export const dynamic = "force-dynamic";
+
+function statusLabel(status: string | undefined): string {
+  if (status === "open") return "Registration Open";
+  if (status === "upcoming") return "Coming Soon";
+  return "See Events";
+}
+
 export default async function HomePage() {
   const { featured, others } = await getHomepageEvents();
+
+  const heroDates = featured?.datesDisplay || conference.dates.display;
+  const heroVenue = featured?.venueName || conference.venue.name;
+  const heroEarlyBird =
+    featured?.earlyBirdDeadline || conference.registration.earlyBirdDeadline;
+  const heroConferenceName = featured?.title || conference.conferenceName;
 
   return (
     <div className="folio-page folio-page--editorial">
@@ -26,14 +40,16 @@ export default async function HomePage() {
 
           <div className="folio-hero-cinematic-inner">
             <div className="folio-hero-cinematic-brand">
-              <h1 className="folio-hero-cinematic-headline font-display">{conference.hero.headline}</h1>
+              <h1 className="folio-hero-cinematic-headline font-display">
+                {conference.hero.headline}
+              </h1>
               <p className="folio-hero-cinematic-tagline">
-                {conference.conferenceName}
+                {heroConferenceName}
                 <span className="folio-hero-cinematic-dot" aria-hidden="true">
                   {" "}
                   ·{" "}
                 </span>
-                {conference.dates.display}
+                {heroDates}
               </p>
               <div className="folio-hero-cinematic-actions">
                 <RegisterButton className="btn-editorial" showArrow={false}>
@@ -51,21 +67,21 @@ export default async function HomePage() {
               <ul className="folio-hero-cinematic-bar-list">
                 <li>
                   <span className="folio-hero-cinematic-bar-label">Dates</span>
-                  <span className="folio-hero-cinematic-bar-value">{conference.dates.display}</span>
+                  <span className="folio-hero-cinematic-bar-value">{heroDates}</span>
                 </li>
                 <li>
                   <span className="folio-hero-cinematic-bar-label">Venue</span>
-                  <span className="folio-hero-cinematic-bar-value">{conference.venue.name}</span>
+                  <span className="folio-hero-cinematic-bar-value">{heroVenue}</span>
                 </li>
                 <li>
                   <span className="folio-hero-cinematic-bar-label">Early Bird</span>
-                  <span className="folio-hero-cinematic-bar-value">
-                    {conference.registration.earlyBirdDeadline}
-                  </span>
+                  <span className="folio-hero-cinematic-bar-value">{heroEarlyBird}</span>
                 </li>
                 <li>
                   <span className="folio-hero-cinematic-bar-label">Status</span>
-                  <span className="folio-hero-cinematic-bar-value">Registration Open</span>
+                  <span className="folio-hero-cinematic-bar-value">
+                    {statusLabel(featured?.status)}
+                  </span>
                 </li>
               </ul>
             </div>
@@ -112,9 +128,11 @@ export default async function HomePage() {
                 />
               </div>
               <p className="folio-about-media-caption font-display">
-                &ldquo;{conference.theme}&rdquo;
+                &ldquo;{featured?.theme || conference.theme}&rdquo;
               </p>
-              <p className="folio-about-media-desc">{conference.hero.description}</p>
+              <p className="folio-about-media-desc">
+                {featured?.description || conference.hero.description}
+              </p>
             </div>
           </div>
 
@@ -139,7 +157,7 @@ export default async function HomePage() {
               <p className="folio-editorial-lead mb-0">
                 {conference.cta.description.replace(
                   "{earlyBirdDeadline}",
-                  conference.registration.earlyBirdDeadline
+                  heroEarlyBird
                 )}
               </p>
             </div>

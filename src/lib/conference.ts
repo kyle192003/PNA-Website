@@ -57,9 +57,9 @@ export const conference = {
       "Secure your participation before the early registration deadline on {earlyBirdDeadline}. Delegates are encouraged to complete registration promptly to confirm attendance and conference materials.",
   },
   dates: {
-    start: "October 14, 2026",
-    end: "October 16, 2026",
-    display: "October 14 to 16, 2026",
+    start: "October 19, 2026",
+    end: "October 21, 2026",
+    display: "October 19 to 21, 2026",
   },
   venue: {
     name: "Philippine International Convention Center",
