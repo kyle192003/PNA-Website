@@ -93,4 +93,4 @@ React Query Devtools are available in development (bottom-left corner).
 
 ## Contributing
 
-Use commit prefixes `Feature:`, `Update:`, or `Fix:` so changes are easy to follow. Run `npm run fix` before pushing to clean up lint issues. Details are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Use commit prefixes `feat:`, `update:`, or `fix:` so changes are easy to follow. Run `npm run fix` before pushing to clean up lint issues. Details are in [CONTRIBUTING.md](CONTRIBUTING.md).

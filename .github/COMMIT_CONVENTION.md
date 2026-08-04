@@ -2,16 +2,16 @@
 
 Start every commit with one of these prefixes (exact spelling and colon):
 
-- `Feature:` — new work (pages, forms, tools)
-- `Update:` — improvements to what already exists
-- `Fix:` — bug fixes
+- `feat:` — new work (pages, forms, tools)
+- `update:` — improvements to what already exists
+- `fix:` — bug fixes
 
 ## Examples
 
 ```
-Feature: add event registration form
-Update: polish site styles and small fixes
-Fix: show register button correctly when signed in
+feat: add event registration form
+update: polish site styles and small fixes
+fix: show register button correctly when signed in
 ```
 
 Keep the rest of the message in simple words.

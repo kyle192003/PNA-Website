@@ -14,11 +14,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require Feature / Update / Fix prefixes
+      - name: Require feat / update / fix prefixes
         shell: bash
         run: |
           set -euo pipefail
-          PATTERN='^(Feature|Update|Fix): .+'
+          PATTERN='^(feat|update|fix): .+'
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="${{ github.event.pull_request.base.sha }}"
@@ -38,7 +38,7 @@ jobs:
             [ -z "$msg" ] && continue
             if ! echo "$msg" | grep -Eq "$PATTERN"; then
               echo "Invalid commit message: $msg"
-              echo "Use: Feature: ..., Update: ..., or Fix: ..."
+              echo "Use: feat: ..., update: ..., or fix: ..."
               FAILED=1
             else
               echo "OK: $msg"

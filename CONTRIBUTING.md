@@ -6,11 +6,11 @@ Use a clear prefix so progress is easy to read:
 
 | Prefix | When to use |
 | ------ | ----------- |
-| `Feature:` | Adding something new |
-| `Update:` | Improving something that exists |
-| `Fix:` | Fixing a bug |
+| `feat:` | Adding something new |
+| `update:` | Improving something that exists |
+| `fix:` | Fixing a bug |
 
-Examples: `Feature: add contact form`, `Update: improve mobile layout`, `Fix: correct payment status`.
+Examples: `feat: add contact form`, `update: improve mobile layout`, `fix: correct payment status`.
 
 See [.github/COMMIT_CONVENTION.md](.github/COMMIT_CONVENTION.md) for more detail.
 
@@ -28,4 +28,4 @@ npm run build
 
 ## Pull requests
 
-PRs to `main` run install, lint, and build. Commit messages that do not start with `Feature:`, `Update:`, or `Fix:` will fail the check.
+PRs to `main` run install, lint, and build. Commit messages that do not start with `feat:`, `update:`, or `fix:` will fail the check.
