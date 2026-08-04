@@ -63,9 +63,13 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       nextStatus === "rejected" && existing.paymentStatus !== "rejected";
     const becameReceiptIssue =
       nextStatus === "receipt_issue" && existing.paymentStatus !== "receipt_issue";
+    const resendReceiptIssueEmail =
+      nextStatus === "receipt_issue" &&
+      existing.paymentStatus === "receipt_issue" &&
+      body.resendReceiptEmail === true;
     const becamePaid = nextStatus === "paid" && existing.paymentStatus !== "paid";
 
-    if (becameRejected || becameReceiptIssue || becamePaid) {
+    if (becameRejected || becameReceiptIssue || resendReceiptIssueEmail || becamePaid) {
       const event = updated.eventId
         ? await getEventById(updated.eventId)
         : null;
@@ -92,7 +96,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         }
       }
 
-      if (becameReceiptIssue) {
+      if (becameReceiptIssue || resendReceiptIssueEmail) {
         const mailResult = await sendReceiptIssueEmail(updated, eventContext, paymentNotes);
         if (!mailResult.ok) {
           console.error("[participants] receipt issue email failed:", mailResult.error);
