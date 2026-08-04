@@ -749,3 +749,68 @@ export async function sendAdminInquiryNotification(
     replyTo: payload.email,
   });
 }
+
+export type AdminReceiptSubmittedPayload = {
+  registration: RegistrationRecord;
+  eventTitle: string;
+  isReupload: boolean;
+};
+
+/** Alerts the secretariat when a participant submits (or re-submits) payment proof. */
+export async function sendAdminReceiptSubmittedNotification(
+  payload: AdminReceiptSubmittedPayload
+): Promise<{ ok: boolean; error?: string }> {
+  const to = process.env.ADMIN_NOTIFY_EMAIL?.trim() || conference.contact.email;
+  const name = participantDisplayName(payload.registration);
+  const adminUrl = `${getSiteBaseUrl()}/admin/participants`;
+  const kindLabel = payload.isReupload ? "re-uploaded" : "uploaded";
+  const subject = `Payment receipt ${kindLabel}: ${payload.registration.referenceNumber}`;
+
+  const html = wrapEmail({
+    title: subject,
+    headline: payload.isReupload
+      ? "Payment receipt re-uploaded"
+      : "New payment receipt submitted",
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        <strong>${escapeHtml(name)}</strong> ${kindLabel} payment proof for
+        <strong>${escapeHtml(payload.registration.referenceNumber)}</strong>
+        (${escapeHtml(payload.eventTitle)}). Review it in the admin participants panel.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border-collapse:collapse;">
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Participant</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(name)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Email</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(payload.registration.email)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Reference</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(payload.registration.referenceNumber)}</p>
+          </td>
+        </tr>
+      </table>
+      ${emailCta(adminUrl, "Open participants")}
+    `,
+  });
+
+  const text = [
+    `A participant ${kindLabel} payment proof.`,
+    "",
+    `Participant: ${name}`,
+    `Email: ${payload.registration.email}`,
+    `Reference: ${payload.registration.referenceNumber}`,
+    `Event: ${payload.eventTitle}`,
+    "",
+    `Admin: ${adminUrl}`,
+  ].join("\n");
+
+  return sendBrandedMail({ to, subject, html, text });
+}

@@ -9,6 +9,7 @@ import { AdminBillInsights } from "@/components/admin/AdminBillInsights";
 import { AdminExportMenu } from "@/components/admin/AdminExportMenu";
 import { AdminHorizontalBarChart } from "@/components/admin/dashboard/AdminBarCharts";
 import { PaymentStatusBadge } from "@/components/admin/PaymentStatusBadge";
+import { AdminReceiptPreview } from "@/components/admin/AdminReceiptPreview";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { TableSkeleton } from "@/components/ui/Skeleton";
@@ -77,6 +78,14 @@ const statusSuccessCopy: Record<
     message: "The participant's payment status was updated successfully.",
   },
 };
+
+/** One-click reasons: selecting one flags the issue and emails the participant. */
+const RECEIPT_ISSUE_REASONS = [
+  "Receipt is blurry — please re-upload a clearer photo.",
+  "Reference number is missing or unreadable on the receipt.",
+  "Amount does not match the registration fee.",
+  "Incomplete proof — please upload the full receipt/screenshot.",
+] as const;
 
 export function ParticipantsTable({
   events,
@@ -249,17 +258,27 @@ export function ParticipantsTable({
     });
   }
 
-  function requestStatusUpdate(paymentStatus: PaymentStatus) {
+  function requestStatusUpdate(
+    paymentStatus: PaymentStatus,
+    notesOverride?: string
+  ) {
     if (!selected) return;
+
+    const notesForRequest =
+      typeof notesOverride === "string" ? notesOverride.trim() : paymentNotes.trim();
 
     if (
       (paymentStatus === "rejected" || paymentStatus === "receipt_issue") &&
-      !paymentNotes.trim()
+      !notesForRequest
     ) {
       setFormError(
         "Enter a message in “Message to Participant” (e.g. blurry receipt) before continuing."
       );
       return;
+    }
+
+    if (typeof notesOverride === "string") {
+      setPaymentNotes(notesOverride);
     }
 
     setFormError(null);
@@ -268,6 +287,8 @@ export function ParticipantsTable({
     const successCopy = statusSuccessCopy[paymentStatus];
     const notifiesParticipant =
       paymentStatus === "rejected" || paymentStatus === "receipt_issue";
+    const resendReceiptEmail =
+      paymentStatus === "receipt_issue" && selected.paymentStatus === "receipt_issue";
 
     requestConfirm({
       title: copy.title,
@@ -285,7 +306,12 @@ export function ParticipantsTable({
         const res = await fetch(`/api/admin/participants/${selected.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paymentStatus, adminNotes, paymentNotes }),
+          body: JSON.stringify({
+            paymentStatus,
+            adminNotes,
+            paymentNotes: notesForRequest,
+            resendReceiptEmail,
+          }),
         });
 
         const data = await res.json();
@@ -298,6 +324,10 @@ export function ParticipantsTable({
         await loadUnderReviewCount();
       },
     });
+  }
+
+  function requestReceiptIssueReason(reason: string) {
+    requestStatusUpdate("receipt_issue", reason);
   }
 
   return (
@@ -535,16 +565,11 @@ export function ParticipantsTable({
               </div>
             </dl>
 
-            {selected.receiptUrl && (
-              <a
-                href={selected.receiptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="admin-link-btn"
-              >
-                View Receipt
-              </a>
-            )}
+            <AdminReceiptPreview
+              receiptUrl={selected.receiptUrl}
+              receiptUploadedAt={selected.receiptUploadedAt}
+              referenceNumber={selected.referenceNumber}
+            />
 
             <label className="admin-label mt-3">Admin Notes</label>
             <textarea
@@ -557,8 +582,24 @@ export function ParticipantsTable({
 
             <label className="admin-label mt-2">
               Message to Participant
-              <span className="admin-muted"> (required when rejecting)</span>
+              <span className="admin-muted"> (click a reason to email a reupload link)</span>
             </label>
+            <div className="admin-receipt-reason-list" role="list">
+              {RECEIPT_ISSUE_REASONS.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  role="listitem"
+                  className={`admin-receipt-reason-chip${
+                    paymentNotes.trim() === reason ? " is-selected" : ""
+                  }`}
+                  disabled={listLoading || loading}
+                  onClick={() => requestReceiptIssueReason(reason)}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
             <textarea
               className="admin-input"
               rows={2}
@@ -567,7 +608,7 @@ export function ParticipantsTable({
                 setPaymentNotes(e.target.value);
                 if (formError) setFormError(null);
               }}
-              placeholder="e.g. Receipt is blurry, please re-upload a clearer photo."
+              placeholder="Or type a custom message, then use Receipt Issue / Reject."
               disabled={listLoading || loading}
             />
 
