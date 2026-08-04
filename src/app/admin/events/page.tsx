@@ -14,7 +14,22 @@ export default async function AdminEventsPage() {
             Create events, mark programs as upcoming soon, and open registration when ready.
           </p>
         </div>
-        <Link href="/admin/events/new" className="btn-primary">
+        <Link
+          href="/admin/events/new"
+          className="admin-btn-primary"
+          style={{
+            color: "#ffffff",
+            background: "linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%)",
+            border: "1px solid rgba(255, 255, 255, 0.25)",
+            borderRadius: "9999px",
+            padding: "0.8rem 1.6rem",
+            fontWeight: 700,
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           New Event
         </Link>
       </div>
