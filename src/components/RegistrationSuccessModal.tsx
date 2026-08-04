@@ -4,6 +4,14 @@ import { conference } from "@/lib/conference";
 import { formatParticipantName } from "@/lib/participant-name";
 import { Modal } from "@/components/ui/Modal";
 
+export interface RegistrationSuccessGroupMember {
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  email: string;
+  referenceNumber: string;
+}
+
 export interface RegistrationSuccessDetails {
   referenceNumber: string;
   firstName: string;
@@ -15,6 +23,9 @@ export interface RegistrationSuccessDetails {
   position: string;
   category: string;
   receiptUploaded?: boolean;
+  groupSize?: number;
+  totalPaymentAmount?: number;
+  groupMembers?: RegistrationSuccessGroupMember[];
 }
 interface RegistrationSuccessModalProps {
   open: boolean;
@@ -29,6 +40,8 @@ export function RegistrationSuccessModal({
 }: RegistrationSuccessModalProps) {
   if (!details) return null;
 
+  const isGroup = Boolean(details.groupSize && details.groupSize > 1);
+
   return (
     <Modal open={open} onClose={onClose} title="Registration Confirmation">
       <div className="text-center">
@@ -41,18 +54,23 @@ export function RegistrationSuccessModal({
         <p className="mt-2 text-sm text-muted">
           Thank you, {formatParticipantName(details)}. Your official registration for the{" "}
           {conference.conferenceName} has been received by the Secretariat.
+          {isGroup
+            ? ` This group registration covers ${details.groupSize} participants.`
+            : ""}
         </p>
       </div>
 
       <div className="mt-6 rounded-xl bg-surface border border-accent/25 p-4 text-center">
         <p className="text-xs font-bold uppercase tracking-wider text-accent-glow">
-          Official Reference Number
+          {isGroup ? "Primary Reference Number" : "Official Reference Number"}
         </p>
         <p className="mt-1 font-display text-xl sm:text-2xl font-bold text-ink tracking-wide break-all">
           {details.referenceNumber}
         </p>
         <p className="mt-2 text-xs text-muted">
-          Please retain this reference number for verification and on-site check-in.
+          {isGroup
+            ? "Use this reference when uploading one proof of payment for the whole group. Each participant also receives their own reference by email."
+            : "Please retain this reference number for verification and on-site check-in."}
         </p>
       </div>
 
@@ -63,9 +81,31 @@ export function RegistrationSuccessModal({
         <DetailRow label="Organization" value={details.organization} />
         <DetailRow label="Position" value={details.position} />
         <DetailRow label="Category" value={details.category} />
+        {isGroup ? (
+          <DetailRow label="Participants" value={String(details.groupSize)} />
+        ) : null}
         <DetailRow label="Conference Dates" value={conference.dates.display} />
         <DetailRow label="Venue" value={conference.venue.name} />
       </dl>
+
+      {isGroup && details.groupMembers && details.groupMembers.length > 0 ? (
+        <div className="mt-6 rounded-lg border border-accent/20 bg-surface/50 p-4 text-sm">
+          <p className="font-semibold text-ink mb-2">Group participants</p>
+          <ul className="space-y-2 mb-0 ps-0 list-none">
+            {details.groupMembers.map((member) => (
+              <li key={member.referenceNumber} className="text-muted">
+                <span className="font-medium text-ink">{formatParticipantName(member)}</span>
+                {" — "}
+                {member.email}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 mb-0 text-xs text-muted">
+            Each person receives a confirmation email with their own reference number and, after
+            payment is confirmed, their check-in QR code.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-6 rounded-lg border border-accent/20 bg-surface/50 p-4 text-sm text-muted leading-relaxed">
         <p className="font-semibold text-ink mb-1">Subsequent Steps</p>

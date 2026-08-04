@@ -7,7 +7,12 @@ import {
   sendPaymentRejectedEmail,
   sendReceiptIssueEmail,
 } from "@/lib/mail-templates";
-import { getRegistrationById, updateRegistrationPayment, deleteRegistration } from "@/lib/registrations";
+import {
+  getRegistrationById,
+  getRegistrationsByGroupId,
+  updateRegistrationPaymentCascading,
+  deleteRegistration,
+} from "@/lib/registrations";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -49,62 +54,73 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       );
     }
 
-    const updated = await updateRegistrationPayment(id, {
+    // Capture previous statuses for cascade email decisions.
+    const previousById = new Map<string, PaymentStatus>([[existing.id, existing.paymentStatus]]);
+    if (existing.groupId) {
+      const group = await getRegistrationsByGroupId(existing.groupId);
+      for (const member of group) {
+        previousById.set(member.id, member.paymentStatus);
+      }
+    }
+
+    const updatedList = await updateRegistrationPaymentCascading(id, {
       paymentStatus: body.paymentStatus,
       adminNotes: body.adminNotes?.trim(),
       paymentNotes,
     });
 
+    const updated = updatedList.find((r) => r.id === id) ?? updatedList[0];
     if (!updated) {
       return NextResponse.json({ error: "Participant not found." }, { status: 404 });
     }
 
-    const becameRejected =
-      nextStatus === "rejected" && existing.paymentStatus !== "rejected";
-    const becameReceiptIssue =
-      nextStatus === "receipt_issue" && existing.paymentStatus !== "receipt_issue";
-    const resendReceiptIssueEmail =
-      nextStatus === "receipt_issue" &&
-      existing.paymentStatus === "receipt_issue" &&
-      body.resendReceiptEmail === true;
-    const becamePaid = nextStatus === "paid" && existing.paymentStatus !== "paid";
+    const event = updated.eventId ? await getEventById(updated.eventId) : null;
+    const eventContext = event ?? {
+      id: "unassigned",
+      title: "PNA Conference Registration",
+      datesDisplay: conference.dates.display,
+      venueName: conference.venue.name,
+      venueAddress: conference.venue.address,
+      venueMapsUrl: null,
+    };
 
-    if (becameRejected || becameReceiptIssue || resendReceiptIssueEmail || becamePaid) {
-      const event = updated.eventId
-        ? await getEventById(updated.eventId)
-        : null;
-      const eventContext = event ?? {
-        id: "unassigned",
-        title: "PNA Conference Registration",
-        datesDisplay: conference.dates.display,
-        venueName: conference.venue.name,
-        venueAddress: conference.venue.address,
-        venueMapsUrl: null,
-      };
+    for (const record of updatedList) {
+      const previous = previousById.get(record.id) ?? record.paymentStatus;
+      const becameRejected = nextStatus === "rejected" && previous !== "rejected";
+      const becameReceiptIssue = nextStatus === "receipt_issue" && previous !== "receipt_issue";
+      const resendReceiptIssueEmail =
+        nextStatus === "receipt_issue" &&
+        previous === "receipt_issue" &&
+        body.resendReceiptEmail === true &&
+        record.id === id;
+      const becamePaid = nextStatus === "paid" && previous !== "paid";
 
       if (becamePaid) {
-        const mailResult = await sendPaymentConfirmedEmail(updated, eventContext);
+        const mailResult = await sendPaymentConfirmedEmail(record, eventContext);
         if (!mailResult.ok) {
           console.error("[participants] payment confirmed email failed:", mailResult.error);
         }
       }
 
       if (becameRejected) {
-        const mailResult = await sendPaymentRejectedEmail(updated, eventContext, paymentNotes);
+        const mailResult = await sendPaymentRejectedEmail(record, eventContext, paymentNotes);
         if (!mailResult.ok) {
           console.error("[participants] rejection email failed:", mailResult.error);
         }
       }
 
       if (becameReceiptIssue || resendReceiptIssueEmail) {
-        const mailResult = await sendReceiptIssueEmail(updated, eventContext, paymentNotes);
+        const mailResult = await sendReceiptIssueEmail(record, eventContext, paymentNotes);
         if (!mailResult.ok) {
           console.error("[participants] receipt issue email failed:", mailResult.error);
         }
       }
     }
 
-    return NextResponse.json({ registration: updated });
+    return NextResponse.json({
+      registration: updated,
+      groupUpdated: updatedList.length > 1 ? updatedList.length : undefined,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update participant.";
     return NextResponse.json({ error: message }, { status: 500 });

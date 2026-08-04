@@ -1,5 +1,6 @@
 import { conference, type RegistrationCategory } from "@/lib/conference";
 import type { FeeTier } from "@/lib/types/admin";
+import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 
 const STORAGE_PREFIX = "pna-registration-draft";
 const validCategories = new Set(
@@ -7,7 +8,18 @@ const validCategories = new Set(
 );
 const validFeeTiers = new Set<FeeTier>(["early", "regular"]);
 
+export type RegistrationMode = "individual" | "group";
+
+export interface GroupMemberDraft {
+  firstName: string;
+  lastName: string;
+  middleInitial: string;
+  email: string;
+  phone: string;
+}
+
 export interface RegistrationDraft {
+  mode: RegistrationMode;
   firstName: string;
   lastName: string;
   middleInitial?: string;
@@ -23,13 +35,34 @@ export interface RegistrationDraft {
   dietaryRequirements: string;
   specialNeeds: string;
   agreeToTerms: boolean;
+  members: GroupMemberDraft[];
   savedAt: string;
 }
 
 export type RegistrationDraftInput = Omit<RegistrationDraft, "savedAt">;
 
+export function createEmptyGroupMember(): GroupMemberDraft {
+  return {
+    firstName: "",
+    lastName: "",
+    middleInitial: "",
+    email: "",
+    phone: "",
+  };
+}
+
 function getStorageKey(eventId: string | null | undefined): string {
   return `${STORAGE_PREFIX}:${eventId ?? "general"}`;
+}
+
+function normalizeMember(raw: Partial<GroupMemberDraft> | undefined): GroupMemberDraft {
+  return {
+    firstName: raw?.firstName?.trim() ?? "",
+    lastName: raw?.lastName?.trim() ?? "",
+    middleInitial: raw?.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
+    email: raw?.email?.trim() ?? "",
+    phone: raw?.phone?.trim() ?? "",
+  };
 }
 
 function normalizeDraft(raw: Partial<RegistrationDraft>): RegistrationDraft {
@@ -43,7 +76,14 @@ function normalizeDraft(raw: Partial<RegistrationDraft>): RegistrationDraft {
       ? (raw.feeTier as FeeTier)
       : "";
 
+  const mode: RegistrationMode = raw.mode === "group" ? "group" : "individual";
+  const maxMembers = MAX_GROUP_SIZE - 1;
+  const members = Array.isArray(raw.members)
+    ? raw.members.slice(0, maxMembers).map(normalizeMember)
+    : [];
+
   return {
+    mode,
     firstName: raw.firstName?.trim() ?? "",
     lastName: raw.lastName?.trim() ?? "",
     middleInitial: raw.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
@@ -59,13 +99,25 @@ function normalizeDraft(raw: Partial<RegistrationDraft>): RegistrationDraft {
     dietaryRequirements: raw.dietaryRequirements?.trim() ?? "",
     specialNeeds: raw.specialNeeds?.trim() ?? "",
     agreeToTerms: Boolean(raw.agreeToTerms),
+    members: mode === "group" ? members : [],
     savedAt: raw.savedAt ?? new Date().toISOString(),
   };
 }
 
+function memberHasContent(member: GroupMemberDraft): boolean {
+  return Boolean(
+    member.firstName.trim() ||
+      member.lastName.trim() ||
+      member.middleInitial.trim() ||
+      member.email.trim() ||
+      member.phone.trim()
+  );
+}
+
 export function hasRegistrationDraftContent(draft: RegistrationDraftInput): boolean {
   return Boolean(
-    draft.firstName.trim() ||
+    draft.mode === "group" ||
+      draft.firstName.trim() ||
       draft.lastName.trim() ||
       (draft.middleInitial?.trim() ?? "") ||
       draft.email.trim() ||
@@ -79,7 +131,8 @@ export function hasRegistrationDraftContent(draft: RegistrationDraftInput): bool
       draft.province.trim() ||
       draft.dietaryRequirements.trim() ||
       draft.specialNeeds.trim() ||
-      draft.agreeToTerms
+      draft.agreeToTerms ||
+      draft.members.some(memberHasContent)
   );
 }
 

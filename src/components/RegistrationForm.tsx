@@ -18,10 +18,17 @@ import {
 } from "@/lib/form-validation";
 import {
   clearRegistrationDraft,
+  createEmptyGroupMember,
   loadRegistrationDraft,
   saveRegistrationDraft,
+  type GroupMemberDraft,
+  type RegistrationMode,
 } from "@/lib/registration-draft";
-import { useSubmitRegistration, type RegistrationInput } from "@/hooks/use-registrations";
+import {
+  useSubmitGroupRegistration,
+  useSubmitRegistration,
+  type RegistrationInput,
+} from "@/hooks/use-registrations";
 import { submitReceipt } from "@/lib/api/registrations";
 import {
   RegistrationSuccessModal,
@@ -35,6 +42,7 @@ import { PnaSelect } from "@/components/ui/PnaSelect";
 import { PhLocationSuggest } from "@/components/PhLocationSuggest";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 import type { PhPlaceSuggestion } from "@/lib/ph-locations";
+import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import {
   REGISTRATION_STEPS,
   type RegistrationFormPhase,
@@ -209,10 +217,17 @@ export function RegistrationForm({
   eventId?: string | null;
 } = {}) {
   const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("individual");
+  const [members, setMembers] = useState<GroupMemberDraft[]>([]);
+  const [memberErrors, setMemberErrors] = useState<
+    Record<number, Partial<Record<keyof GroupMemberDraft, string>>>
+  >({});
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showDraftRestored, setShowDraftRestored] = useState(false);
   const [formPhase, setFormPhase] = useState<RegistrationFormPhase>("details");
-  const [errors, setErrors] = useState<Partial<Record<FormFieldKey | "receipt", string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<FormFieldKey | "receipt" | "members", string>>>(
+    {}
+  );
   const [touched, setTouched] = useState<Partial<Record<FormFieldKey, boolean>>>({});
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
@@ -223,6 +238,19 @@ export function RegistrationForm({
   const { loading, requestConfirm } = confirmHook;
 
   const registrationMutation = useSubmitRegistration();
+  const groupRegistrationMutation = useSubmitGroupRegistration();
+  const isSubmitting = registrationMutation.isPending || groupRegistrationMutation.isPending;
+
+  const headcount = registrationMode === "group" ? 1 + members.length : 1;
+  const unitFee =
+    formData.category && formData.feeTier
+      ? resolvePaymentAmount(
+          formData.category as RegistrationCategory,
+          formData.feeTier,
+          null
+        )
+      : 0;
+  const totalFee = unitFee * headcount;
 
   useEffect(() => {
     const draft = loadRegistrationDraft(eventId);
@@ -244,18 +272,33 @@ export function RegistrationForm({
         specialNeeds: draft.specialNeeds,
         agreeToTerms: draft.agreeToTerms,
       });
+      setRegistrationMode(draft.mode);
+      setMembers(
+        draft.mode === "group"
+          ? draft.members.length > 0
+            ? draft.members.map((m) => ({
+                ...m,
+                phone: toPhMobileLocalDigits(m.phone),
+              }))
+            : [createEmptyGroupMember()]
+          : []
+      );
       setShowDraftRestored(true);
     } else {
       setFormData(initialFormData);
+      setRegistrationMode("individual");
+      setMembers([]);
       setShowDraftRestored(false);
     }
 
     setReceiptFile(null);
     setErrors({});
+    setMemberErrors({});
     setTouched({});
     setSubmitError("");
     setFormPhase("details");
     registrationMutation.reset();
+    groupRegistrationMutation.reset();
     setDraftLoaded(true);
   }, [eventId]);
 
@@ -263,11 +306,15 @@ export function RegistrationForm({
     if (!draftLoaded) return;
 
     const timeout = window.setTimeout(() => {
-      saveRegistrationDraft(eventId, formData);
+      saveRegistrationDraft(eventId, {
+        ...formData,
+        mode: registrationMode,
+        members: registrationMode === "group" ? members : [],
+      });
     }, 400);
 
     return () => window.clearTimeout(timeout);
-  }, [draftLoaded, eventId, formData]);
+  }, [draftLoaded, eventId, formData, registrationMode, members]);
 
   useEffect(() => {
     if (!draftLoaded) return;
@@ -297,8 +344,80 @@ export function RegistrationForm({
     );
   }, [formData, touched, receiptFile, errors.receipt, formPhase, onStepStatesChange]);
 
+  function getMemberFieldError(
+    member: GroupMemberDraft,
+    field: keyof GroupMemberDraft
+  ): string | undefined {
+    switch (field) {
+      case "lastName":
+        return getNameLengthError(member.lastName, "lastName", "Surname") ?? undefined;
+      case "firstName":
+        return getNameLengthError(member.firstName, "firstName", "First name") ?? undefined;
+      case "email":
+        return getEmailValidationError(member.email) ?? undefined;
+      case "phone":
+        return getRegistrationPhoneValidationError(member.phone) ?? undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  function validateMembers(): boolean {
+    if (registrationMode !== "group") {
+      setMemberErrors({});
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.members;
+        return next;
+      });
+      return true;
+    }
+
+    if (members.length < 1) {
+      setErrors((prev) => ({
+        ...prev,
+        members: "Add at least one additional participant for group registration.",
+      }));
+      return false;
+    }
+
+    const nextMemberErrors: Record<number, Partial<Record<keyof GroupMemberDraft, string>>> = {};
+    const emails = [formData.email.trim().toLowerCase()];
+    let ok = true;
+
+    members.forEach((member, index) => {
+      const fieldErrors: Partial<Record<keyof GroupMemberDraft, string>> = {};
+      for (const field of ["lastName", "firstName", "email", "phone"] as const) {
+        const error = getMemberFieldError(member, field);
+        if (error) {
+          fieldErrors[field] = error;
+          ok = false;
+        }
+      }
+      const email = member.email.trim().toLowerCase();
+      if (email && emails.includes(email)) {
+        fieldErrors.email = "Each participant needs a unique email address.";
+        ok = false;
+      } else if (email) {
+        emails.push(email);
+      }
+      if (Object.keys(fieldErrors).length > 0) {
+        nextMemberErrors[index] = fieldErrors;
+      }
+    });
+
+    setMemberErrors(nextMemberErrors);
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (ok) delete next.members;
+      else if (!next.members) next.members = "Please fix the additional participant details.";
+      return next;
+    });
+    return ok;
+  }
+
   function validateDetails(): boolean {
-    const newErrors: Partial<Record<FormFieldKey | "receipt", string>> = {};
+    const newErrors: Partial<Record<FormFieldKey | "receipt" | "members", string>> = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
     for (const field of DETAILS_VALIDATE_FIELDS) {
@@ -308,6 +427,7 @@ export function RegistrationForm({
     }
 
     setTouched(allTouched);
+    const membersOk = validateMembers();
     setErrors((prev) => {
       const next = { ...prev };
       for (const field of DETAILS_VALIDATE_FIELDS) {
@@ -316,11 +436,11 @@ export function RegistrationForm({
       }
       return next;
     });
-    return Object.keys(newErrors).length === 0;
+    return Object.keys(newErrors).length === 0 && membersOk;
   }
 
   function validate(): boolean {
-    const newErrors: Partial<Record<FormFieldKey | "receipt", string>> = {};
+    const newErrors: Partial<Record<FormFieldKey | "receipt" | "members", string>> = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
     for (const field of LIVE_VALIDATE_FIELDS) {
@@ -330,8 +450,9 @@ export function RegistrationForm({
     }
 
     setTouched(allTouched);
+    const membersOk = validateMembers();
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return Object.keys(newErrors).length === 0 && membersOk;
   }
 
   function handleContinueToPayment() {
@@ -363,11 +484,13 @@ export function RegistrationForm({
 
     setSubmitError("");
 
+    const isGroup = registrationMode === "group";
     requestConfirm({
-      title: "Submit registration?",
-      message:
-        "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
-      confirmLabel: "Submit registration",
+      title: isGroup ? "Submit group registration?" : "Submit registration?",
+      message: isGroup
+        ? `Submit registration for ${headcount} participants? One payment of ${formatPeso(totalFee)} covers the group. Each person will receive their own confirmation email.`
+        : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
+      confirmLabel: isGroup ? "Submit group registration" : "Submit registration",
       loadingMessage: receiptFile
         ? "Submitting registration and uploading receipt..."
         : "Submitting registration...",
@@ -380,38 +503,99 @@ export function RegistrationForm({
             return;
           }
 
-          const registration = await registrationMutation.mutateAsync({
-            ...formData,
-            phone,
-            eventId,
-          });
+          let details: RegistrationSuccessDetails;
 
-          let uploaded = false;
-          if (receiptFile) {
-            await submitReceipt(registration.referenceNumber, receiptFile);
-            uploaded = true;
+          if (isGroup) {
+            const normalizedMembers = members.map((member) => {
+              const memberPhone = toPhMobileInternational(member.phone);
+              if (!memberPhone) {
+                throw new Error(
+                  "Each participant needs a valid mobile number starting with 9."
+                );
+              }
+              return {
+                firstName: member.firstName,
+                lastName: member.lastName,
+                middleInitial: member.middleInitial,
+                email: member.email,
+                phone: memberPhone,
+              };
+            });
+
+            const result = await groupRegistrationMutation.mutateAsync({
+              primary: {
+                ...formData,
+                phone,
+                eventId,
+              },
+              members: normalizedMembers,
+              eventId,
+            });
+
+            let uploaded = false;
+            if (receiptFile) {
+              await submitReceipt(result.registration.referenceNumber, receiptFile);
+              uploaded = true;
+            }
+
+            details = {
+              referenceNumber: result.registration.referenceNumber,
+              firstName: result.registration.firstName,
+              lastName: result.registration.lastName,
+              middleInitial: result.registration.middleInitial,
+              email: result.registration.email,
+              phone,
+              organization: formData.organization,
+              position: formData.position,
+              category: conference.registration.fees[result.registration.category].label,
+              receiptUploaded: uploaded,
+              groupSize: result.group.groupSize ?? headcount,
+              totalPaymentAmount: result.group.totalPaymentAmount,
+              groupMembers: result.group.participants.map((p) => ({
+                firstName: p.firstName,
+                lastName: p.lastName,
+                middleInitial: p.middleInitial,
+                email: p.email,
+                referenceNumber: p.referenceNumber,
+              })),
+            };
+          } else {
+            const registration = await registrationMutation.mutateAsync({
+              ...formData,
+              phone,
+              eventId,
+            });
+
+            let uploaded = false;
+            if (receiptFile) {
+              await submitReceipt(registration.referenceNumber, receiptFile);
+              uploaded = true;
+            }
+
+            details = {
+              referenceNumber: registration.referenceNumber,
+              firstName: registration.firstName,
+              lastName: registration.lastName,
+              middleInitial: registration.middleInitial,
+              email: registration.email,
+              phone,
+              organization: formData.organization,
+              position: formData.position,
+              category: conference.registration.fees[registration.category].label,
+              receiptUploaded: uploaded,
+            };
           }
-
-          const details: RegistrationSuccessDetails = {
-            referenceNumber: registration.referenceNumber,
-            firstName: registration.firstName,
-            lastName: registration.lastName,
-            middleInitial: registration.middleInitial,
-            email: registration.email,
-            phone,
-            organization: formData.organization,
-            position: formData.position,
-            category: conference.registration.fees[registration.category].label,
-            receiptUploaded: uploaded,
-          };
 
           setSuccessDetails(details);
           setShowSuccessModal(true);
           clearRegistrationDraft(eventId);
           setFormData(initialFormData);
+          setRegistrationMode("individual");
+          setMembers([]);
           setShowDraftRestored(false);
           setReceiptFile(null);
           setErrors({});
+          setMemberErrors({});
           setFormPhase("details");
         } catch (error) {
           setSubmitError(error instanceof Error ? error.message : "Registration failed.");
@@ -429,9 +613,63 @@ export function RegistrationForm({
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
-    if (registrationMutation.isError) {
-      registrationMutation.reset();
+    if (registrationMutation.isError) registrationMutation.reset();
+    if (groupRegistrationMutation.isError) groupRegistrationMutation.reset();
+  }
+
+  function setMode(mode: RegistrationMode) {
+    setRegistrationMode(mode);
+    if (mode === "group" && members.length === 0) {
+      setMembers([createEmptyGroupMember()]);
     }
+    if (mode === "individual") {
+      setMembers([]);
+      setMemberErrors({});
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.members;
+        return next;
+      });
+    }
+  }
+
+  function updateMember(index: number, field: keyof GroupMemberDraft, value: string) {
+    setMembers((prev) =>
+      prev.map((member, i) => {
+        if (i !== index) return member;
+        if (field === "middleInitial") {
+          return { ...member, middleInitial: value.toUpperCase().slice(0, 1) };
+        }
+        if (field === "phone") {
+          return { ...member, phone: toPhMobileLocalDigits(value) };
+        }
+        if (field === "firstName") {
+          return { ...member, firstName: value.slice(0, NAME_LIMITS.firstName) };
+        }
+        if (field === "lastName") {
+          return { ...member, lastName: value.slice(0, NAME_LIMITS.lastName) };
+        }
+        return { ...member, [field]: value };
+      })
+    );
+  }
+
+  function addMember() {
+    if (1 + members.length >= MAX_GROUP_SIZE) return;
+    setMembers((prev) => [...prev, createEmptyGroupMember()]);
+  }
+
+  function removeMember(index: number) {
+    setMembers((prev) => prev.filter((_, i) => i !== index));
+    setMemberErrors((prev) => {
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        const i = Number(key);
+        if (i < index) next[i] = value;
+        if (i > index) next[i - 1] = value;
+      });
+      return next;
+    });
   }
 
   function markFieldTouched(field: FormFieldKey) {
@@ -473,18 +711,51 @@ export function RegistrationForm({
           className={`registration-form ${className}`.trim()}
           noValidate
         >
-        {(registrationMutation.isError || submitError) && (
+        {(registrationMutation.isError ||
+          groupRegistrationMutation.isError ||
+          submitError) && (
           <div className="registration-form-alert rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
-            {submitError || registrationMutation.error?.message}
+            {submitError ||
+              registrationMutation.error?.message ||
+              groupRegistrationMutation.error?.message}
           </div>
         )}
 
       {!isPaymentPhase ? (
         <>
       <fieldset className="registration-form-section">
+        <legend className="registration-form-legend">Registration type</legend>
+        <p className="registration-form-help mb-3">
+          Register yourself only, or register a group with one combined payment. Each group
+          member still needs their own name, email, and phone so they receive a check-in QR by
+          email.
+        </p>
+        <div className="registration-mode-toggle" role="group" aria-label="Registration type">
+          <button
+            type="button"
+            className={`registration-mode-option${
+              registrationMode === "individual" ? " is-selected" : ""
+            }`}
+            onClick={() => setMode("individual")}
+          >
+            Individual
+          </button>
+          <button
+            type="button"
+            className={`registration-mode-option${
+              registrationMode === "group" ? " is-selected" : ""
+            }`}
+            onClick={() => setMode("group")}
+          >
+            Group
+          </button>
+        </div>
+      </fieldset>
+
+      <fieldset className="registration-form-section">
         <legend className="registration-form-legend">
           <UserSectionIcon />
-          Personal Information
+          {registrationMode === "group" ? "Primary registrant" : "Personal Information"}
         </legend>
         <div className="row g-3">
           <FormField
@@ -558,11 +829,139 @@ export function RegistrationForm({
         </div>
       </fieldset>
 
+      {registrationMode === "group" ? (
+        <fieldset className="registration-form-section">
+          <legend className="registration-form-legend">
+            <UsersSectionIcon />
+            Additional participants
+          </legend>
+          <p className="registration-form-help mb-3">
+            Enter each participant&apos;s name, email, and phone. Organization, category, and
+            address from the primary registrant apply to everyone. Maximum {MAX_GROUP_SIZE}{" "}
+            people including you.
+          </p>
+          {errors.members ? (
+            <p className="mb-3 text-xs text-red-500">{errors.members}</p>
+          ) : null}
+          <div className="registration-group-members">
+            {members.map((member, index) => (
+              <div key={index} className="registration-group-member">
+                <div className="registration-group-member-header">
+                  <p className="registration-group-member-title mb-0">
+                    Participant {index + 2}
+                  </p>
+                  {members.length > 1 ? (
+                    <button
+                      type="button"
+                      className="registration-group-member-remove"
+                      onClick={() => removeMember(index)}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <div className="row g-3">
+                  <FormField
+                    label="Surname"
+                    id={`member-${index}-lastName`}
+                    required
+                    value={member.lastName}
+                    onChange={(v) => updateMember(index, "lastName", v)}
+                    error={memberErrors[index]?.lastName}
+                    maxLength={NAME_LIMITS.lastName}
+                    placeholder="Dela Cruz"
+                  />
+                  <FormField
+                    label="First Name"
+                    id={`member-${index}-firstName`}
+                    required
+                    value={member.firstName}
+                    onChange={(v) => updateMember(index, "firstName", v)}
+                    error={memberErrors[index]?.firstName}
+                    maxLength={NAME_LIMITS.firstName}
+                    placeholder="Juan"
+                  />
+                  <FormField
+                    label="Middle Initial (M.I.)"
+                    id={`member-${index}-middleInitial`}
+                    value={member.middleInitial}
+                    onChange={(v) => updateMember(index, "middleInitial", v)}
+                    placeholder="A"
+                    maxLength={1}
+                  />
+                  <FormField
+                    label="Email Address"
+                    id={`member-${index}-email`}
+                    type="email"
+                    required
+                    value={member.email}
+                    onChange={(v) => updateMember(index, "email", v)}
+                    error={memberErrors[index]?.email}
+                    placeholder="juandelacruz@gmail.com"
+                  />
+                  <div className="col-12 col-md-6">
+                    <label
+                      htmlFor={`member-${index}-phone`}
+                      className="form-label registration-form-label"
+                    >
+                      Phone Number <span className="text-accent">*</span>
+                    </label>
+                    <div
+                      className={`registration-phone-field${
+                        memberErrors[index]?.phone ? " is-error" : ""
+                      }`}
+                    >
+                      <span className="registration-phone-prefix" aria-hidden="true">
+                        +63
+                      </span>
+                      <input
+                        type="tel"
+                        id={`member-${index}-phone`}
+                        inputMode="numeric"
+                        autoComplete="tel-national"
+                        value={toPhMobileLocalDigits(member.phone)}
+                        onChange={(e) => updateMember(index, "phone", e.target.value)}
+                        placeholder="9606207919"
+                        maxLength={10}
+                        className={`input-dark registration-phone-input${
+                          memberErrors[index]?.phone ? " input-dark-error" : ""
+                        }`}
+                      />
+                    </div>
+                    {memberErrors[index]?.phone ? (
+                      <p className="mt-1 text-xs text-red-400">{memberErrors[index]?.phone}</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {1 + members.length < MAX_GROUP_SIZE ? (
+            <button
+              type="button"
+              className="registration-group-add-btn mt-3"
+              onClick={addMember}
+            >
+              + Add participant
+            </button>
+          ) : (
+            <p className="mt-3 mb-0 text-xs text-muted">
+              Maximum of {MAX_GROUP_SIZE} participants reached.
+            </p>
+          )}
+        </fieldset>
+      ) : null}
+
       <fieldset className="registration-form-section">
         <legend className="registration-form-legend">
           <BriefcaseSectionIcon />
           Professional Details
         </legend>
+        {registrationMode === "group" ? (
+          <p className="registration-form-help mb-3">
+            Category and fee apply to every participant in the group.
+          </p>
+        ) : null}
         <div className="row g-3">
           <FormField
             label="Organization / Agency"
@@ -742,7 +1141,27 @@ export function RegistrationForm({
         <p className="registration-form-help mb-3">
           Pay using the QR code or bank transfer below, then upload your receipt or screenshot.
           You may also submit proof later using your reference number.
+          {registrationMode === "group"
+            ? " One payment and one receipt cover the whole group."
+            : ""}
         </p>
+
+        {registrationMode === "group" && formData.category && formData.feeTier ? (
+          <div className="registration-group-total mb-4">
+            <div className="registration-group-total-row">
+              <span>Fee per person</span>
+              <strong>{formatPeso(unitFee)}</strong>
+            </div>
+            <div className="registration-group-total-row">
+              <span>Participants</span>
+              <strong>{headcount}</strong>
+            </div>
+            <div className="registration-group-total-row is-total">
+              <span>Total due</span>
+              <strong>{formatPeso(totalFee)}</strong>
+            </div>
+          </div>
+        ) : null}
 
         <div className="registration-form-payment-panel mb-4">
           <RegistrationPaymentQr variant="form" eventId={eventId} />
@@ -807,7 +1226,11 @@ export function RegistrationForm({
           type="button"
           className="registration-form-footer-btn registration-form-footer-btn--outline"
           onClick={() => {
-            saveRegistrationDraft(eventId, formData);
+            saveRegistrationDraft(eventId, {
+              ...formData,
+              mode: registrationMode,
+              members: registrationMode === "group" ? members : [],
+            });
             setDraftSavedNotice(true);
             window.setTimeout(() => setDraftSavedNotice(false), 2500);
           }}
@@ -818,10 +1241,14 @@ export function RegistrationForm({
         {isPaymentPhase ? (
           <button
             type="submit"
-            disabled={loading || registrationMutation.isPending}
+            disabled={loading || isSubmitting}
             className="registration-form-footer-btn registration-form-footer-btn--primary"
           >
-            {loading || registrationMutation.isPending ? "Processing..." : "Submit registration"}
+            {loading || isSubmitting
+              ? "Processing..."
+              : registrationMode === "group"
+                ? "Submit group registration"
+                : "Submit registration"}
             <span aria-hidden="true">→</span>
           </button>
         ) : (
@@ -851,6 +1278,17 @@ function UserSectionIcon() {
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.75" />
       <path d="M6 19c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UsersSectionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M3.5 19c0-2.8 2.2-4.5 5.5-4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <circle cx="16" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M14 19c0-2.2 1.6-3.6 4-3.8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </svg>
   );
 }

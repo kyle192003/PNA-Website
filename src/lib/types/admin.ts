@@ -142,6 +142,8 @@ export interface CertificateTemplate {
 
 export type FeeTier = "early" | "regular";
 
+export type RegistrationGroupRole = "primary" | "member";
+
 export interface RegistrationRecord {
   id: string;
   referenceNumber: string;
@@ -169,6 +171,12 @@ export interface RegistrationRecord {
   receiptUploadedAt: string | null;
   paymentNotes: string;
   adminNotes: string;
+  /** Shared id for group registrations; null for individual. */
+  groupId: string | null;
+  /** Primary is the payer/receipt owner; member shares org/category/address. */
+  groupRole: RegistrationGroupRole | null;
+  /** Headcount for the group batch; null for individual. */
+  groupSize: number | null;
   /** Unguessable check-in token; assigned once at registration and never regenerated. */
   checkInToken: string;
   checkInStatus: CheckInStatus;
@@ -186,6 +194,14 @@ export interface RegistrationRecord {
   promotionSentEventIds: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupMemberInput {
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  email: string;
+  phone: string;
 }
 
 export interface RegistrationInput {
@@ -206,6 +222,11 @@ export interface RegistrationInput {
   specialNeeds?: string;
   agreeToTerms: boolean;
   eventId?: string | null;
+}
+
+export interface GroupRegistrationInput {
+  primary: RegistrationInput;
+  members: GroupMemberInput[];
 }
 
 export type InquiryStatus = "new" | "read";

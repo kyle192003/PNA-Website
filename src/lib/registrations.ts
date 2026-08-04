@@ -9,16 +9,21 @@ import {
   resolvePaymentAmount,
   type FeeTier,
 } from "@/lib/registration-fees";
+import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import type {
   AdminStats,
   CheckInStatus,
+  GroupRegistrationInput,
   PaymentStatus,
+  RegistrationGroupRole,
   RegistrationInput,
   RegistrationRecord,
 } from "@/lib/types/admin";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "registrations.json");
+
+export { MAX_GROUP_SIZE };
 
 async function ensureDataFile(): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
@@ -61,6 +66,11 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
     receiptUploadedAt: raw.receiptUploadedAt ?? null,
     paymentNotes: raw.paymentNotes ?? "",
     adminNotes: raw.adminNotes ?? "",
+    groupId: raw.groupId ?? null,
+    groupRole:
+      raw.groupRole === "primary" || raw.groupRole === "member" ? raw.groupRole : null,
+    groupSize:
+      typeof raw.groupSize === "number" && Number.isFinite(raw.groupSize) ? raw.groupSize : null,
     checkInToken: raw.checkInToken || createCheckInToken(),
     checkInStatus: raw.checkInStatus === "checked_in" ? "checked_in" : "pending",
     checkedInAt: raw.checkedInAt ?? null,
@@ -123,44 +133,39 @@ async function writeRegistrations(registrations: RegistrationRecord[]): Promise<
   await fs.writeFile(DATA_FILE, JSON.stringify(registrations, null, 2), "utf-8");
 }
 
-function generateReferenceNumber(): string {
+function generateReferenceNumber(existing: RegistrationRecord[]): string {
   const year = new Date().getFullYear();
-  const random = Math.floor(10000 + Math.random() * 90000);
-  return `PNA-${year}-${random}`;
+  let reference = "";
+  do {
+    const random = Math.floor(10000 + Math.random() * 90000);
+    reference = `PNA-${year}-${random}`;
+  } while (existing.some((r) => r.referenceNumber === reference));
+  return reference;
 }
 
-export async function createRegistration(
-  input: RegistrationInput
-): Promise<RegistrationRecord> {
-  const registrations = await readRegistrations();
-
-  const duplicate = registrations.find(
-    (r) => r.email.toLowerCase() === input.email.toLowerCase()
-  );
-  if (duplicate) {
-    throw new Error("A registration with this email address already exists.");
-  }
-
-  // Ensure unique check-in token
+function allocateCheckInToken(existing: RegistrationRecord[]): string {
   let checkInToken = createCheckInToken();
-  while (registrations.some((r) => r.checkInToken === checkInToken)) {
+  while (existing.some((r) => r.checkInToken === checkInToken)) {
     checkInToken = createCheckInToken();
   }
+  return checkInToken;
+}
 
-  const event = input.eventId ? await getEventById(input.eventId) : null;
-  const feeTier =
-    input.feeTier === "regular" || input.feeTier === "early"
-      ? input.feeTier
-      : resolveFeeTier(event);
-  const paymentAmount =
-    typeof input.paymentAmount === "number" && Number.isFinite(input.paymentAmount)
-      ? input.paymentAmount
-      : resolvePaymentAmount(input.category, feeTier, event);
-
+function buildRegistrationRecord(
+  input: RegistrationInput,
+  options: {
+    feeTier: FeeTier;
+    paymentAmount: number;
+    groupId: string | null;
+    groupRole: RegistrationGroupRole | null;
+    groupSize: number | null;
+    existing: RegistrationRecord[];
+  }
+): RegistrationRecord {
   const now = new Date().toISOString();
-  const registration: RegistrationRecord = {
+  return {
     id: uuidv4(),
-    referenceNumber: generateReferenceNumber(),
+    referenceNumber: generateReferenceNumber(options.existing),
     eventId: input.eventId ?? null,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
@@ -170,8 +175,8 @@ export async function createRegistration(
     organization: input.organization.trim(),
     position: input.position.trim(),
     category: input.category,
-    feeTier,
-    paymentAmount,
+    feeTier: options.feeTier,
+    paymentAmount: options.paymentAmount,
     address: input.address.trim(),
     city: input.city.trim(),
     province: input.province.trim(),
@@ -183,7 +188,10 @@ export async function createRegistration(
     receiptUploadedAt: null,
     paymentNotes: "",
     adminNotes: "",
-    checkInToken,
+    groupId: options.groupId,
+    groupRole: options.groupRole,
+    groupSize: options.groupSize,
+    checkInToken: allocateCheckInToken(options.existing),
     checkInStatus: "pending",
     checkedInAt: null,
     checkedInBy: null,
@@ -200,10 +208,140 @@ export async function createRegistration(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function assertEmailsAvailable(
+  emails: string[],
+  existing: RegistrationRecord[]
+): void {
+  const seen = new Set<string>();
+  for (const email of emails) {
+    const normalized = email.trim().toLowerCase();
+    if (seen.has(normalized)) {
+      throw new Error(`Duplicate email in group: ${normalized}`);
+    }
+    seen.add(normalized);
+    if (existing.some((r) => r.email.toLowerCase() === normalized)) {
+      throw new Error("A registration with this email address already exists.");
+    }
+  }
+}
+
+export async function createRegistration(
+  input: RegistrationInput
+): Promise<RegistrationRecord> {
+  const registrations = await readRegistrations();
+  assertEmailsAvailable([input.email], registrations);
+
+  const event = input.eventId ? await getEventById(input.eventId) : null;
+  const feeTier =
+    input.feeTier === "regular" || input.feeTier === "early"
+      ? input.feeTier
+      : resolveFeeTier(event);
+  const paymentAmount =
+    typeof input.paymentAmount === "number" && Number.isFinite(input.paymentAmount)
+      ? input.paymentAmount
+      : resolvePaymentAmount(input.category, feeTier, event);
+
+  const registration = buildRegistrationRecord(input, {
+    feeTier,
+    paymentAmount,
+    groupId: null,
+    groupRole: null,
+    groupSize: null,
+    existing: registrations,
+  });
 
   registrations.push(registration);
   await writeRegistrations(registrations);
   return registration;
+}
+
+export async function createGroupRegistrations(
+  input: GroupRegistrationInput
+): Promise<RegistrationRecord[]> {
+  const members = input.members ?? [];
+  const groupSize = 1 + members.length;
+
+  if (members.length < 1) {
+    throw new Error("Group registration requires at least one additional participant.");
+  }
+  if (groupSize > MAX_GROUP_SIZE) {
+    throw new Error(`Group registration allows up to ${MAX_GROUP_SIZE} participants.`);
+  }
+
+  const registrations = await readRegistrations();
+  const allEmails = [input.primary.email, ...members.map((m) => m.email)];
+  assertEmailsAvailable(allEmails, registrations);
+
+  const event = input.primary.eventId ? await getEventById(input.primary.eventId) : null;
+  const feeTier =
+    input.primary.feeTier === "regular" || input.primary.feeTier === "early"
+      ? input.primary.feeTier
+      : resolveFeeTier(event);
+  const paymentAmount =
+    typeof input.primary.paymentAmount === "number" &&
+    Number.isFinite(input.primary.paymentAmount)
+      ? input.primary.paymentAmount
+      : resolvePaymentAmount(input.primary.category, feeTier, event);
+
+  const groupId = uuidv4();
+  const created: RegistrationRecord[] = [];
+  const working = [...registrations];
+
+  const primary = buildRegistrationRecord(input.primary, {
+    feeTier,
+    paymentAmount,
+    groupId,
+    groupRole: "primary",
+    groupSize,
+    existing: working,
+  });
+  working.push(primary);
+  created.push(primary);
+
+  for (const member of members) {
+    const memberInput: RegistrationInput = {
+      firstName: member.firstName,
+      lastName: member.lastName,
+      middleInitial: member.middleInitial,
+      email: member.email,
+      phone: member.phone,
+      organization: input.primary.organization,
+      position: input.primary.position,
+      category: input.primary.category,
+      feeTier,
+      paymentAmount,
+      address: input.primary.address,
+      city: input.primary.city,
+      province: input.primary.province,
+      dietaryRequirements: "",
+      specialNeeds: "",
+      agreeToTerms: input.primary.agreeToTerms,
+      eventId: input.primary.eventId,
+    };
+    const record = buildRegistrationRecord(memberInput, {
+      feeTier,
+      paymentAmount,
+      groupId,
+      groupRole: "member",
+      groupSize,
+      existing: working,
+    });
+    working.push(record);
+    created.push(record);
+  }
+
+  await writeRegistrations(working);
+  return created;
+}
+
+export async function getRegistrationsByGroupId(
+  groupId: string
+): Promise<RegistrationRecord[]> {
+  if (!groupId.trim()) return [];
+  const registrations = await readRegistrations();
+  return registrations.filter((r) => r.groupId === groupId);
 }
 
 export async function getRegistrationByReference(
@@ -261,6 +399,53 @@ export async function updateRegistrationPayment(
 
   await writeRegistrations(registrations);
   return registrations[index];
+}
+
+/**
+ * Apply payment/receipt updates to a registration and, when grouped,
+ * to every other member sharing the same groupId.
+ * Returns all updated records (primary target first).
+ */
+export async function updateRegistrationPaymentCascading(
+  id: string,
+  updates: {
+    paymentStatus?: PaymentStatus;
+    adminNotes?: string;
+    paymentNotes?: string;
+    receiptUrl?: string | null;
+    receiptUploadedAt?: string | null;
+  }
+): Promise<RegistrationRecord[]> {
+  const registrations = await readRegistrations();
+  const index = registrations.findIndex((r) => r.id === id);
+  if (index === -1) return [];
+
+  const target = registrations[index];
+  const now = new Date().toISOString();
+  const groupId = target.groupId;
+  const idsToUpdate = new Set<string>([id]);
+
+  if (groupId) {
+    for (const row of registrations) {
+      if (row.groupId === groupId) idsToUpdate.add(row.id);
+    }
+  }
+
+  const updated: RegistrationRecord[] = [];
+  for (let i = 0; i < registrations.length; i++) {
+    if (!idsToUpdate.has(registrations[i].id)) continue;
+    registrations[i] = {
+      ...registrations[i],
+      ...updates,
+      updatedAt: now,
+    };
+    updated.push(registrations[i]);
+  }
+
+  await writeRegistrations(registrations);
+  // Keep the originally requested record first for callers.
+  updated.sort((a, b) => (a.id === id ? -1 : b.id === id ? 1 : 0));
+  return updated;
 }
 
 export async function markRegistrationCheckedIn(
@@ -437,12 +622,21 @@ export async function submitReceipt(
     throw new Error("This registration is already marked as paid.");
   }
 
-  return updateRegistrationPayment(registration.id, {
+  if (registration.groupId) {
+    const group = await getRegistrationsByGroupId(registration.groupId);
+    if (group.some((r) => r.paymentStatus === "paid")) {
+      throw new Error("This group registration is already marked as paid.");
+    }
+  }
+
+  const updated = await updateRegistrationPaymentCascading(registration.id, {
     receiptUrl,
     receiptUploadedAt: new Date().toISOString(),
     paymentStatus: "receipt_submitted",
     paymentNotes: "",
   });
+
+  return updated[0] ?? null;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
@@ -469,4 +663,10 @@ export async function countParticipantsUnderReview(): Promise<number> {
     .length;
 }
 
-export type { RegistrationInput, RegistrationRecord, PaymentStatus, CheckInStatus };
+export type {
+  RegistrationInput,
+  RegistrationRecord,
+  PaymentStatus,
+  CheckInStatus,
+  GroupRegistrationInput,
+};

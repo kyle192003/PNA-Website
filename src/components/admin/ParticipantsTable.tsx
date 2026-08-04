@@ -289,19 +289,29 @@ export function ParticipantsTable({
       paymentStatus === "rejected" || paymentStatus === "receipt_issue";
     const resendReceiptEmail =
       paymentStatus === "receipt_issue" && selected.paymentStatus === "receipt_issue";
+    const isGroup = Boolean(selected.groupId);
+    const groupNote = isGroup
+      ? selected.groupSize
+        ? ` This updates all ${selected.groupSize} participants in the group.`
+        : " This updates all participants in the group."
+      : "";
 
     requestConfirm({
       title: copy.title,
       message: notifiesParticipant
-        ? `${copy.message} The participant will receive an email with your message and a reupload link.`
-        : copy.message,
+        ? `${copy.message} The participant will receive an email with your message and a reupload link.${groupNote}`
+        : `${copy.message}${groupNote}`,
       confirmLabel: copy.confirmLabel,
       variant: copy.variant,
-      loadingMessage: "Updating participant...",
+      loadingMessage: isGroup ? "Updating group payment status..." : "Updating participant...",
       successTitle: successCopy.title,
       successMessage: notifiesParticipant
-        ? "Status updated and the participant was emailed (if mail is configured)."
-        : successCopy.message,
+        ? isGroup
+          ? "Group status updated and participants were emailed (if mail is configured)."
+          : "Status updated and the participant was emailed (if mail is configured)."
+        : isGroup
+          ? "Group payment status updated."
+          : successCopy.message,
       action: async () => {
         const res = await fetch(`/api/admin/participants/${selected.id}`, {
           method: "PATCH",
@@ -484,7 +494,14 @@ export function ParticipantsTable({
                     onClick={() => openParticipant(participant)}
                   >
                     <td>{participant.referenceNumber}</td>
-                    <td>{formatParticipantName(participant)}</td>
+                    <td>
+                      {formatParticipantName(participant)}
+                      {participant.groupId ? (
+                        <span className="admin-group-badge" title="Group registration">
+                          Group{participant.groupSize ? ` · ${participant.groupSize}` : ""}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       {conference.registration.fees[participant.category]?.label ??
                         participant.category}
@@ -511,7 +528,15 @@ export function ParticipantsTable({
                 <h3 className="admin-card-title font-display mb-1">
                   {formatParticipantName(selected)}
                 </h3>
-                <p className="admin-muted mb-0">{selected.referenceNumber}</p>
+                <p className="admin-muted mb-0">
+                  {selected.referenceNumber}
+                  {selected.groupId ? (
+                    <span className="admin-group-badge">
+                      Group{selected.groupSize ? ` · ${selected.groupSize}` : ""}
+                      {selected.groupRole === "primary" ? " · primary" : ""}
+                    </span>
+                  ) : null}
+                </p>
               </div>
               <button
                 type="button"
