@@ -102,11 +102,14 @@ export function AdminDashboardOverview({ data }: { data: AdminDashboardData }) {
           </p>
         </div>
         <div className="admin-dashboard-header-actions">
+          <Link href="/admin/settings" className="admin-dashboard-export">
+            Reset data
+          </Link>
           <Link href="/admin/participants" className="admin-dashboard-export">
             View participants
           </Link>
-          <Link href="/admin/events/new" className="btn-primary">
-            + New event
+          <Link href="/admin/events/new" className="admin-btn-primary">
+            + New Event
           </Link>
         </div>
       </div>

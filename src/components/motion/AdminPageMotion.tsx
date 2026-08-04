@@ -32,12 +32,34 @@ export function AdminPageMotion({ children }: { children: ReactNode }) {
       });
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from(root.querySelectorAll(".admin-dashboard-header > *, .admin-page-header > *"), {
+        gsap.from(
+          root.querySelectorAll(
+            ".admin-dashboard-header > *:not(.admin-dashboard-header-actions), .admin-page-header > *:not(a.admin-btn-primary)"
+          ),
+          {
+            opacity: 0,
+            y: ADMIN_Y,
+            duration: ADMIN_DURATION,
+            ease: MOTION.ease_enter,
+            stagger: 0.08,
+            clearProps: "opacity,transform",
+          }
+        );
+
+        gsap.from(root.querySelectorAll(".admin-dashboard-header-actions > *"), {
           opacity: 0,
           y: ADMIN_Y,
           duration: ADMIN_DURATION,
           ease: MOTION.ease_enter,
-          stagger: 0.08,
+          stagger: 0.06,
+          delay: 0.08,
+          clearProps: "opacity,transform",
+        });
+
+        // Keep primary CTAs fully opaque — never leave them mid-fade.
+        gsap.set(root.querySelectorAll("a.admin-btn-primary, .admin-btn-primary"), {
+          clearProps: "opacity,transform,filter",
+          opacity: 1,
         });
 
         gsap.utils.toArray<HTMLElement>(ADMIN_REVEAL_TARGETS, root).forEach((el) => {
@@ -47,6 +69,7 @@ export function AdminPageMotion({ children }: { children: ReactNode }) {
             duration: ADMIN_DURATION,
             ease: MOTION.ease_reveal,
             immediateRender: false,
+            clearProps: "opacity,transform",
             scrollTrigger: {
               trigger: el,
               start: "top 88%",

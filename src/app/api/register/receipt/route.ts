@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getEventById } from "@/lib/events";
+import { sendAdminReceiptSubmittedNotification } from "@/lib/mail-templates";
 import { verifyReceiptReuploadToken } from "@/lib/receipt-reupload-token";
-import { submitReceipt } from "@/lib/registrations";
+import { getRegistrationByReference, submitReceipt } from "@/lib/registrations";
 import { saveReceipt } from "@/lib/uploads";
 
 export async function POST(request: Request) {
@@ -11,6 +13,7 @@ export async function POST(request: Request) {
     const file = formData.get("file");
 
     let referenceNumber = referenceFromForm?.toUpperCase() ?? "";
+    const isReupload = Boolean(token);
 
     if (token) {
       const verified = verifyReceiptReuploadToken(token);
@@ -28,14 +31,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Receipt file is required." }, { status: 400 });
     }
 
-    const { getRegistrationByReference } = await import("@/lib/registrations");
     const registration = await getRegistrationByReference(referenceNumber);
     if (!registration) {
       return NextResponse.json({ error: "Registration not found." }, { status: 404 });
     }
 
+    const wasIssueOrRejected =
+      registration.paymentStatus === "receipt_issue" ||
+      registration.paymentStatus === "rejected";
+
     const receiptUrl = await saveReceipt(registration.id, file);
     const updated = await submitReceipt(referenceNumber, receiptUrl);
+
+    const event = updated?.eventId ? await getEventById(updated.eventId) : null;
+    const eventTitle = event?.title ?? "PNA Conference Registration";
+    const mailResult = await sendAdminReceiptSubmittedNotification({
+      registration: updated ?? registration,
+      eventTitle,
+      isReupload: isReupload || wasIssueOrRejected,
+    });
+    if (!mailResult.ok) {
+      console.error("[receipt] admin notification failed:", mailResult.error);
+    }
 
     return NextResponse.json({
       message: "Receipt submitted for review.",
