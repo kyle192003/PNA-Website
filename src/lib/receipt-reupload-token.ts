@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { getSigningSecret } from "@/lib/security/secrets";
 
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -8,11 +9,7 @@ type ReceiptReuploadPayload = {
 };
 
 function getTokenSecret(): string {
-  return (
-    process.env.ADMIN_SESSION_SECRET ??
-    process.env.ADMIN_PASSWORD ??
-    "pna-admin-dev"
-  );
+  return getSigningSecret();
 }
 
 function signPayload(payload: string): string {

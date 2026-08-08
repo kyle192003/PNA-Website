@@ -1,12 +1,5 @@
 import { ADMIN_COOKIE } from "@/lib/admin-auth-constants";
-
-function getSessionSecret(): string {
-  return (
-    process.env.ADMIN_SESSION_SECRET ??
-    process.env.ADMIN_PASSWORD ??
-    "pna-admin-dev"
-  );
-}
+import { getSigningSecretOrNull } from "@/lib/security/secrets";
 
 function decodeToken(token: string): { payload: string; signature: string } | null {
   try {
@@ -53,10 +46,13 @@ export async function verifyAdminSessionEdge(
 ): Promise<boolean> {
   if (!token) return false;
 
+  const secret = getSigningSecretOrNull();
+  if (!secret) return false;
+
   const parts = decodeToken(token);
   if (!parts) return false;
 
-  const expected = await signPayload(parts.payload, getSessionSecret());
+  const expected = await signPayload(parts.payload, secret);
   if (!timingSafeEqualHex(parts.signature, expected)) return false;
 
   try {

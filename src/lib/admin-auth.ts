@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { ADMIN_COOKIE } from "@/lib/admin-auth-constants";
 import { verifyAdminPassword as verifyStoredAdminPassword } from "@/lib/admin-credentials";
+import { getSigningSecret } from "@/lib/security/secrets";
 
 export { ADMIN_COOKIE };
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,11 +16,7 @@ type AdminCookieOptions = {
 };
 
 function getSessionSecret(): string {
-  return (
-    process.env.ADMIN_SESSION_SECRET ??
-    process.env.ADMIN_PASSWORD ??
-    "pna-admin-dev"
-  );
+  return getSigningSecret();
 }
 
 export async function verifyAdminPassword(password: string): Promise<boolean> {

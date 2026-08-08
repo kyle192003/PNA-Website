@@ -5,9 +5,23 @@ import {
   getAdminSessionCookieOptions,
   verifyAdminPassword,
 } from "@/lib/admin-auth";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = rateLimit(`admin-login:${ip}`, 5, 15 * 60_000);
+    if (!limited.ok) {
+      return rateLimitResponse(
+        limited.retryAfterSeconds,
+        "Too many login attempts. Please wait and try again."
+      );
+    }
+
     const body = await request.json();
     const password = body.password?.trim();
 
@@ -22,7 +36,14 @@ export async function POST(request: Request) {
       getAdminSessionCookieOptions(request)
     );
     return response;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Missing ADMIN_SESSION_SECRET") || message.includes("Refusing to sign")) {
+      return NextResponse.json(
+        { error: "Admin authentication is misconfigured on the server." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 }

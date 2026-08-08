@@ -38,7 +38,20 @@ function verifyStoredPassword(
 }
 
 function verifyEnvPassword(password: string): boolean {
-  const expected = process.env.ADMIN_PASSWORD ?? "pna-admin-dev";
+  const expected = process.env.ADMIN_PASSWORD?.trim();
+  if (!expected) {
+    // Production must set ADMIN_PASSWORD (or use hashed credentials file).
+    // Local/dev only: allow the documented example password.
+    if (process.env.NODE_ENV === "production") return false;
+    const devFallback = "pna-admin-dev";
+    if (password.length !== devFallback.length) return false;
+    try {
+      return timingSafeEqual(Buffer.from(password), Buffer.from(devFallback));
+    } catch {
+      return false;
+    }
+  }
+
   if (password.length !== expected.length) return false;
 
   try {
