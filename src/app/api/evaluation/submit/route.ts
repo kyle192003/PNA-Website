@@ -68,6 +68,18 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (registration.evaluationSubmittedAt) {
+      return NextResponse.json(
+        { error: "This evaluation has already been submitted." },
+        { status: 409 }
+      );
+    }
+    if (registration.paymentStatus !== "paid") {
+      return NextResponse.json(
+        { error: "Evaluation is available after payment has been confirmed." },
+        { status: 403 }
+      );
+    }
 
     const updated = await submitRegistrationEvaluation(registration.id, rawAnswers);
     if (!updated) {
