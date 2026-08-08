@@ -137,10 +137,22 @@ function generateReferenceNumber(existing: RegistrationRecord[]): string {
   const year = new Date().getFullYear();
   let reference = "";
   do {
-    const random = Math.floor(10000 + Math.random() * 90000);
+    // 8 hex chars → ~4.3B possibilities; not enumerable like the old 5-digit codes.
+    const random = randomBytes(4).toString("hex").toUpperCase();
     reference = `PNA-${year}-${random}`;
   } while (existing.some((r) => r.referenceNumber === reference));
   return reference;
+}
+
+/** Server-authoritative fee tier: clients may choose regular during early bird, never early after deadline. */
+function resolveTrustedFeeTier(
+  requested: FeeTier | "" | undefined,
+  event: Awaited<ReturnType<typeof getEventById>>
+): FeeTier {
+  const serverTier = resolveFeeTier(event);
+  if (requested === "regular") return "regular";
+  if (requested === "early" && serverTier === "early") return "early";
+  return serverTier;
 }
 
 function allocateCheckInToken(existing: RegistrationRecord[]): string {
@@ -234,14 +246,8 @@ export async function createRegistration(
   assertEmailsAvailable([input.email], registrations);
 
   const event = input.eventId ? await getEventById(input.eventId) : null;
-  const feeTier =
-    input.feeTier === "regular" || input.feeTier === "early"
-      ? input.feeTier
-      : resolveFeeTier(event);
-  const paymentAmount =
-    typeof input.paymentAmount === "number" && Number.isFinite(input.paymentAmount)
-      ? input.paymentAmount
-      : resolvePaymentAmount(input.category, feeTier, event);
+  const feeTier = resolveTrustedFeeTier(input.feeTier, event);
+  const paymentAmount = resolvePaymentAmount(input.category, feeTier, event);
 
   const registration = buildRegistrationRecord(input, {
     feeTier,
@@ -275,15 +281,8 @@ export async function createGroupRegistrations(
   assertEmailsAvailable(allEmails, registrations);
 
   const event = input.primary.eventId ? await getEventById(input.primary.eventId) : null;
-  const feeTier =
-    input.primary.feeTier === "regular" || input.primary.feeTier === "early"
-      ? input.primary.feeTier
-      : resolveFeeTier(event);
-  const paymentAmount =
-    typeof input.primary.paymentAmount === "number" &&
-    Number.isFinite(input.primary.paymentAmount)
-      ? input.primary.paymentAmount
-      : resolvePaymentAmount(input.primary.category, feeTier, event);
+  const feeTier = resolveTrustedFeeTier(input.primary.feeTier, event);
+  const paymentAmount = resolvePaymentAmount(input.primary.category, feeTier, event);
 
   const groupId = uuidv4();
   const created: RegistrationRecord[] = [];

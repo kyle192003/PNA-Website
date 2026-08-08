@@ -628,7 +628,7 @@ export async function sendUpcomingEventPromotionEmail(
 ): Promise<{ ok: boolean; error?: string }> {
   const name = participantDisplayName(registration);
   const eventInfo = eventBlock(upcomingEvent);
-  const registerUrl = `${getSiteBaseUrl()}/register?eventId=${encodeURIComponent(upcomingEvent.id)}`;
+  const registerUrl = `${getSiteBaseUrl()}/?register=1&event=${encodeURIComponent(upcomingEvent.id)}`;
   const subject = `Upcoming Event Invitation: ${upcomingEvent.title}`;
 
   const html = wrapEmail({

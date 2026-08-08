@@ -11,6 +11,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { RegisterEventPickerModal } from "@/components/RegisterEventPickerModal";
 import { RegistrationModal } from "@/components/RegistrationModal";
+import { Modal } from "@/components/ui/Modal";
 import type { PublicEvent } from "@/lib/types/admin";
 
 interface RegistrationContextValue {
@@ -44,6 +45,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicEvent[]>([]);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -51,31 +53,73 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const openRegistrationWithEvent = useCallback((eventId: string) => {
     setSelectedEventId(eventId);
     setPickerOpen(false);
+    setBlockedMessage(null);
     setRegistrationOpen(true);
   }, []);
 
-  const openRegistration = useCallback(async (eventId?: string) => {
-    if (await isAdminAuthenticated()) {
-      return;
-    }
+  const showRegistrationUnavailable = useCallback((message: string) => {
+    setRegistrationOpen(false);
+    setPickerOpen(false);
+    setSelectedEventId(null);
+    setBlockedMessage(message);
+  }, []);
 
-    if (eventId) {
-      openRegistrationWithEvent(eventId);
-      return;
-    }
+  const resolveOpenEventId = useCallback(
+    async (eventId: string): Promise<string | null> => {
+      const events = await fetchPublicEvents();
+      setPublicEvents(events);
+      const match = events.find((event) => event.id === eventId);
+      if (!match) {
+        showRegistrationUnavailable(
+          "This event is not available for registration. It may be closed or the link may be outdated."
+        );
+        return null;
+      }
+      if (match.status !== "open") {
+        showRegistrationUnavailable(
+          "Registration for this event is not open yet. Please check back once the secretariat opens registration."
+        );
+        return null;
+      }
+      return match.id;
+    },
+    [showRegistrationUnavailable]
+  );
 
-    const events = await fetchPublicEvents();
-    setPublicEvents(events);
+  const openRegistration = useCallback(
+    async (eventId?: string) => {
+      if (await isAdminAuthenticated()) {
+        return;
+      }
 
-    const openEvents = events.filter((event) => event.status === "open");
+      if (eventId) {
+        const openId = await resolveOpenEventId(eventId);
+        if (openId) openRegistrationWithEvent(openId);
+        return;
+      }
 
-    if (openEvents.length === 1) {
-      openRegistrationWithEvent(openEvents[0].id);
-      return;
-    }
+      const events = await fetchPublicEvents();
+      setPublicEvents(events);
 
-    setPickerOpen(true);
-  }, [openRegistrationWithEvent]);
+      const openEvents = events.filter((event) => event.status === "open");
+
+      if (openEvents.length === 0) {
+        showRegistrationUnavailable(
+          "No events are open for registration at the moment. Please check back soon."
+        );
+        return;
+      }
+
+      if (openEvents.length === 1) {
+        openRegistrationWithEvent(openEvents[0].id);
+        return;
+      }
+
+      setBlockedMessage(null);
+      setPickerOpen(true);
+    },
+    [openRegistrationWithEvent, resolveOpenEventId, showRegistrationUnavailable]
+  );
 
   const closeRegistration = useCallback(() => {
     setRegistrationOpen(false);
@@ -88,14 +132,17 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
   const handleSelectEvent = useCallback(
     (eventId: string) => {
-      openRegistrationWithEvent(eventId);
+      void (async () => {
+        const openId = await resolveOpenEventId(eventId);
+        if (openId) openRegistrationWithEvent(openId);
+      })();
     },
-    [openRegistrationWithEvent]
+    [openRegistrationWithEvent, resolveOpenEventId]
   );
 
   useEffect(() => {
     const shouldOpen = searchParams.get("register") === "1";
-    const eventId = searchParams.get("event");
+    const eventId = searchParams.get("event")?.trim() || null;
 
     if (!shouldOpen) return;
 
@@ -103,6 +150,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
     async function maybeOpen() {
       if (await isAdminAuthenticated()) {
+        if (cancelled) return;
         const params = new URLSearchParams(searchParams.toString());
         params.delete("register");
         params.delete("event");
@@ -114,10 +162,15 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
 
       if (eventId) {
-        openRegistrationWithEvent(eventId);
+        const openId = await resolveOpenEventId(eventId);
+        if (cancelled) return;
+        if (openId) openRegistrationWithEvent(openId);
       } else {
-        void openRegistration();
+        await openRegistration();
+        if (cancelled) return;
       }
+
+      if (cancelled) return;
 
       const params = new URLSearchParams(searchParams.toString());
       params.delete("register");
@@ -131,7 +184,14 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, pathname, router, openRegistration, openRegistrationWithEvent]);
+  }, [
+    searchParams,
+    pathname,
+    router,
+    openRegistration,
+    openRegistrationWithEvent,
+    resolveOpenEventId,
+  ]);
 
   return (
     <RegistrationContext.Provider value={{ openRegistration, closeRegistration }}>
@@ -151,6 +211,23 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
           onClose={closeRegistration}
         />
       )}
+      {blockedMessage ? (
+        <Modal
+          open
+          onClose={() => setBlockedMessage(null)}
+          title="Registration unavailable"
+          contentClassName="p-4 sm:p-6"
+        >
+          <p className="mb-4 text-sm text-muted">{blockedMessage}</p>
+          <button
+            type="button"
+            className="btn-primary w-100"
+            onClick={() => setBlockedMessage(null)}
+          >
+            Close
+          </button>
+        </Modal>
+      ) : null}
     </RegistrationContext.Provider>
   );
 }
