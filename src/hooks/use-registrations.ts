@@ -22,11 +22,15 @@ export function useSubmitGroupRegistration() {
   });
 }
 
-export function useRegistrationLookup(reference: string, enabled = false) {
+export function useRegistrationLookup(
+  reference: string,
+  email: string,
+  enabled = false
+) {
   return useQuery({
-    queryKey: queryKeys.registrations.lookup(reference),
-    queryFn: () => lookupRegistration(reference),
-    enabled: enabled && reference.trim().length > 0,
+    queryKey: queryKeys.registrations.lookup(reference, email),
+    queryFn: () => lookupRegistration(reference, email),
+    enabled: enabled && reference.trim().length > 0 && email.trim().length > 0,
     retry: false,
   });
 }

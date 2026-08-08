@@ -73,14 +73,16 @@ export interface RegistrationLookup {
   firstName: string;
   lastName: string;
   middleInitial?: string;
-  email: string;
+  emailMasked: string;
   organization: string;
   category: RegistrationCategory;
   paymentStatus: PaymentStatus;
   paymentNotes: string;
-  receiptUrl: string | null;
+  hasReceipt: boolean;
+  canUpload: boolean;
   createdAt: string;
 }
+
 async function parseError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: string };
@@ -139,11 +141,14 @@ export async function submitGroupRegistration(
 }
 
 export async function lookupRegistration(
-  reference: string
+  reference: string,
+  email: string
 ): Promise<RegistrationLookup> {
-  const response = await fetch(
-    `/api/register/lookup?reference=${encodeURIComponent(reference)}`
-  );
+  const params = new URLSearchParams({
+    reference,
+    email,
+  });
+  const response = await fetch(`/api/register/lookup?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error(await parseError(response));
@@ -152,9 +157,14 @@ export async function lookupRegistration(
   return response.json() as Promise<RegistrationLookup>;
 }
 
-export async function submitReceipt(referenceNumber: string, file: File): Promise<void> {
+export async function submitReceipt(
+  referenceNumber: string,
+  file: File,
+  email: string
+): Promise<void> {
   const formData = new FormData();
   formData.set("referenceNumber", referenceNumber);
+  formData.set("email", email);
   formData.set("file", file);
 
   const response = await fetch("/api/register/receipt", {
