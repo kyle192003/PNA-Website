@@ -591,6 +591,7 @@ export function ParticipantsTable({
             </dl>
 
             <AdminReceiptPreview
+              registrationId={selected.id}
               receiptUrl={selected.receiptUrl}
               receiptUploadedAt={selected.receiptUploadedAt}
               referenceNumber={selected.referenceNumber}

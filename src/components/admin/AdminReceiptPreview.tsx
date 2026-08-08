@@ -8,10 +8,13 @@ function isPdfUrl(url: string): boolean {
 }
 
 export function AdminReceiptPreview({
+  registrationId,
   receiptUrl,
   receiptUploadedAt,
   referenceNumber,
 }: {
+  registrationId: string;
+  /** Legacy field — presence means a receipt exists; file is served via admin API. */
   receiptUrl: string | null;
   receiptUploadedAt?: string | null;
   referenceNumber: string;
@@ -27,7 +30,11 @@ export function AdminReceiptPreview({
     );
   }
 
-  const pdf = isPdfUrl(receiptUrl);
+  const previewUrl = `/api/admin/receipts/${encodeURIComponent(registrationId)}`;
+  const pdf =
+    isPdfUrl(receiptUrl) ||
+    receiptUrl.includes(".pdf") ||
+    receiptUrl.endsWith(".pdf");
   const uploadedLabel = receiptUploadedAt
     ? ` · uploaded ${new Date(receiptUploadedAt).toLocaleString()}`
     : "";
@@ -60,7 +67,7 @@ export function AdminReceiptPreview({
             aria-label="View uploaded PDF receipt"
           >
             <iframe
-              src={receiptUrl}
+              src={previewUrl}
               title={`Payment receipt PDF for ${referenceNumber}`}
               className="admin-receipt-preview-iframe"
               tabIndex={-1}
@@ -74,10 +81,10 @@ export function AdminReceiptPreview({
             onClick={() => setLightboxOpen(true)}
             aria-label="View uploaded receipt full size"
           >
-            {/* Native img: Next/Image can fail on dynamic /uploads paths */}
+            {/* Native img: Next/Image can fail on dynamic authenticated paths */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={receiptUrl}
+              src={previewUrl}
               alt={`Payment receipt for ${referenceNumber}`}
               className="admin-receipt-preview-image"
             />
@@ -99,14 +106,14 @@ export function AdminReceiptPreview({
         <div className="admin-receipt-lightbox">
           {pdf ? (
             <iframe
-              src={receiptUrl}
+              src={previewUrl}
               title={`Payment receipt PDF for ${referenceNumber}`}
               className="admin-receipt-lightbox-iframe"
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={receiptUrl}
+              src={previewUrl}
               alt={`Payment receipt for ${referenceNumber}`}
               className="admin-receipt-lightbox-image"
             />
@@ -114,7 +121,7 @@ export function AdminReceiptPreview({
         </div>
         <div className="d-flex flex-wrap gap-2 mt-3">
           <a
-            href={receiptUrl}
+            href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="admin-link-btn"

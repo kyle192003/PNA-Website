@@ -2,8 +2,10 @@ import { promises as fs } from "fs";
 import path from "path";
 
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
+const PRIVATE_STORAGE_ROOT = path.join(process.cwd(), "storage");
 const QR_DIR = path.join(UPLOADS_ROOT, "qrcodes");
-const RECEIPT_DIR = path.join(UPLOADS_ROOT, "receipts");
+const RECEIPT_DIR = path.join(PRIVATE_STORAGE_ROOT, "receipts");
+const LEGACY_RECEIPT_DIR = path.join(UPLOADS_ROOT, "receipts");
 const SPEAKER_DIR = path.join(UPLOADS_ROOT, "speakers");
 const CERTIFICATE_DIR = path.join(UPLOADS_ROOT, "certificates");
 
@@ -34,6 +36,14 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
   ".pdf": "application/pdf",
 };
 
+const MAGIC_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
+  { mime: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
+  { mime: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47] },
+  { mime: "image/gif", bytes: [0x47, 0x49, 0x46, 0x38] },
+  { mime: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF....WEBP checked below
+  { mime: "application/pdf", bytes: [0x25, 0x50, 0x44, 0x46] }, // %PDF
+];
+
 async function ensureUploadDirs(): Promise<void> {
   await fs.mkdir(QR_DIR, { recursive: true });
   await fs.mkdir(RECEIPT_DIR, { recursive: true });
@@ -43,7 +53,7 @@ async function ensureUploadDirs(): Promise<void> {
 
 function getExtension(filename: string, mimeType: string): string {
   const fromName = path.extname(filename).toLowerCase();
-  if (fromName) return fromName;
+  if (fromName && EXTENSION_MIME_MAP[fromName]) return fromName;
 
   const mimeMap: Record<string, string> = {
     "image/jpeg": ".jpg",
@@ -65,6 +75,20 @@ function resolveMimeType(file: File): string {
   return EXTENSION_MIME_MAP[ext] ?? fromBrowser;
 }
 
+function detectMimeFromBuffer(buffer: Buffer): string | null {
+  for (const signature of MAGIC_SIGNATURES) {
+    if (buffer.length < signature.bytes.length) continue;
+    const matches = signature.bytes.every((byte, index) => buffer[index] === byte);
+    if (!matches) continue;
+    if (signature.mime === "image/webp") {
+      if (buffer.length < 12) return null;
+      if (buffer.toString("ascii", 8, 12) !== "WEBP") return null;
+    }
+    return signature.mime;
+  }
+  return null;
+}
+
 function validateFile(
   file: File,
   allowedTypes: Set<string>,
@@ -84,15 +108,58 @@ function validateFile(
   return { ok: true, mimeType };
 }
 
+async function validateBufferMime(
+  buffer: Buffer,
+  claimedMime: string,
+  allowedTypes: Set<string>
+): Promise<{ ok: true; mimeType: string } | { ok: false; error: string }> {
+  const detected = detectMimeFromBuffer(buffer);
+  if (!detected || !allowedTypes.has(detected)) {
+    return {
+      ok: false,
+      error: "File contents do not match an allowed image or PDF type.",
+    };
+  }
+  // Prefer detected type over client claim when they disagree.
+  if (claimedMime && claimedMime !== detected && claimedMime !== "application/octet-stream") {
+    // Allow jpeg/jpg aliasing only; otherwise require match.
+    const jpegFamily =
+      (claimedMime === "image/jpeg" || claimedMime === "image/jpg") &&
+      detected === "image/jpeg";
+    if (!jpegFamily && claimedMime !== detected) {
+      return {
+        ok: false,
+        error: "File contents do not match the declared file type.",
+      };
+    }
+  }
+  return { ok: true, mimeType: detected };
+}
+
+function assertInsideRoot(root: string, candidate: string): string {
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(candidate);
+  const prefix = resolvedRoot.endsWith(path.sep)
+    ? resolvedRoot
+    : resolvedRoot + path.sep;
+  if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(prefix)) {
+    throw new Error("Invalid upload path.");
+  }
+  return resolvedPath;
+}
+
 export async function saveQrCode(eventId: string, file: File): Promise<string> {
   await ensureUploadDirs();
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.error);
 
-  const ext = getExtension(file.name, validation.mimeType);
-  const filename = `${eventId}${ext}`;
-  const filepath = path.join(QR_DIR, filename);
   const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeCheck = await validateBufferMime(buffer, validation.mimeType, ALLOWED_IMAGE_TYPES);
+  if (!mimeCheck.ok) throw new Error(mimeCheck.error);
+
+  const ext = getExtension(file.name, mimeCheck.mimeType);
+  const filename = `${eventId}${ext}`;
+  const filepath = assertInsideRoot(QR_DIR, path.join(QR_DIR, filename));
   await fs.writeFile(filepath, buffer);
 
   return `/uploads/qrcodes/${filename}`;
@@ -107,13 +174,25 @@ export async function saveSpeakerPhoto(
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.error);
 
-  const ext = getExtension(file.name, validation.mimeType);
-  const filename = `${eventId}-${speakerId}${ext}`;
-  const filepath = path.join(SPEAKER_DIR, filename);
   const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeCheck = await validateBufferMime(buffer, validation.mimeType, ALLOWED_IMAGE_TYPES);
+  if (!mimeCheck.ok) throw new Error(mimeCheck.error);
+
+  const ext = getExtension(file.name, mimeCheck.mimeType);
+  const filename = `${eventId}-${speakerId}${ext}`;
+  const filepath = assertInsideRoot(SPEAKER_DIR, path.join(SPEAKER_DIR, filename));
   await fs.writeFile(filepath, buffer);
 
   return `/uploads/speakers/${filename}`;
+}
+
+/** Stored receipt reference — not a public URL. */
+export function buildReceiptStorageRef(registrationId: string, ext: string): string {
+  return `private:receipts/${registrationId}${ext}`;
+}
+
+export function isPrivateReceiptRef(value: string | null | undefined): boolean {
+  return Boolean(value?.startsWith("private:receipts/"));
 }
 
 export async function saveReceipt(
@@ -124,13 +203,89 @@ export async function saveReceipt(
   const validation = validateFile(file, ALLOWED_RECEIPT_TYPES);
   if (!validation.ok) throw new Error(validation.error);
 
-  const ext = getExtension(file.name, validation.mimeType);
-  const filename = `${registrationId}${ext}`;
-  const filepath = path.join(RECEIPT_DIR, filename);
   const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filepath, buffer);
+  const mimeCheck = await validateBufferMime(buffer, validation.mimeType, ALLOWED_RECEIPT_TYPES);
+  if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
-  return `/uploads/receipts/${filename}`;
+  const ext = getExtension(file.name, mimeCheck.mimeType);
+  const filename = `${registrationId}${ext}`;
+  const filepath = assertInsideRoot(RECEIPT_DIR, path.join(RECEIPT_DIR, filename));
+
+  // Remove any previous extension variants (private + legacy public).
+  await removeReceiptFiles(registrationId);
+
+  await fs.writeFile(filepath, buffer);
+  return buildReceiptStorageRef(registrationId, ext);
+}
+
+export type ResolvedReceiptFile = {
+  absolutePath: string;
+  mimeType: string;
+  filename: string;
+};
+
+export async function resolveReceiptFile(
+  registrationId: string,
+  storedRef?: string | null
+): Promise<ResolvedReceiptFile | null> {
+  await ensureUploadDirs();
+
+  const candidates: string[] = [];
+  if (storedRef?.startsWith("private:receipts/")) {
+    candidates.push(path.join(PRIVATE_STORAGE_ROOT, storedRef.replace(/^private:/, "")));
+  } else if (storedRef?.startsWith("/uploads/receipts/")) {
+    candidates.push(path.join(process.cwd(), "public", storedRef.replace(/^\//, "")));
+  }
+
+  // Also probe common extensions in private then legacy public dirs.
+  for (const ext of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
+    candidates.push(path.join(RECEIPT_DIR, `${registrationId}${ext}`));
+    candidates.push(path.join(LEGACY_RECEIPT_DIR, `${registrationId}${ext}`));
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    const underPrivate = normalized.startsWith(path.resolve(RECEIPT_DIR) + path.sep) ||
+      normalized === path.resolve(RECEIPT_DIR);
+    const underLegacy =
+      normalized.startsWith(path.resolve(LEGACY_RECEIPT_DIR) + path.sep) ||
+      normalized === path.resolve(LEGACY_RECEIPT_DIR);
+    if (!underPrivate && !underLegacy) continue;
+
+    try {
+      await fs.access(normalized);
+      const filename = path.basename(normalized);
+      const ext = path.extname(filename).toLowerCase();
+      return {
+        absolutePath: normalized,
+        filename,
+        mimeType: EXTENSION_MIME_MAP[ext] ?? "application/octet-stream",
+      };
+    } catch {
+      // try next
+    }
+  }
+
+  return null;
+}
+
+async function removeReceiptFiles(registrationId: string): Promise<void> {
+  for (const dir of [RECEIPT_DIR, LEGACY_RECEIPT_DIR]) {
+    try {
+      const entries = await fs.readdir(dir);
+      await Promise.all(
+        entries
+          .filter((name) => name.startsWith(registrationId))
+          .map((name) => fs.unlink(path.join(dir, name)).catch(() => undefined))
+      );
+    } catch {
+      // directory may not exist yet
+    }
+  }
 }
 
 export type CertificateTemplateFileType = "image" | "pdf";
@@ -159,14 +314,21 @@ export async function saveCertificateTemplateFile(
   const validation = validateFile(file, ALLOWED_CERTIFICATE_TYPES, MAX_CERTIFICATE_FILE_SIZE);
   if (!validation.ok) throw new Error(validation.error);
 
-  const ext = getExtension(file.name, validation.mimeType);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeCheck = await validateBufferMime(
+    buffer,
+    validation.mimeType,
+    ALLOWED_CERTIFICATE_TYPES
+  );
+  if (!mimeCheck.ok) throw new Error(mimeCheck.error);
+
+  const ext = getExtension(file.name, mimeCheck.mimeType);
   const fileType: CertificateTemplateFileType =
-    validation.mimeType === "application/pdf" ? "pdf" : "image";
+    mimeCheck.mimeType === "application/pdf" ? "pdf" : "image";
   const filename = eventId
     ? `certificate-${eventId}${ext}`
     : `certificate-template${ext}`;
-  const filepath = path.join(CERTIFICATE_DIR, filename);
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const filepath = assertInsideRoot(CERTIFICATE_DIR, path.join(CERTIFICATE_DIR, filename));
 
   await removeExistingCertificateTemplates(eventId);
 
@@ -190,14 +352,36 @@ export async function saveCertificateTemplateImage(file: File): Promise<string> 
 }
 
 export async function deleteUploadedFile(publicUrl: string | null): Promise<void> {
-  if (!publicUrl?.startsWith("/uploads/")) return;
+  if (!publicUrl) return;
 
-  const relative = publicUrl.replace(/^\/uploads\//, "");
-  const filepath = path.join(UPLOADS_ROOT, relative);
+  if (publicUrl.startsWith("private:receipts/")) {
+    const relative = publicUrl.replace(/^private:/, "");
+    const filepath = assertInsideRoot(
+      PRIVATE_STORAGE_ROOT,
+      path.join(PRIVATE_STORAGE_ROOT, relative)
+    );
+    try {
+      await fs.unlink(filepath);
+    } catch {
+      // File may already be removed.
+    }
+    return;
+  }
+
+  if (!publicUrl.startsWith("/uploads/")) return;
+
+  const relative = publicUrl.replace(/^\/uploads\//, "").replace(/\\/g, "/");
+  if (!relative || relative.includes("..")) return;
+
+  const filepath = assertInsideRoot(UPLOADS_ROOT, path.join(UPLOADS_ROOT, relative));
 
   try {
     await fs.unlink(filepath);
   } catch {
     // File may already be removed.
   }
+}
+
+export function getPrivateStorageRoot(): string {
+  return PRIVATE_STORAGE_ROOT;
 }

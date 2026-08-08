@@ -47,3 +47,6 @@ next-env.d.ts
 
 # uploads
 /public/uploads/
+
+# private receipt storage (outside public web root)
+/storage/

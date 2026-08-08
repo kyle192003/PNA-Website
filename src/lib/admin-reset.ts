@@ -75,5 +75,10 @@ export async function resetAdminDashboardData(): Promise<AdminResetResult> {
     clearedUploadFolders += await clearDirectoryContents(path.join(UPLOADS_ROOT, folder));
   }
 
+  // Private receipt store (outside public/)
+  clearedUploadFolders += await clearDirectoryContents(
+    path.join(process.cwd(), "storage", "receipts")
+  );
+
   return { clearedFiles, clearedUploadFolders };
 }
