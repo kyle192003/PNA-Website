@@ -90,6 +90,8 @@ export function useConfirmAction() {
             typeof result === "string" && result.trim() ? result.trim() : successMessage,
         });
       }
+    } catch {
+      // Leave the confirm dialog open so the caller can show an inline error and retry.
     } finally {
       setLoading(false);
     }

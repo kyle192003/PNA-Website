@@ -36,7 +36,6 @@ import {
 } from "@/components/RegistrationSuccessModal";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
-import { SuccessDialog } from "@/components/ui/SuccessDialog";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect } from "@/components/ui/PnaSelect";
 import { PhLocationSuggest } from "@/components/PhLocationSuggest";
@@ -533,9 +532,18 @@ export function RegistrationForm({
             });
 
             let uploaded = false;
+            let receiptUploadFailed = false;
             if (receiptFile) {
-              await submitReceipt(result.registration.referenceNumber, receiptFile);
-              uploaded = true;
+              try {
+                await submitReceipt(
+                  result.registration.referenceNumber,
+                  receiptFile,
+                  formData.email
+                );
+                uploaded = true;
+              } catch {
+                receiptUploadFailed = true;
+              }
             }
 
             details = {
@@ -549,6 +557,7 @@ export function RegistrationForm({
               position: formData.position,
               category: conference.registration.fees[result.registration.category].label,
               receiptUploaded: uploaded,
+              receiptUploadFailed,
               groupSize: result.group.groupSize ?? headcount,
               totalPaymentAmount: result.group.totalPaymentAmount,
               groupMembers: result.group.participants.map((p) => ({
@@ -567,9 +576,18 @@ export function RegistrationForm({
             });
 
             let uploaded = false;
+            let receiptUploadFailed = false;
             if (receiptFile) {
-              await submitReceipt(registration.referenceNumber, receiptFile);
-              uploaded = true;
+              try {
+                await submitReceipt(
+                  registration.referenceNumber,
+                  receiptFile,
+                  formData.email
+                );
+                uploaded = true;
+              } catch {
+                receiptUploadFailed = true;
+              }
             }
 
             details = {
@@ -583,6 +601,7 @@ export function RegistrationForm({
               position: formData.position,
               category: conference.registration.fees[registration.category].label,
               receiptUploaded: uploaded,
+              receiptUploadFailed,
             };
           }
 
@@ -693,17 +712,24 @@ export function RegistrationForm({
         details={successDetails}
       />
 
-      <SuccessDialog
-        open={showDraftRestored}
-        title="Draft restored"
-        message="Your previous entries have been restored so you can continue where you left off."
-        closeLabel="Continue"
-        onClose={() => setShowDraftRestored(false)}
-      />
-
       <div className="registration-form-wrap">
         <LoadingOverlay show={loading} scope="local" variant="form" />
         <ActionConfirmDialogs hook={confirmHook} />
+
+        {showDraftRestored ? (
+          <div className="registration-form-draft-banner" role="status">
+            <p className="mb-0">
+              Your previous draft was restored. You can continue where you left off.
+            </p>
+            <button
+              type="button"
+              className="registration-form-draft-banner-dismiss"
+              onClick={() => setShowDraftRestored(false)}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
 
         <form
           id="registration-form"
@@ -1193,6 +1219,8 @@ export function RegistrationForm({
       <div className="registration-form-terms rounded-lg bg-white border border-green-100 p-3 p-md-4">
         <label className="d-flex align-items-start gap-3 mb-0 cursor-pointer">
           <input
+            id="agreeToTerms"
+            name="agreeToTerms"
             type="checkbox"
             checked={formData.agreeToTerms}
             onChange={(e) => updateField("agreeToTerms", e.target.checked)}

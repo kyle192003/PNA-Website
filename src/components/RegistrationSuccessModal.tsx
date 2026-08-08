@@ -23,6 +23,8 @@ export interface RegistrationSuccessDetails {
   position: string;
   category: string;
   receiptUploaded?: boolean;
+  /** Set when registration saved but receipt upload failed. */
+  receiptUploadFailed?: boolean;
   groupSize?: number;
   totalPaymentAmount?: number;
   groupMembers?: RegistrationSuccessGroupMember[];
@@ -113,6 +115,20 @@ export function RegistrationSuccessModal({
           <p>
             Your proof of payment has been submitted and is pending review by the Secretariat.
             Retain your reference number for verification and on-site check-in.
+          </p>
+        ) : details.receiptUploadFailed ? (
+          <p>
+            Your registration was saved, but the receipt upload did not complete. Please upload
+            your proof of payment using reference{" "}
+            <strong className="text-ink">{details.referenceNumber}</strong> in the registration
+            lookup section. For assistance, contact{" "}
+            <a
+              href={`mailto:${conference.contact.registrationEmail}`}
+              className="text-accent hover:underline"
+            >
+              {conference.contact.registrationEmail}
+            </a>
+            .
           </p>
         ) : (
           <p>
