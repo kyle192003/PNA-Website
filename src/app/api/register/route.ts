@@ -14,6 +14,11 @@ import {
 import { getActiveEvent, getOpenEventById } from "@/lib/events";
 import { sendRegistrationPendingEmail } from "@/lib/mail-templates";
 import type { GroupMemberInput, RegistrationInput } from "@/lib/types/admin";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 const validCategories = Object.keys(conference.registration.fees) as RegistrationCategory[];
 
 function validatePersonContact(person: {
@@ -129,6 +134,12 @@ function toRegistrationResponse(
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = rateLimit(`register:${ip}`, 10, 60_000);
+    if (!limited.ok) {
+      return rateLimitResponse(limited.retryAfterSeconds);
+    }
+
     const body = await request.json();
     const mode = body.mode === "group" ? "group" : "individual";
 

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { filterPhProvinces, type PhPlaceSuggestion, type PhPlaceType } from "@/lib/ph-locations";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 
 type NominatimAddress = {
   road?: string;
@@ -90,6 +95,12 @@ function toSuggestion(item: NominatimResult, type: PhPlaceType): PhPlaceSuggesti
 }
 
 export async function GET(request: Request) {
+  const ip = clientIpFromRequest(request);
+  const limited = rateLimit(`places:${ip}`, 60, 60_000);
+  if (!limited.ok) {
+    return rateLimitResponse(limited.retryAfterSeconds);
+  }
+
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
   const type = (searchParams.get("type") ?? "street") as PhPlaceType;

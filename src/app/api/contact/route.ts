@@ -2,9 +2,20 @@ import { NextResponse } from "next/server";
 import { notifyAdminOfInquiry } from "@/lib/admin-notify";
 import { createInquiry } from "@/lib/inquiries";
 import { getFirstValidationError, validateContactInquiry } from "@/lib/form-validation";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = rateLimit(`contact:${ip}`, 8, 60_000);
+    if (!limited.ok) {
+      return rateLimitResponse(limited.retryAfterSeconds);
+    }
+
     const body = await request.json();
     const { name, email, mobile, message } = body;
 
