@@ -18,6 +18,8 @@ type PnaSelectProps = {
   disabled?: boolean;
   required?: boolean;
   className?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
   "aria-label"?: string;
 };
 
@@ -29,6 +31,7 @@ type MenuPosition = {
 
 const MENU_ANIMATION_MS = 180;
 const MENU_GAP_PX = 8;
+const MENU_MAX_HEIGHT_PX = 220;
 
 export function PnaSelect({
   id,
@@ -40,6 +43,8 @@ export function PnaSelect({
   disabled = false,
   required = false,
   className = "",
+  searchable = false,
+  searchPlaceholder = "Search...",
   "aria-label": ariaLabel,
 }: PnaSelectProps) {
   const generatedId = useId();
@@ -47,16 +52,29 @@ export function PnaSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const selected = useMemo(
     () => options.find((option) => option.value === value) ?? null,
     [options, value]
   );
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable) return options;
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(query) ||
+        option.value.toLowerCase().includes(query)
+    );
+  }, [options, searchable, searchQuery]);
 
   useEffect(() => {
     setMounted(true);
@@ -73,9 +91,16 @@ export function PnaSelect({
     const timeout = window.setTimeout(() => {
       setRendered(false);
       setMenuPosition(null);
+      setSearchQuery("");
     }, MENU_ANIMATION_MS);
     return () => window.clearTimeout(timeout);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !searchable) return;
+    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, searchable]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -95,7 +120,10 @@ export function PnaSelect({
         window.innerWidth - width - viewportPadding
       );
 
-      const menuHeight = menuRef.current?.offsetHeight ?? Math.max(options.length, 1) * 44 + 16;
+      const measuredHeight = menuRef.current?.offsetHeight;
+      const estimatedHeight =
+        Math.min(Math.max(filteredOptions.length, 1) * 44 + (searchable ? 56 : 16), MENU_MAX_HEIGHT_PX + (searchable ? 56 : 0));
+      const menuHeight = measuredHeight ?? estimatedHeight;
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP_PX;
       const openUpward = spaceBelow < menuHeight && rect.top > spaceBelow;
       const top = openUpward
@@ -114,7 +142,7 @@ export function PnaSelect({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [open, options.length, rendered, visible]);
+  }, [open, filteredOptions.length, rendered, visible, searchable]);
 
   useEffect(() => {
     if (!open) return;
@@ -150,7 +178,7 @@ export function PnaSelect({
     ? createPortal(
         <div
           ref={menuRef}
-          className={`pna-select-menu pna-select-menu--portal${visible ? " is-visible" : ""}`}
+          className={`pna-select-menu pna-select-menu--portal${searchable ? " pna-select-menu--searchable" : ""}${visible ? " is-visible" : ""}`}
           role="listbox"
           aria-labelledby={selectId}
           style={{
@@ -159,27 +187,52 @@ export function PnaSelect({
             width: menuPosition.width,
           }}
         >
-            <span className="pna-select-caret" aria-hidden="true" />
-            {options.map((option, index) => {
-              const isActive = option.value === value;
-              return (
-                <button
-                  key={`${option.value}-${option.label}`}
-                  type="button"
-                  role="option"
-                  className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
-                  aria-selected={isActive}
-                  style={{ animationDelay: `${30 + index * 28}ms` }}
-                  onClick={() => choose(option.value)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>,
-          document.body
-        )
-      : null;
+          <span className="pna-select-caret" aria-hidden="true" />
+          {searchable ? (
+            <div className="pna-select-search">
+              <input
+                ref={searchRef}
+                type="search"
+                className="pna-select-search-input"
+                value={searchQuery}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setOpen(false);
+                  }
+                }}
+              />
+            </div>
+          ) : null}
+          <div className="pna-select-options">
+            {filteredOptions.length === 0 ? (
+              <p className="pna-select-empty mb-0">No matching options</p>
+            ) : (
+              filteredOptions.map((option, index) => {
+                const isActive = option.value === value;
+                return (
+                  <button
+                    key={`${option.value}-${option.label}`}
+                    type="button"
+                    role="option"
+                    className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
+                    aria-selected={isActive}
+                    style={{ animationDelay: `${30 + index * 28}ms` }}
+                    onClick={() => choose(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div
