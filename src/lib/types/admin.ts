@@ -169,6 +169,8 @@ export interface RegistrationRecord {
   paymentStatus: PaymentStatus;
   receiptUrl: string | null;
   receiptUploadedAt: string | null;
+  /** Transfer / transaction reference from the participant's proof of payment. */
+  paymentReference: string;
   paymentNotes: string;
   adminNotes: string;
   /** Shared id for group registrations; null for individual. */

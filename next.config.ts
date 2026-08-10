@@ -19,7 +19,8 @@ const securityHeaders = [
       "font-src 'self' data: https:",
       "style-src 'self' 'unsafe-inline' https:",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
-      "connect-src 'self' https:",
+      "worker-src 'self' blob:",
+      "connect-src 'self' https: blob: data:",
       "frame-src 'self' blob:",
       "object-src 'none'",
       "upgrade-insecure-requests",
@@ -28,7 +29,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["sharp", "@img/sharp-win32-x64"],
+  serverExternalPackages: ["sharp", "@img/sharp-win32-x64", "tesseract.js"],
   async headers() {
     return [
       {

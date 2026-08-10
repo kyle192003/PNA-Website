@@ -53,6 +53,10 @@ export function ReceiptReuploadForm() {
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [file, setFile] = useState<File | null>(null);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [referenceConfirmed, setReferenceConfirmed] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "unavailable">("idle");
+  const [ocrMessage, setOcrMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -91,9 +95,66 @@ export function ReceiptReuploadForm() {
     };
   }, [token]);
 
+  async function handleFileSelected(next: File | null) {
+    setFile(next);
+    setPaymentReference("");
+    setReferenceConfirmed(false);
+    setOcrMessage("");
+    setOcrStatus("idle");
+    setSubmitError("");
+
+    if (!next) return;
+
+    if (next.type === "application/pdf" || next.name.toLowerCase().endsWith(".pdf")) {
+      setOcrStatus("unavailable");
+      setOcrMessage(
+        "PDF uploaded. Please type the payment / transfer reference from your receipt below."
+      );
+      return;
+    }
+
+    if (!next.type.startsWith("image/")) {
+      setOcrStatus("unavailable");
+      setOcrMessage("Please type the payment / transfer reference from your receipt below.");
+      return;
+    }
+
+    setOcrStatus("scanning");
+    try {
+      const { scanReceiptImage } = await import("@/lib/receipt-ocr");
+      const result = await scanReceiptImage(next);
+      setOcrStatus("done");
+      if (result.best) {
+        setPaymentReference(result.best);
+        setOcrMessage(
+          "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
+        );
+      } else {
+        setOcrMessage(
+          "We could not find a clear payment reference. Please type it from your receipt, then confirm below."
+        );
+      }
+    } catch {
+      setOcrStatus("unavailable");
+      setOcrMessage(
+        "Could not scan this image. Please type the payment / transfer reference from your receipt below."
+      );
+    }
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!file || !info || !token) return;
+
+    const trimmedRef = paymentReference.trim();
+    if (!trimmedRef || trimmedRef.length < 4) {
+      setSubmitError("Enter the payment / transfer reference from your receipt.");
+      return;
+    }
+    if (!referenceConfirmed) {
+      setSubmitError("Please confirm the payment reference looks correct before submitting.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError("");
@@ -101,6 +162,7 @@ export function ReceiptReuploadForm() {
       const formData = new FormData();
       formData.set("token", token);
       formData.set("file", file);
+      formData.set("paymentReference", trimmedRef);
       const res = await fetch("/api/register/receipt", {
         method: "POST",
         body: formData,
@@ -111,6 +173,8 @@ export function ReceiptReuploadForm() {
       }
       setSuccess(true);
       setFile(null);
+      setPaymentReference("");
+      setReferenceConfirmed(false);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -227,13 +291,58 @@ export function ReceiptReuploadForm() {
                 type="file"
                 accept="image/*,.pdf"
                 className="evaluation-input"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => {
+                  void handleFileSelected(event.target.files?.[0] ?? null);
+                }}
                 required
               />
               {file ? (
                 <p className="evaluation-card-desc mt-2 mb-0 text-start">Selected: {file.name}</p>
               ) : null}
+              {ocrStatus === "scanning" ? (
+                <p className="evaluation-card-desc mt-2 mb-0 text-start" role="status">
+                  Scanning receipt for payment reference…
+                </p>
+              ) : null}
+              {ocrMessage ? (
+                <p className="evaluation-card-desc mt-2 mb-0 text-start" role="status">
+                  {ocrMessage}
+                </p>
+              ) : null}
             </div>
+
+            {file ? (
+              <div className="evaluation-field-group">
+                <label className="evaluation-label" htmlFor="payment-reference">
+                  Payment / transfer reference
+                  <span className="evaluation-required">*</span>
+                </label>
+                <input
+                  id="payment-reference"
+                  type="text"
+                  className="evaluation-input"
+                  value={paymentReference}
+                  onChange={(event) => {
+                    setPaymentReference(event.target.value);
+                    setReferenceConfirmed(false);
+                  }}
+                  placeholder="e.g. GCash Ref No. or bank transfer reference"
+                  autoComplete="off"
+                  required
+                />
+                <label className="d-flex align-items-start gap-2 mt-3 mb-0">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={referenceConfirmed}
+                    onChange={(event) => setReferenceConfirmed(event.target.checked)}
+                  />
+                  <span className="evaluation-card-desc mb-0 text-start">
+                    Yes, this payment reference looks right (or I corrected it to match my receipt).
+                  </span>
+                </label>
+              </div>
+            ) : null}
 
             {submitError ? (
               <p className="evaluation-form-error" role="alert">
@@ -245,7 +354,7 @@ export function ReceiptReuploadForm() {
               <button
                 type="submit"
                 className="btn-pill-arrow evaluation-submit"
-                disabled={!file || submitting}
+                disabled={!file || !paymentReference.trim() || !referenceConfirmed || submitting}
               >
                 {submitting ? "Uploading..." : "Submit new receipt"}
               </button>

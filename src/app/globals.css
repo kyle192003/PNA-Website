@@ -1670,6 +1670,13 @@ body.pna-mobile-nav-open {
   background: linear-gradient(180deg, #f8fdf9 0%, #ffffff 100%);
 }
 
+.registration-payment-reference-panel {
+  border: 1.5px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%);
+  padding: 0.9rem 1rem 1rem;
+}
+
 .registration-payment-qr-form .registration-sidebar-card-title {
   margin-bottom: 0.35rem;
 }

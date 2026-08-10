@@ -583,6 +583,10 @@ export function ParticipantsTable({
                 </dd>
               </div>
               <div>
+                <dt>Payment reference</dt>
+                <dd>{selected.paymentReference?.trim() || "—"}</dd>
+              </div>
+              <div>
                 <dt>Category</dt>
                 <dd>
                   {conference.registration.fees[selected.category]?.label ?? selected.category}

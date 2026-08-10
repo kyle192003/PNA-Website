@@ -64,6 +64,7 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
     paymentStatus: raw.paymentStatus ?? "pending",
     receiptUrl: raw.receiptUrl ?? null,
     receiptUploadedAt: raw.receiptUploadedAt ?? null,
+    paymentReference: raw.paymentReference ?? "",
     paymentNotes: raw.paymentNotes ?? "",
     adminNotes: raw.adminNotes ?? "",
     groupId: raw.groupId ?? null,
@@ -198,6 +199,7 @@ function buildRegistrationRecord(
     paymentStatus: "pending",
     receiptUrl: null,
     receiptUploadedAt: null,
+    paymentReference: "",
     paymentNotes: "",
     adminNotes: "",
     groupId: options.groupId,
@@ -382,6 +384,7 @@ export async function updateRegistrationPayment(
     paymentStatus?: PaymentStatus;
     adminNotes?: string;
     paymentNotes?: string;
+    paymentReference?: string;
     receiptUrl?: string | null;
     receiptUploadedAt?: string | null;
   }
@@ -411,6 +414,7 @@ export async function updateRegistrationPaymentCascading(
     paymentStatus?: PaymentStatus;
     adminNotes?: string;
     paymentNotes?: string;
+    paymentReference?: string;
     receiptUrl?: string | null;
     receiptUploadedAt?: string | null;
   }
@@ -611,7 +615,8 @@ export async function deleteRegistration(id: string): Promise<boolean> {
 
 export async function submitReceipt(
   referenceNumber: string,
-  receiptUrl: string
+  receiptUrl: string,
+  options?: { paymentReference?: string }
 ): Promise<RegistrationRecord | null> {
   const registration = await getRegistrationByReference(referenceNumber);
   if (!registration) return null;
@@ -628,11 +633,14 @@ export async function submitReceipt(
     }
   }
 
+  const paymentReference = options?.paymentReference?.trim() ?? "";
+
   const updated = await updateRegistrationPaymentCascading(registration.id, {
     receiptUrl,
     receiptUploadedAt: new Date().toISOString(),
     paymentStatus: "receipt_submitted",
     paymentNotes: "",
+    ...(paymentReference ? { paymentReference } : {}),
   });
 
   return updated[0] ?? null;

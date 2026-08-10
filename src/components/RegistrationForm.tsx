@@ -227,11 +227,15 @@ export function RegistrationForm({
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showDraftRestored, setShowDraftRestored] = useState(false);
   const [formPhase, setFormPhase] = useState<RegistrationFormPhase>("details");
-  const [errors, setErrors] = useState<Partial<Record<FormFieldKey | "receipt" | "members", string>>>(
-    {}
-  );
+  const [errors, setErrors] = useState<
+    Partial<Record<FormFieldKey | "receipt" | "paymentReference" | "members", string>>
+  >({});
   const [touched, setTouched] = useState<Partial<Record<FormFieldKey, boolean>>>({});
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "unavailable">("idle");
+  const [ocrMessage, setOcrMessage] = useState("");
+  const [referenceConfirmed, setReferenceConfirmed] = useState(false);
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -473,13 +477,32 @@ export function RegistrationForm({
   }
 
   function validate(): boolean {
-    const newErrors: Partial<Record<FormFieldKey | "receipt" | "members", string>> = {};
+    const newErrors: Partial<
+      Record<FormFieldKey | "receipt" | "paymentReference" | "members", string>
+    > = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
     for (const field of LIVE_VALIDATE_FIELDS) {
       allTouched[field] = true;
       const error = getFieldError(field, formData);
       if (error) newErrors[field] = error;
+    }
+
+    if (!receiptFile) {
+      newErrors.receipt = "Proof of payment is required before you can submit.";
+    } else if (receiptFile.size > 5 * 1024 * 1024) {
+      newErrors.receipt = "Receipt must be 5 MB or smaller.";
+    }
+
+    const trimmedRef = paymentReference.trim();
+    if (!trimmedRef) {
+      newErrors.paymentReference =
+        "Enter the payment / transfer reference from your receipt.";
+    } else if (trimmedRef.length < 4) {
+      newErrors.paymentReference = "Payment reference looks too short. Please check your receipt.";
+    } else if (!referenceConfirmed) {
+      newErrors.paymentReference =
+        "Please confirm the payment reference looks correct before submitting.";
     }
 
     setTouched(allTouched);
@@ -505,6 +528,68 @@ export function RegistrationForm({
     });
   }
 
+  async function handleReceiptSelected(file: File | null) {
+    setReceiptFile(file);
+    setPaymentReference("");
+    setReferenceConfirmed(false);
+    setOcrMessage("");
+    setOcrStatus("idle");
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.receipt;
+      delete next.paymentReference;
+      return next;
+    });
+
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors((prev) => ({
+        ...prev,
+        receipt: "Receipt must be 5 MB or smaller.",
+      }));
+      setReceiptFile(null);
+      return;
+    }
+
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      setOcrStatus("unavailable");
+      setOcrMessage(
+        "PDF uploaded. Please type the payment / transfer reference from your receipt below."
+      );
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setOcrStatus("unavailable");
+      setOcrMessage("Please type the payment / transfer reference from your receipt below.");
+      return;
+    }
+
+    setOcrStatus("scanning");
+    try {
+      const { scanReceiptImage } = await import("@/lib/receipt-ocr");
+      const result = await scanReceiptImage(file);
+      setOcrStatus("done");
+      if (result.best) {
+        setPaymentReference(result.best);
+        setReferenceConfirmed(false);
+        setOcrMessage(
+          "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
+        );
+      } else {
+        setOcrMessage(
+          "We could not find a clear payment reference. Please type it from your receipt, then confirm below."
+        );
+      }
+    } catch {
+      setOcrStatus("unavailable");
+      setOcrMessage(
+        "Could not scan this image. Please type the payment / transfer reference from your receipt below."
+      );
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
@@ -524,9 +609,7 @@ export function RegistrationForm({
         ? `Submit registration for ${headcount} participants? One payment of ${formatPeso(totalFee)} covers the group. Each person will receive their own confirmation email.`
         : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
       confirmLabel: isGroup ? "Submit group registration" : "Submit registration",
-      loadingMessage: receiptFile
-        ? "Submitting registration and uploading receipt..."
-        : "Submitting registration...",
+      loadingMessage: "Submitting registration and uploading receipt...",
       showSuccess: false,
       action: async () => {
         try {
@@ -567,17 +650,16 @@ export function RegistrationForm({
 
             let uploaded = false;
             let receiptUploadFailed = false;
-            if (receiptFile) {
-              try {
-                await submitReceipt(
-                  result.registration.referenceNumber,
-                  receiptFile,
-                  formData.email
-                );
-                uploaded = true;
-              } catch {
-                receiptUploadFailed = true;
-              }
+            try {
+              await submitReceipt(
+                result.registration.referenceNumber,
+                receiptFile!,
+                formData.email,
+                paymentReference.trim()
+              );
+              uploaded = true;
+            } catch {
+              receiptUploadFailed = true;
             }
 
             details = {
@@ -611,17 +693,16 @@ export function RegistrationForm({
 
             let uploaded = false;
             let receiptUploadFailed = false;
-            if (receiptFile) {
-              try {
-                await submitReceipt(
-                  registration.referenceNumber,
-                  receiptFile,
-                  formData.email
-                );
-                uploaded = true;
-              } catch {
-                receiptUploadFailed = true;
-              }
+            try {
+              await submitReceipt(
+                registration.referenceNumber,
+                receiptFile!,
+                formData.email,
+                paymentReference.trim()
+              );
+              uploaded = true;
+            } catch {
+              receiptUploadFailed = true;
             }
 
             details = {
@@ -647,6 +728,10 @@ export function RegistrationForm({
           setMembers([]);
           setShowDraftRestored(false);
           setReceiptFile(null);
+          setPaymentReference("");
+          setOcrStatus("idle");
+          setOcrMessage("");
+          setReferenceConfirmed(false);
           setErrors({});
           setMemberErrors({});
           setFormPhase("details");
@@ -1200,7 +1285,7 @@ export function RegistrationForm({
         </legend>
         <p className="registration-form-help mb-3">
           Pay using the QR code or bank transfer below, then upload your receipt or screenshot.
-          You may also submit proof later using your reference number.
+          Proof of payment is required to complete registration.
           {registrationMode === "group"
             ? " One payment and one receipt cover the whole group."
             : ""}{" "}
@@ -1244,7 +1329,8 @@ export function RegistrationForm({
 
         <div className="col-12">
           <label htmlFor="receipt" className="form-label registration-form-label">
-            Upload Receipt <span className="registration-form-optional">(Image or PDF, max 5 MB)</span>
+            Upload Proof of Payment <span className="text-accent">*</span>
+            <span className="registration-form-optional"> (Image or PDF, max 5 MB)</span>
           </label>
           <input
             id="receipt"
@@ -1252,17 +1338,71 @@ export function RegistrationForm({
             accept="image/*,application/pdf"
             className={`input-dark ${errors.receipt ? "input-dark-error" : ""}`}
             onChange={(e) => {
-              setReceiptFile(e.target.files?.[0] ?? null);
-              if (errors.receipt) {
-                setErrors((prev) => ({ ...prev, receipt: undefined }));
-              }
+              const file = e.target.files?.[0] ?? null;
+              void handleReceiptSelected(file);
             }}
           />
           {receiptFile && (
             <p className="mt-2 mb-0 text-xs text-muted">Selected: {receiptFile.name}</p>
           )}
+          {ocrStatus === "scanning" ? (
+            <p className="mt-2 mb-0 text-xs text-muted" role="status">
+              Scanning receipt for payment reference…
+            </p>
+          ) : null}
+          {ocrMessage ? (
+            <p className="mt-2 mb-0 text-xs text-muted" role="status">
+              {ocrMessage}
+            </p>
+          ) : null}
           {errors.receipt && <p className="mt-1 text-xs text-red-400">{errors.receipt}</p>}
         </div>
+
+        {receiptFile ? (
+          <div className="col-12 mt-3 registration-payment-reference-panel">
+            <label htmlFor="paymentReference" className="form-label registration-form-label">
+              Payment / transfer reference <span className="text-accent">*</span>
+            </label>
+            <p className="registration-form-help mb-2">
+              We try to read this from your receipt. Please check it carefully and correct it if
+              needed.
+            </p>
+            <input
+              id="paymentReference"
+              type="text"
+              value={paymentReference}
+              onChange={(e) => {
+                setPaymentReference(e.target.value);
+                setReferenceConfirmed(false);
+                if (errors.paymentReference) {
+                  setErrors((prev) => ({ ...prev, paymentReference: undefined }));
+                }
+              }}
+              placeholder="e.g. GCash Ref No. or bank transfer reference"
+              className={`input-dark ${errors.paymentReference ? "input-dark-error" : ""}`}
+              autoComplete="off"
+            />
+            <label className="d-flex align-items-start gap-2 mt-3 mb-0 cursor-pointer">
+              <input
+                type="checkbox"
+                className="registration-form-checkbox mt-1"
+                checked={referenceConfirmed}
+                onChange={(e) => {
+                  setReferenceConfirmed(e.target.checked);
+                  if (e.target.checked && errors.paymentReference) {
+                    setErrors((prev) => ({ ...prev, paymentReference: undefined }));
+                  }
+                }}
+              />
+              <span className="small text-muted lh-base">
+                Yes, this payment reference looks right (or I corrected it to match my receipt).
+              </span>
+            </label>
+            {errors.paymentReference && (
+              <p className="mt-1 text-xs text-red-400">{errors.paymentReference}</p>
+            )}
+          </div>
+        ) : null}
       </fieldset>
 
       <div className="registration-form-terms rounded-lg bg-white border border-green-100 p-3 p-md-4">
@@ -1320,11 +1460,13 @@ export function RegistrationForm({
         {isPaymentPhase ? (
           <button
             type="submit"
-            disabled={loading || isSubmitting}
+            disabled={loading || isSubmitting || ocrStatus === "scanning"}
             className="registration-form-footer-btn registration-form-footer-btn--primary"
           >
             {loading || isSubmitting
               ? "Processing..."
+              : ocrStatus === "scanning"
+                ? "Scanning receipt..."
               : registrationMode === "group"
                 ? "Submit group registration"
                 : "Submit registration"}

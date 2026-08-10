@@ -160,12 +160,16 @@ export async function lookupRegistration(
 export async function submitReceipt(
   referenceNumber: string,
   file: File,
-  email: string
+  email: string,
+  paymentReference?: string
 ): Promise<void> {
   const formData = new FormData();
   formData.set("referenceNumber", referenceNumber);
   formData.set("email", email);
   formData.set("file", file);
+  if (paymentReference?.trim()) {
+    formData.set("paymentReference", paymentReference.trim());
+  }
 
   const response = await fetch("/api/register/receipt", {
     method: "POST",

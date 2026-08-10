@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     const token = formData.get("token")?.toString().trim();
     const referenceFromForm = formData.get("referenceNumber")?.toString().trim();
     const emailFromForm = formData.get("email")?.toString().trim() ?? "";
+    const paymentReference = formData.get("paymentReference")?.toString().trim() ?? "";
     const file = formData.get("file");
 
     let referenceNumber = referenceFromForm?.toUpperCase() ?? "";
@@ -51,6 +52,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Receipt file is required." }, { status: 400 });
     }
 
+    if (!paymentReference || paymentReference.length < 4) {
+      return NextResponse.json(
+        { error: "Payment reference from your receipt is required." },
+        { status: 400 }
+      );
+    }
+
     const registration = await getRegistrationByReference(referenceNumber);
     if (!registration) {
       return NextResponse.json({ error: "Registration not found." }, { status: 404 });
@@ -75,7 +83,7 @@ export async function POST(request: Request) {
       registration.paymentStatus === "rejected";
 
     const receiptUrl = await saveReceipt(registration.id, file);
-    const updated = await submitReceipt(referenceNumber, receiptUrl);
+    const updated = await submitReceipt(referenceNumber, receiptUrl, { paymentReference });
 
     const event = updated?.eventId ? await getEventById(updated.eventId) : null;
     const eventTitle = event?.title ?? "PNA Conference Registration";
