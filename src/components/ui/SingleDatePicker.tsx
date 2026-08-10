@@ -284,7 +284,16 @@ export function SingleDatePicker({
 
   function openCalendar() {
     if (disabled) return;
-    const focusDate = parseIso(value) ?? parseIso(todayIso);
+
+    let focusIso = value.trim();
+    if (!focusIso || (min && focusIso < min) || (max && focusIso > max)) {
+      // Prefer the nearest bound when "today" is outside the allowed range (e.g. DOB max).
+      if (max && todayIso > max) focusIso = max;
+      else if (min && todayIso < min) focusIso = min;
+      else focusIso = todayIso;
+    }
+
+    const focusDate = parseIso(focusIso);
     if (focusDate) {
       setViewYear(focusDate.y);
       setViewMonth(focusDate.m - 1);
