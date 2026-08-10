@@ -187,7 +187,9 @@ export function RegistrationLookup({
                 Category
               </dt>
               <dd className={isSidebar ? "registration-sidebar-text" : undefined}>
-                {conference.registration.fees[lookupQuery.data.category].label}
+                {(conference.registration.fees as Record<string, { label?: string }>)[
+                  lookupQuery.data.category
+                ]?.label ?? lookupQuery.data.category}
               </dd>
             </div>
             <div className="flex justify-between gap-4 align-items-center">

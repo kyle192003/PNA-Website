@@ -3,9 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   lookupRegistration,
-  submitGroupRegistration,
   submitRegistration,
-  type GroupMemberInput,
   type RegistrationInput,
 } from "@/lib/api/registrations";
 import { queryKeys } from "@/lib/query-keys";
@@ -13,12 +11,6 @@ import { queryKeys } from "@/lib/query-keys";
 export function useSubmitRegistration() {
   return useMutation({
     mutationFn: submitRegistration,
-  });
-}
-
-export function useSubmitGroupRegistration() {
-  return useMutation({
-    mutationFn: submitGroupRegistration,
   });
 }
 
@@ -35,4 +27,4 @@ export function useRegistrationLookup(
   });
 }
 
-export type { RegistrationInput, GroupMemberInput };
+export type { RegistrationInput };

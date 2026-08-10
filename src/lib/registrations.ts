@@ -2,22 +2,28 @@ import { promises as fs } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { v4 as uuidv4 } from "uuid";
-import { conference, type RegistrationCategory } from "@/lib/conference";
+import type { RegistrationCategory } from "@/lib/conference";
 import { getEventById } from "@/lib/events";
 import {
-  resolveFeeTier,
-  resolvePaymentAmount,
+  resolveAppliedFee,
   type FeeTier,
 } from "@/lib/registration-fees";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import type {
   AdminStats,
+  AppliedFeeKey,
   CheckInStatus,
+  FoodPreference,
   GroupRegistrationInput,
+  MembershipType,
   PaymentStatus,
+  RegistrationGroupMemberNote,
   RegistrationGroupRole,
   RegistrationInput,
+  RegistrationModeChoice,
+  RegistrationRateChoice,
   RegistrationRecord,
+  SponsorConsent,
 } from "@/lib/types/admin";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -38,29 +44,113 @@ function createCheckInToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-function deriveLegacyPayment(
-  raw: RegistrationRecord
-): { feeTier: FeeTier; paymentAmount: number } {
-  const category = (raw.category in conference.registration.fees
-    ? raw.category
-    : "member") as RegistrationCategory;
-  const feeTier: FeeTier = raw.feeTier === "regular" ? "regular" : "early";
+function deriveLegacyPayment(raw: RegistrationRecord): {
+  feeTier: FeeTier;
+  paymentAmount: number;
+  appliedFeeKey: AppliedFeeKey | "";
+  feeLabel: string;
+  registrationRate: RegistrationRateChoice | "";
+} {
   const paymentAmount =
     typeof raw.paymentAmount === "number" && Number.isFinite(raw.paymentAmount)
       ? raw.paymentAmount
-      : resolvePaymentAmount(category, feeTier, null);
-  return { feeTier, paymentAmount };
+      : 0;
+
+  if (raw.appliedFeeKey === "earlyBird" || raw.appliedFeeKey === "regular" || raw.appliedFeeKey === "seniorPwd") {
+    return {
+      feeTier: raw.appliedFeeKey === "earlyBird" ? "early" : "regular",
+      paymentAmount,
+      appliedFeeKey: raw.appliedFeeKey,
+      feeLabel: raw.feeLabel || raw.appliedFeeKey,
+      registrationRate:
+        raw.registrationRate === "seniorPwd" || raw.registrationRate === "regular"
+          ? raw.registrationRate
+          : raw.appliedFeeKey === "seniorPwd"
+            ? "seniorPwd"
+            : "regular",
+    };
+  }
+
+  const feeTier: FeeTier = raw.feeTier === "regular" ? "regular" : "early";
+  return {
+    feeTier,
+    paymentAmount,
+    appliedFeeKey: "",
+    feeLabel: raw.feeLabel || String(raw.category || ""),
+    registrationRate:
+      raw.registrationRate === "seniorPwd" || raw.registrationRate === "regular"
+        ? raw.registrationRate
+        : "",
+  };
+}
+
+function normalizeGroupMembersNote(raw: unknown): RegistrationGroupMemberNote[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    const row = (item ?? {}) as Partial<RegistrationGroupMemberNote>;
+    return {
+      lastName: row.lastName?.trim() ?? "",
+      firstName: row.firstName?.trim() ?? "",
+      middleName: row.middleName?.trim() ?? "",
+      email: row.email?.trim() ?? "",
+      phone: row.phone?.trim() ?? "",
+      dateOfBirth: row.dateOfBirth?.trim() ?? "",
+      prcLicenseNumber: row.prcLicenseNumber?.trim() ?? "",
+      prcInitialRegistrationDate: row.prcInitialRegistrationDate?.trim() ?? "",
+      prcExpirationDate: row.prcExpirationDate?.trim() ?? "",
+      foodPreference: (row.foodPreference as FoodPreference) || "regular",
+      foodAllergyNote: row.foodAllergyNote?.trim() ?? "",
+    };
+  });
 }
 
 function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
   const now = raw.createdAt ?? new Date().toISOString();
-  const { feeTier, paymentAmount } = deriveLegacyPayment(raw);
+  const derived = deriveLegacyPayment(raw);
+  const middleName =
+    raw.middleName?.trim() ||
+    (raw.middleInitial ? `${raw.middleInitial.trim().replace(/\./g, "").toUpperCase()}.` : "");
+
   return {
     ...raw,
     eventId: raw.eventId ?? null,
     middleInitial: raw.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
-    feeTier,
-    paymentAmount,
+    middleName,
+    dateOfBirth: raw.dateOfBirth ?? "",
+    age: typeof raw.age === "number" && Number.isFinite(raw.age) ? raw.age : null,
+    gender: raw.gender ?? "",
+    institutionAddress: raw.institutionAddress ?? raw.address ?? "",
+    membershipType: (raw.membershipType as MembershipType | "") || "",
+    pnaIdNumber: raw.pnaIdNumber ?? "",
+    pnaIdUrl: raw.pnaIdUrl ?? null,
+    pnaZone: raw.pnaZone ?? "",
+    pnaChapter: raw.pnaChapter ?? "",
+    prcLicenseNumber: raw.prcLicenseNumber ?? "",
+    prcInitialRegistrationDate: raw.prcInitialRegistrationDate ?? "",
+    prcExpirationDate: raw.prcExpirationDate ?? "",
+    prcIdUrl: raw.prcIdUrl ?? null,
+    registrationMode: (raw.registrationMode as RegistrationModeChoice) || "single",
+    registrationRate: derived.registrationRate,
+    appliedFeeKey: derived.appliedFeeKey,
+    feeLabel: derived.feeLabel,
+    seniorPwdIdNumber: raw.seniorPwdIdNumber ?? "",
+    seniorPwdIdUrl: raw.seniorPwdIdUrl ?? null,
+    groupMembersNote: normalizeGroupMembersNote(raw.groupMembersNote),
+    bir2303Url: raw.bir2303Url ?? null,
+    bir2307Url: raw.bir2307Url ?? null,
+    foodPreference: (raw.foodPreference as FoodPreference | "") || "",
+    foodAllergyNote: raw.foodAllergyNote ?? "",
+    sponsorConsent: (raw.sponsorConsent as SponsorConsent | "") || "",
+    dataPrivacyConsent: Boolean(raw.dataPrivacyConsent ?? raw.agreeToTerms),
+    category: (raw.category as RegistrationCategory) || "regular",
+    feeTier: derived.feeTier,
+    paymentAmount: derived.paymentAmount,
+    address: raw.address ?? "",
+    city: raw.city ?? "",
+    province: raw.province ?? "",
+    dietaryRequirements: raw.dietaryRequirements ?? "",
+    specialNeeds: raw.specialNeeds ?? "",
+    agreeToTerms: Boolean(raw.agreeToTerms ?? raw.dataPrivacyConsent),
     paymentStatus: raw.paymentStatus ?? "pending",
     receiptUrl: raw.receiptUrl ?? null,
     receiptUploadedAt: raw.receiptUploadedAt ?? null,
@@ -145,15 +235,14 @@ function generateReferenceNumber(existing: RegistrationRecord[]): string {
   return reference;
 }
 
-/** Server-authoritative fee tier: clients may choose regular during early bird, never early after deadline. */
-function resolveTrustedFeeTier(
-  requested: FeeTier | "" | undefined,
-  event: Awaited<ReturnType<typeof getEventById>>
-): FeeTier {
-  const serverTier = resolveFeeTier(event);
-  if (requested === "regular") return "regular";
-  if (requested === "early" && serverTier === "early") return "early";
-  return serverTier;
+/** Count registrations that consumed an early-bird slot for an event. */
+export async function countEarlyBirdUsed(eventId?: string | null): Promise<number> {
+  const registrations = await readRegistrations();
+  return registrations.filter((r) => {
+    if (eventId && r.eventId !== eventId) return false;
+    if (!eventId && r.eventId) return false;
+    return r.appliedFeeKey === "earlyBird";
+  }).length;
 }
 
 function allocateCheckInToken(existing: RegistrationRecord[]): string {
@@ -167,44 +256,75 @@ function allocateCheckInToken(existing: RegistrationRecord[]): string {
 function buildRegistrationRecord(
   input: RegistrationInput,
   options: {
-    feeTier: FeeTier;
+    appliedFeeKey: AppliedFeeKey;
+    feeLabel: string;
     paymentAmount: number;
-    groupId: string | null;
-    groupRole: RegistrationGroupRole | null;
-    groupSize: number | null;
+    feeTier: FeeTier;
     existing: RegistrationRecord[];
   }
 ): RegistrationRecord {
   const now = new Date().toISOString();
+  const middleName = input.middleName?.trim() || input.middleInitial?.trim() || "";
+  const middleInitial =
+    input.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ||
+    middleName.slice(0, 1).toUpperCase();
+
   return {
     id: uuidv4(),
     referenceNumber: generateReferenceNumber(options.existing),
     eventId: input.eventId ?? null,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
-    middleInitial: input.middleInitial?.trim().replace(/\./g, "").slice(0, 1).toUpperCase() ?? "",
+    middleInitial,
+    middleName,
     email: input.email.trim().toLowerCase(),
     phone: input.phone.trim(),
+    dateOfBirth: input.dateOfBirth.trim(),
+    age: typeof input.age === "number" && Number.isFinite(input.age) ? input.age : null,
+    gender: input.gender.trim(),
     organization: input.organization.trim(),
+    institutionAddress: input.institutionAddress.trim(),
     position: input.position.trim(),
-    category: input.category,
+    membershipType: input.membershipType,
+    pnaIdNumber: input.pnaIdNumber.trim(),
+    pnaIdUrl: null,
+    pnaZone: input.pnaZone.trim(),
+    pnaChapter: input.pnaChapter.trim(),
+    prcLicenseNumber: input.prcLicenseNumber.trim(),
+    prcInitialRegistrationDate: input.prcInitialRegistrationDate.trim(),
+    prcExpirationDate: input.prcExpirationDate.trim(),
+    prcIdUrl: null,
+    registrationMode: input.registrationMode,
+    registrationRate: input.registrationRate,
+    appliedFeeKey: options.appliedFeeKey,
+    feeLabel: options.feeLabel,
+    seniorPwdIdNumber: input.seniorPwdIdNumber?.trim() ?? "",
+    seniorPwdIdUrl: null,
+    groupMembersNote: normalizeGroupMembersNote(input.groupMembersNote),
+    bir2303Url: null,
+    bir2307Url: null,
+    foodPreference: input.foodPreference,
+    foodAllergyNote: input.foodAllergyNote?.trim() ?? "",
+    sponsorConsent: input.sponsorConsent,
+    dataPrivacyConsent: Boolean(input.dataPrivacyConsent),
+    category: options.appliedFeeKey,
     feeTier: options.feeTier,
     paymentAmount: options.paymentAmount,
-    address: input.address.trim(),
-    city: input.city.trim(),
-    province: input.province.trim(),
-    dietaryRequirements: input.dietaryRequirements?.trim() ?? "",
+    address: input.institutionAddress.trim(),
+    city: input.city?.trim() ?? "",
+    province: input.province?.trim() ?? "",
+    dietaryRequirements: input.foodPreference,
     specialNeeds: input.specialNeeds?.trim() ?? "",
-    agreeToTerms: input.agreeToTerms,
+    agreeToTerms: Boolean(input.dataPrivacyConsent ?? input.agreeToTerms),
     paymentStatus: "pending",
     receiptUrl: null,
     receiptUploadedAt: null,
-    paymentReference: "",
+    paymentReference: input.paymentReference.trim(),
     paymentNotes: "",
     adminNotes: "",
-    groupId: options.groupId,
-    groupRole: options.groupRole,
-    groupSize: options.groupSize,
+    groupId: null,
+    groupRole: null,
+    groupSize: null,
     checkInToken: allocateCheckInToken(options.existing),
     checkInStatus: "pending",
     checkedInAt: null,
@@ -247,16 +367,25 @@ export async function createRegistration(
   const registrations = await readRegistrations();
   assertEmailsAvailable([input.email], registrations);
 
+  if (input.registrationRate === "seniorPwd" && !input.seniorPwdIdNumber?.trim()) {
+    throw new Error("Senior Citizen/PWD ID number is required for this rate.");
+  }
+  if (!input.dataPrivacyConsent && !input.agreeToTerms) {
+    throw new Error("Data privacy consent is required.");
+  }
+  if (!input.paymentReference?.trim()) {
+    throw new Error("Payment reference number is required.");
+  }
+
   const event = input.eventId ? await getEventById(input.eventId) : null;
-  const feeTier = resolveTrustedFeeTier(input.feeTier, event);
-  const paymentAmount = resolvePaymentAmount(input.category, feeTier, event);
+  const earlyBirdUsed = await countEarlyBirdUsed(input.eventId ?? null);
+  const applied = resolveAppliedFee(input.registrationRate, earlyBirdUsed, event);
 
   const registration = buildRegistrationRecord(input, {
-    feeTier,
-    paymentAmount,
-    groupId: null,
-    groupRole: null,
-    groupSize: null,
+    appliedFeeKey: applied.key,
+    feeLabel: applied.label,
+    paymentAmount: applied.amount,
+    feeTier: applied.key === "earlyBird" ? "early" : "regular",
     existing: registrations,
   });
 
@@ -265,76 +394,41 @@ export async function createRegistration(
   return registration;
 }
 
+/**
+ * Group mode is now a single registration that lists other members for reference.
+ * Each attendee should still submit their own form; this helper keeps API compat.
+ */
 export async function createGroupRegistrations(
   input: GroupRegistrationInput
 ): Promise<RegistrationRecord[]> {
   const members = input.members ?? [];
-  const groupSize = 1 + members.length;
-
   if (members.length < 1) {
     throw new Error("Group registration requires at least one additional participant.");
   }
-  if (groupSize > MAX_GROUP_SIZE) {
+  if (1 + members.length > MAX_GROUP_SIZE) {
     throw new Error(`Group registration allows up to ${MAX_GROUP_SIZE} participants.`);
   }
 
-  const registrations = await readRegistrations();
-  const allEmails = [input.primary.email, ...members.map((m) => m.email)];
-  assertEmailsAvailable(allEmails, registrations);
-
-  const event = input.primary.eventId ? await getEventById(input.primary.eventId) : null;
-  const feeTier = resolveTrustedFeeTier(input.primary.feeTier, event);
-  const paymentAmount = resolvePaymentAmount(input.primary.category, feeTier, event);
-
-  const groupId = uuidv4();
-  const created: RegistrationRecord[] = [];
-  const working = [...registrations];
-
-  const primary = buildRegistrationRecord(input.primary, {
-    feeTier,
-    paymentAmount,
-    groupId,
-    groupRole: "primary",
-    groupSize,
-    existing: working,
-  });
-  working.push(primary);
-  created.push(primary);
-
-  for (const member of members) {
-    const memberInput: RegistrationInput = {
-      firstName: member.firstName,
+  const primaryInput: RegistrationInput = {
+    ...input.primary,
+    registrationMode: "group",
+    groupMembersNote: members.map((member) => ({
       lastName: member.lastName,
-      middleInitial: member.middleInitial,
+      firstName: member.firstName,
+      middleName: member.middleName ?? member.middleInitial ?? "",
       email: member.email,
       phone: member.phone,
-      organization: input.primary.organization,
-      position: input.primary.position,
-      category: input.primary.category,
-      feeTier,
-      paymentAmount,
-      address: input.primary.address,
-      city: input.primary.city,
-      province: input.primary.province,
-      dietaryRequirements: "",
-      specialNeeds: "",
-      agreeToTerms: input.primary.agreeToTerms,
-      eventId: input.primary.eventId,
-    };
-    const record = buildRegistrationRecord(memberInput, {
-      feeTier,
-      paymentAmount,
-      groupId,
-      groupRole: "member",
-      groupSize,
-      existing: working,
-    });
-    working.push(record);
-    created.push(record);
-  }
+      dateOfBirth: member.dateOfBirth ?? "",
+      prcLicenseNumber: member.prcLicenseNumber ?? "",
+      prcInitialRegistrationDate: member.prcInitialRegistrationDate ?? "",
+      prcExpirationDate: member.prcExpirationDate ?? "",
+      foodPreference: member.foodPreference ?? "regular",
+      foodAllergyNote: member.foodAllergyNote ?? "",
+    })),
+  };
 
-  await writeRegistrations(working);
-  return created;
+  const registration = await createRegistration(primaryInput);
+  return [registration];
 }
 
 export async function getRegistrationsByGroupId(
@@ -387,6 +481,11 @@ export async function updateRegistrationPayment(
     paymentReference?: string;
     receiptUrl?: string | null;
     receiptUploadedAt?: string | null;
+    pnaIdUrl?: string | null;
+    prcIdUrl?: string | null;
+    bir2303Url?: string | null;
+    bir2307Url?: string | null;
+    seniorPwdIdUrl?: string | null;
   }
 ): Promise<RegistrationRecord | null> {
   const registrations = await readRegistrations();
@@ -417,6 +516,11 @@ export async function updateRegistrationPaymentCascading(
     paymentReference?: string;
     receiptUrl?: string | null;
     receiptUploadedAt?: string | null;
+    pnaIdUrl?: string | null;
+    prcIdUrl?: string | null;
+    bir2303Url?: string | null;
+    bir2307Url?: string | null;
+    seniorPwdIdUrl?: string | null;
   }
 ): Promise<RegistrationRecord[]> {
   const registrations = await readRegistrations();

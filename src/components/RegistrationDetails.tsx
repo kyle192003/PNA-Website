@@ -1,17 +1,16 @@
 import { conference } from "@/lib/conference";
+import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
 import { RegistrationLookup } from "@/components/RegistrationLookup";
 
 const inclusions = [
+  "2 snacks, lunch and conference kit for the 3 day event",
   "Access to all plenary and parallel sessions",
-  "Conference materials and kit",
-  "Lunch and refreshments (3 days)",
   "Certificate of participation",
-  "CPD credit units (where applicable)",
-  "Gala dinner admission (Day 2)",
 ];
 
 export function RegistrationDetails({ variant = "default" }: { variant?: "default" | "sidebar" }) {
   const isSidebar = variant === "sidebar";
+  const fees = normalizeEventFees(conference.registration.fees);
 
   return (
     <div className={`d-flex flex-column ${isSidebar ? "gap-4 registration-details-sidebar" : "gap-3"}`}>
@@ -20,24 +19,23 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
           Official Registration Fees
         </h3>
         <div className="d-flex flex-column gap-3">
-          {Object.entries(conference.registration.fees).map(([key, fee]) => (
+          {([fees.earlyBird, fees.regular, fees.seniorPwd] as const).map((fee) => (
             <div
-              key={key}
+              key={fee.label}
               className={`pb-3 ${isSidebar ? "registration-sidebar-fee" : "border-bottom border-green-100 last:border-0 last:pb-0"}`}
             >
               <p className={`fw-medium small mb-1 ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}>
                 {fee.label}
               </p>
+              {fee.caption ? (
+                <p className={`small mb-1 ${isSidebar ? "registration-sidebar-muted" : "text-muted"}`}>
+                  {fee.caption}
+                </p>
+              ) : null}
               <div className="d-flex justify-content-between small">
-                <span className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Early Bird</span>
+                <span className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Amount</span>
                 <span className={`fw-bold ${isSidebar ? "text-green-100" : "text-accent"}`}>
-                  ₱{fee.early.toLocaleString()}
-                </span>
-              </div>
-              <div className="d-flex justify-content-between small">
-                <span className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Regular</span>
-                <span className={isSidebar ? "registration-sidebar-text" : "text-ink"}>
-                  ₱{fee.regular.toLocaleString()}
+                  {formatPeso(fee.amount)}
                 </span>
               </div>
             </div>
@@ -51,15 +49,9 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
         </h3>
         <dl className="mb-0 small">
           <div className="mb-2">
-            <dt className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Early Bird Deadline</dt>
+            <dt className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Registration Deadline</dt>
             <dd className={`fw-semibold mb-0 ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}>
-              {conference.registration.earlyBirdDeadline}
-            </dd>
-          </div>
-          <div className="mb-2">
-            <dt className={isSidebar ? "registration-sidebar-muted" : "text-muted"}>Regular Registration Deadline</dt>
-            <dd className={`fw-semibold mb-0 ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}>
-              {conference.registration.regularDeadline}
+              {conference.registration.registrationClosesAt}
             </dd>
           </div>
           <div>

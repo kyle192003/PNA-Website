@@ -2014,6 +2014,33 @@ body.pna-mobile-nav-open {
   color: #14532d;
 }
 
+.registration-sidebar-fee-caption {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.registration-sidebar-fee-amount {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.95rem;
+  color: #14532d;
+}
+
+.registration-sidebar-info-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  color: #3f6b52;
+  line-height: 1.45;
+}
+
+.registration-sidebar-info-list--ordered {
+  padding-left: 1.2rem;
+}
+
 .registration-sidebar-fee-prices {
   display: grid;
   gap: 0.2rem;

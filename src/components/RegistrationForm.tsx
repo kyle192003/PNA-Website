@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { conference, type RegistrationCategory } from "@/lib/conference";
-import {
-  formatPeso,
-  resolveFeeTier,
-  resolvePaymentAmount,
-} from "@/lib/registration-fees";
-import type { FeeTier } from "@/lib/types/admin";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { conference, PNA_ZONES } from "@/lib/conference";
+import { formatPeso } from "@/lib/registration-fees";
+import type {
+  FoodPreference,
+  MembershipType,
+  RegistrationRateChoice,
+  SponsorConsent,
+} from "@/lib/types/admin";
 import {
   getEmailValidationError,
   getNameLengthError,
@@ -25,11 +26,11 @@ import {
   type RegistrationMode,
 } from "@/lib/registration-draft";
 import {
-  useSubmitGroupRegistration,
-  useSubmitRegistration,
-  type RegistrationInput,
-} from "@/hooks/use-registrations";
-import { submitReceipt } from "@/lib/api/registrations";
+  fetchEarlyBirdStatus,
+  submitReceipt,
+  submitRegistration,
+  submitRegistrationDocuments,
+} from "@/lib/api/registrations";
 import {
   RegistrationSuccessModal,
   type RegistrationSuccessDetails,
@@ -38,43 +39,161 @@ import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
 import { MessageDialog } from "@/components/ui/MessageDialog";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
-import { PnaSelect } from "@/components/ui/PnaSelect";
-import { PhLocationSuggest } from "@/components/PhLocationSuggest";
+import { PnaSelect, type PnaSelectOption } from "@/components/ui/PnaSelect";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 import type { RegistrationPaymentBreakdown } from "@/components/RegistrationSidebar";
-import type { PhPlaceSuggestion } from "@/lib/ph-locations";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import {
   REGISTRATION_STEPS,
   type RegistrationFormPhase,
+  type RegistrationStepLabel,
   type RegistrationStepState,
   type RegistrationStepStatus,
 } from "@/lib/registration-steps";
 
-interface FormData extends RegistrationInput {
-  category: RegistrationCategory | "";
-  feeTier: FeeTier | "";
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+interface FormData {
+  lastName: string;
+  firstName: string;
+  middleName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  gender: string;
+  organization: string;
+  institutionAddress: string;
+  position: string;
+
+  membershipType: MembershipType | "";
+  pnaIdNumber: string;
+  pnaZone: string;
+  pnaChapter: string;
+
+  prcLicenseNumber: string;
+  prcInitialRegistrationDate: string;
+  prcExpirationDate: string;
+
+  registrationMode: RegistrationMode;
+  registrationRate: RegistrationRateChoice | "";
+  seniorPwdIdNumber: string;
+
+  foodPreference: FoodPreference | "";
+  foodAllergyNote: string;
+
+  sponsorConsent: SponsorConsent | "";
+  dataPrivacyConsent: boolean;
 }
 
-const initialFormData: FormData = {
-  firstName: "",
-  lastName: "",
-  middleInitial: "",
-  email: "",
-  phone: "",
-  organization: "",
-  position: "",
-  category: "",
-  feeTier: "",
-  address: "",
-  city: "",
-  province: "",
-  dietaryRequirements: "",
-  specialNeeds: "",
-  agreeToTerms: false,
-};
+interface FileFields {
+  pnaIdFile: File | null;
+  prcIdFile: File | null;
+  seniorPwdIdFile: File | null;
+  receiptFile: File | null;
+  bir2303File: File | null;
+  bir2307File: File | null;
+}
 
 type FormFieldKey = keyof FormData;
+
+type ErrorKey =
+  | FormFieldKey
+  | "pnaIdFile"
+  | "prcIdFile"
+  | "seniorPwdIdFile"
+  | "receiptFile"
+  | "bir2303File"
+  | "bir2307File"
+  | "paymentReference"
+  | "members";
+
+type Errors = Partial<Record<ErrorKey, string>>;
+
+const initialFormData: FormData = {
+  lastName: "",
+  firstName: "",
+  middleName: "",
+  email: "",
+  phone: "",
+  dateOfBirth: "",
+  gender: "",
+  organization: "",
+  institutionAddress: "",
+  position: "",
+
+  membershipType: "",
+  pnaIdNumber: "",
+  pnaZone: "",
+  pnaChapter: "",
+
+  prcLicenseNumber: "",
+  prcInitialRegistrationDate: "",
+  prcExpirationDate: "",
+
+  registrationMode: "single",
+  registrationRate: "",
+  seniorPwdIdNumber: "",
+
+  foodPreference: "",
+  foodAllergyNote: "",
+
+  sponsorConsent: "",
+  dataPrivacyConsent: false,
+};
+
+const initialFiles: FileFields = {
+  pnaIdFile: null,
+  prcIdFile: null,
+  seniorPwdIdFile: null,
+  receiptFile: null,
+  bir2303File: null,
+  bir2307File: null,
+};
+
+const GENDER_OPTIONS: PnaSelectOption[] = [
+  { value: "", label: "Select gender" },
+  { value: "Male", label: "Male" },
+  { value: "Female", label: "Female" },
+  { value: "Prefer not to say", label: "Prefer not to say" },
+];
+
+const MEMBERSHIP_TYPE_OPTIONS: PnaSelectOption[] = [
+  { value: "", label: "Select membership type" },
+  { value: "lifetime", label: "Lifetime Member" },
+  { value: "regular", label: "Regular Member" },
+  { value: "non_member", label: "Non-Member" },
+];
+
+const PNA_ZONE_OPTIONS: PnaSelectOption[] = [
+  { value: "", label: "Select PNA zone" },
+  ...PNA_ZONES.map((zone) => ({ value: zone, label: zone })),
+];
+
+const FOOD_PREFERENCE_OPTIONS: PnaSelectOption[] = [
+  { value: "", label: "Select food preference" },
+  { value: "regular", label: "Regular" },
+  { value: "vegetarian", label: "Vegetarian" },
+  { value: "no_pork", label: "No Pork" },
+  { value: "allergy", label: "Food Allergy" },
+];
+
+function calculateAge(dateOfBirth: string): number | null {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+function isValidDateString(value: string): boolean {
+  if (!value) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
 
 function getFieldError(field: FormFieldKey, data: FormData): string | undefined {
   switch (field) {
@@ -82,117 +201,259 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
       return getNameLengthError(data.lastName, "lastName", "Surname") ?? undefined;
     case "firstName":
       return getNameLengthError(data.firstName, "firstName", "First name") ?? undefined;
+    case "middleName":
+      return data.middleName.trim() ? undefined : "Middle name is required";
     case "email":
       return getEmailValidationError(data.email) ?? undefined;
     case "phone":
       return getRegistrationPhoneValidationError(data.phone) ?? undefined;
+    case "dateOfBirth":
+      if (!data.dateOfBirth) return "Date of birth is required";
+      if (!isValidDateString(data.dateOfBirth)) return "Enter a valid date of birth";
+      if (new Date(data.dateOfBirth) > new Date()) return "Date of birth cannot be in the future";
+      return undefined;
+    case "gender":
+      return data.gender.trim() ? undefined : "Please select a gender";
     case "organization":
-      return data.organization.trim() ? undefined : "Organization is required";
+      return data.organization.trim() ? undefined : "Institution / organization is required";
+    case "institutionAddress":
+      return data.institutionAddress.trim() ? undefined : "Institution address is required";
     case "position":
       return data.position.trim() ? undefined : "Position/title is required";
-    case "category":
-      return data.category ? undefined : "Please select a registration category";
-    case "feeTier":
-      return data.feeTier ? undefined : "Please choose your payment amount";
-    case "address":
-      return data.address.trim() ? undefined : "Address is required";
-    case "city":
-      return data.city.trim() ? undefined : "City is required";
-    case "province":
-      return data.province.trim() ? undefined : "Province is required";
-    case "agreeToTerms":
-      return data.agreeToTerms ? undefined : "You must agree to the terms and conditions";
+    case "membershipType":
+      return data.membershipType ? undefined : "Please select a membership type";
+    case "pnaIdNumber":
+      return data.pnaIdNumber.trim() ? undefined : "PNA ID number is required";
+    case "pnaZone":
+      return data.pnaZone ? undefined : "Please select a PNA zone";
+    case "pnaChapter":
+      return data.pnaChapter.trim() ? undefined : "PNA chapter is required";
+    case "prcLicenseNumber":
+      return data.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
+    case "prcInitialRegistrationDate":
+      if (!data.prcInitialRegistrationDate) return "Initial registration date is required";
+      if (!isValidDateString(data.prcInitialRegistrationDate)) return "Enter a valid date";
+      return undefined;
+    case "prcExpirationDate":
+      if (!data.prcExpirationDate) return "Expiration date is required";
+      if (!isValidDateString(data.prcExpirationDate)) return "Enter a valid date";
+      if (
+        isValidDateString(data.prcInitialRegistrationDate) &&
+        new Date(data.prcExpirationDate) < new Date(data.prcInitialRegistrationDate)
+      ) {
+        return "Expiration date must be after the initial registration date";
+      }
+      return undefined;
+    case "registrationMode":
+      return data.registrationMode ? undefined : "Please select a registration type";
+    case "registrationRate":
+      return data.registrationRate ? undefined : "Please choose your registration rate";
+    case "seniorPwdIdNumber":
+      if (data.registrationRate !== "seniorPwd") return undefined;
+      return data.seniorPwdIdNumber.trim()
+        ? undefined
+        : "Senior Citizen / PWD ID number is required";
+    case "foodPreference":
+      return data.foodPreference ? undefined : "Please select a food preference";
+    case "foodAllergyNote":
+      if (data.foodPreference !== "allergy") return undefined;
+      return data.foodAllergyNote.trim() ? undefined : "Please describe the food allergy";
+    case "sponsorConsent":
+      return data.sponsorConsent ? undefined : "Please choose an option";
+    case "dataPrivacyConsent":
+      return data.dataPrivacyConsent ? undefined : "You must consent to data processing";
     default:
       return undefined;
   }
 }
 
-const LIVE_VALIDATE_FIELDS: FormFieldKey[] = [
+const PERSONAL_FIELDS: FormFieldKey[] = [
   "lastName",
   "firstName",
+  "middleName",
   "email",
   "phone",
+  "dateOfBirth",
+  "gender",
   "organization",
+  "institutionAddress",
   "position",
-  "category",
-  "feeTier",
-  "address",
-  "city",
-  "province",
-  "agreeToTerms",
 ];
+
+const MEMBERSHIP_FIELDS: FormFieldKey[] = ["membershipType", "pnaIdNumber", "pnaZone", "pnaChapter"];
+
+const LICENSE_FIELDS: FormFieldKey[] = [
+  "prcLicenseNumber",
+  "prcInitialRegistrationDate",
+  "prcExpirationDate",
+];
+
+const PAYMENT_FIELDS: FormFieldKey[] = ["registrationMode", "registrationRate", "foodPreference"];
+
+const REVIEW_FIELDS: FormFieldKey[] = ["sponsorConsent", "dataPrivacyConsent"];
 
 const DETAILS_VALIDATE_FIELDS: FormFieldKey[] = [
-  "lastName",
-  "firstName",
-  "email",
-  "phone",
-  "organization",
-  "position",
-  "category",
-  "feeTier",
-  "address",
-  "city",
-  "province",
+  ...PERSONAL_FIELDS,
+  ...MEMBERSHIP_FIELDS,
+  ...LICENSE_FIELDS,
 ];
 
-const SECTION_FIELDS: Record<(typeof REGISTRATION_STEPS)[number], FormFieldKey[]> = {
-  Personal: ["lastName", "firstName", "email", "phone"],
-  Professional: ["organization", "position", "category", "feeTier"],
-  Address: ["address", "city", "province"],
-  Payment: [],
-  Review: ["agreeToTerms"],
-};
+const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
+  "lastName",
+  "firstName",
+  "middleName",
+  "email",
+  "phone",
+  "dateOfBirth",
+  "prcLicenseNumber",
+  "prcInitialRegistrationDate",
+  "prcExpirationDate",
+  "foodPreference",
+  "foodAllergyNote",
+];
+
+function getMemberFieldError(
+  member: GroupMemberDraft,
+  field: keyof GroupMemberDraft
+): string | undefined {
+  switch (field) {
+    case "lastName":
+      return getNameLengthError(member.lastName, "lastName", "Surname") ?? undefined;
+    case "firstName":
+      return getNameLengthError(member.firstName, "firstName", "First name") ?? undefined;
+    case "middleName":
+      return member.middleName.trim() ? undefined : "Middle name is required";
+    case "email":
+      return getEmailValidationError(member.email) ?? undefined;
+    case "phone":
+      return getRegistrationPhoneValidationError(member.phone) ?? undefined;
+    case "dateOfBirth":
+      return member.dateOfBirth ? undefined : "Date of birth is required";
+    case "prcLicenseNumber":
+      return member.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
+    case "prcInitialRegistrationDate":
+      return member.prcInitialRegistrationDate ? undefined : "Initial registration date is required";
+    case "prcExpirationDate":
+      return member.prcExpirationDate ? undefined : "Expiration date is required";
+    case "foodPreference":
+      return member.foodPreference ? undefined : "Food preference is required";
+    case "foodAllergyNote":
+      if (member.foodPreference !== "allergy") return undefined;
+      return member.foodAllergyNote.trim() ? undefined : "Please describe the food allergy";
+    default:
+      return undefined;
+  }
+}
+
+function computeMembersValid(members: GroupMemberDraft[], primaryEmail: string): boolean {
+  if (members.length < 1) return false;
+  const emails = [primaryEmail.trim().toLowerCase()];
+  for (const member of members) {
+    for (const field of MEMBER_VALIDATE_FIELDS) {
+      if (getMemberFieldError(member, field)) return false;
+    }
+    const email = member.email.trim().toLowerCase();
+    if (!email || emails.includes(email)) return false;
+    emails.push(email);
+  }
+  return true;
+}
 
 function getSectionStatus(
-  label: (typeof REGISTRATION_STEPS)[number],
+  label: RegistrationStepLabel,
   data: FormData,
   touched: Partial<Record<FormFieldKey, boolean>>,
-  receiptFile: File | null,
-  hasReceiptError: boolean,
+  files: FileFields,
+  paymentReference: string,
+  referenceConfirmed: boolean,
+  membersValid: boolean,
   phase: RegistrationFormPhase
 ): RegistrationStepStatus {
+  if (label === "Personal") {
+    const errs = PERSONAL_FIELDS.map((field) => getFieldError(field, data));
+    const isComplete = errs.every((error) => !error);
+    const anyTouched = PERSONAL_FIELDS.some((field) => touched[field]);
+    if (isComplete) return "complete";
+    if (anyTouched && errs.some(Boolean)) return "error";
+    return "pending";
+  }
+
+  if (label === "Membership") {
+    const errs = MEMBERSHIP_FIELDS.map((field) => getFieldError(field, data));
+    const fileOk = Boolean(files.pnaIdFile);
+    const isComplete = errs.every((error) => !error) && fileOk;
+    const anyTouched = MEMBERSHIP_FIELDS.some((field) => touched[field]) || fileOk;
+    if (isComplete) return "complete";
+    if (anyTouched && (errs.some(Boolean) || !fileOk)) return "error";
+    return "pending";
+  }
+
+  if (label === "License") {
+    const errs = LICENSE_FIELDS.map((field) => getFieldError(field, data));
+    const fileOk = Boolean(files.prcIdFile);
+    const isComplete = errs.every((error) => !error) && fileOk;
+    const anyTouched = LICENSE_FIELDS.some((field) => touched[field]) || fileOk;
+    if (isComplete) return "complete";
+    if (anyTouched && (errs.some(Boolean) || !fileOk)) return "error";
+    return "pending";
+  }
+
   if (label === "Payment") {
     if (phase === "details") return "pending";
-    if (hasReceiptError) return "error";
-    if (receiptFile) return "complete";
-    return "active";
+    const fields: FormFieldKey[] = [...PAYMENT_FIELDS];
+    if (data.registrationRate === "seniorPwd") fields.push("seniorPwdIdNumber");
+    if (data.foodPreference === "allergy") fields.push("foodAllergyNote");
+    const errs = fields.map((field) => getFieldError(field, data));
+    const receiptOk = Boolean(files.receiptFile);
+    const bir2303Ok = Boolean(files.bir2303File);
+    const refOk = paymentReference.trim().length >= 4 && referenceConfirmed;
+    const membersOk = data.registrationMode !== "group" || membersValid;
+    const isComplete = errs.every((error) => !error) && receiptOk && bir2303Ok && refOk && membersOk;
+    const anyTouched =
+      PAYMENT_FIELDS.some((field) => touched[field]) ||
+      receiptOk ||
+      paymentReference.trim().length > 0;
+    if (isComplete) return "complete";
+    if (anyTouched) return "error";
+    return "pending";
   }
 
-  if (label === "Review") {
-    if (phase === "details") return "pending";
-    if (data.agreeToTerms) return "complete";
-    if (touched.agreeToTerms && getFieldError("agreeToTerms", data)) return "error";
-    return receiptFile ? "active" : "pending";
-  }
-
-  const fields = SECTION_FIELDS[label];
-  const fieldErrors = fields.map((field) => getFieldError(field, data));
-  const hasError = fieldErrors.some(Boolean);
-  const isComplete = fieldErrors.every((error) => !error);
-  const anyTouched = fields.some((field) => touched[field]);
-
-  if (phase === "payment" && isComplete) return "complete";
+  // Review
+  if (phase === "details") return "pending";
+  const errs = REVIEW_FIELDS.map((field) => getFieldError(field, data));
+  const isComplete = errs.every((error) => !error);
+  const anyTouched = REVIEW_FIELDS.some((field) => touched[field]);
   if (isComplete) return "complete";
-  if (anyTouched && hasError) return "error";
+  if (anyTouched && errs.some(Boolean)) return "error";
   return "pending";
 }
 
 function buildStepStates(
   data: FormData,
   touched: Partial<Record<FormFieldKey, boolean>>,
-  receiptFile: File | null,
-  hasReceiptError: boolean,
+  files: FileFields,
+  paymentReference: string,
+  referenceConfirmed: boolean,
+  membersValid: boolean,
   phase: RegistrationFormPhase
 ): RegistrationStepState[] {
   const raw = REGISTRATION_STEPS.map((label) => ({
     label,
-    status: getSectionStatus(label, data, touched, receiptFile, hasReceiptError, phase),
+    status: getSectionStatus(
+      label,
+      data,
+      touched,
+      files,
+      paymentReference,
+      referenceConfirmed,
+      membersValid,
+      phase
+    ),
   }));
 
   let activeAssigned = false;
   return raw.map((step) => {
-    if (step.status === "complete" || step.status === "error" || step.status === "active") {
+    if (step.status === "complete" || step.status === "error") {
       return step;
     }
     if (!activeAssigned) {
@@ -202,7 +463,6 @@ function buildStepStates(
     return step;
   });
 }
-
 
 export function RegistrationForm({
   onCompleted,
@@ -220,7 +480,6 @@ export function RegistrationForm({
   eventId?: string | null;
 } = {}) {
   const [formData, setFormData] = useState<FormData>(initialFormData);
-  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("individual");
   const [members, setMembers] = useState<GroupMemberDraft[]>([]);
   const [memberErrors, setMemberErrors] = useState<
     Record<number, Partial<Record<keyof GroupMemberDraft, string>>>
@@ -228,82 +487,135 @@ export function RegistrationForm({
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showDraftRestored, setShowDraftRestored] = useState(false);
   const [formPhase, setFormPhase] = useState<RegistrationFormPhase>("details");
-  const [errors, setErrors] = useState<
-    Partial<Record<FormFieldKey | "receipt" | "paymentReference" | "members", string>>
-  >({});
+  const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState<Partial<Record<FormFieldKey, boolean>>>({});
+
+  const [pnaIdFile, setPnaIdFile] = useState<File | null>(null);
+  const [prcIdFile, setPrcIdFile] = useState<File | null>(null);
+  const [seniorPwdIdFile, setSeniorPwdIdFile] = useState<File | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [bir2303File, setBir2303File] = useState<File | null>(null);
+  const [bir2307File, setBir2307File] = useState<File | null>(null);
+
   const [paymentReference, setPaymentReference] = useState("");
   const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "unavailable">("idle");
   const [ocrMessage, setOcrMessage] = useState("");
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
+
+  const [earlyBird, setEarlyBird] = useState<{
+    used: number;
+    cap: number;
+    remaining: number;
+    earlyBirdAmount: number;
+    regularAmount: number;
+    seniorPwdAmount: number;
+  } | null>(null);
+
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [draftSavedNotice, setDraftSavedNotice] = useState(false);
+
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
-  const registrationMutation = useSubmitRegistration();
-  const groupRegistrationMutation = useSubmitGroupRegistration();
-  const isSubmitting = registrationMutation.isPending || groupRegistrationMutation.isPending;
+  const files: FileFields = useMemo(
+    () => ({ pnaIdFile, prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File }),
+    [pnaIdFile, prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File]
+  );
 
-  const headcount = registrationMode === "group" ? 1 + members.length : 1;
-  const unitFee =
-    formData.category && formData.feeTier
-      ? resolvePaymentAmount(
-          formData.category as RegistrationCategory,
-          formData.feeTier,
-          null
-        )
-      : 0;
+  const membersValid = useMemo(
+    () =>
+      formData.registrationMode !== "group" || computeMembersValid(members, formData.email),
+    [formData.registrationMode, members, formData.email]
+  );
+
+  const fallbackFees = conference.registration.fees;
+  const earlyBirdAmount = earlyBird?.earlyBirdAmount ?? fallbackFees.earlyBird.amount;
+  const regularAmount = earlyBird?.regularAmount ?? fallbackFees.regular.amount;
+  const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? fallbackFees.seniorPwd.amount;
+  const remaining = earlyBird?.remaining ?? 0;
+
+  const appliedFee = useMemo(() => {
+    if (!formData.registrationRate) return null;
+    if (formData.registrationRate === "seniorPwd") {
+      return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
+    }
+    if (remaining > 0) {
+      return { amount: earlyBirdAmount, label: fallbackFees.earlyBird.label };
+    }
+    return { amount: regularAmount, label: fallbackFees.regular.label };
+  }, [
+    formData.registrationRate,
+    remaining,
+    earlyBirdAmount,
+    regularAmount,
+    seniorPwdAmount,
+    fallbackFees,
+  ]);
+
+  const headcount = formData.registrationMode === "group" ? 1 + members.length : 1;
+  const unitFee = appliedFee?.amount ?? 0;
   const totalFee = unitFee * headcount;
 
   useEffect(() => {
     const draft = loadRegistrationDraft(eventId);
     if (draft) {
       setFormData({
-        firstName: draft.firstName,
         lastName: draft.lastName,
-        middleInitial: draft.middleInitial,
+        firstName: draft.firstName,
+        middleName: draft.middleName,
         email: draft.email,
         phone: toPhMobileLocalDigits(draft.phone),
+        dateOfBirth: draft.dateOfBirth,
+        gender: draft.gender,
         organization: draft.organization,
+        institutionAddress: draft.institutionAddress,
         position: draft.position,
-        category: draft.category,
-        feeTier: draft.feeTier || "",
-        address: draft.address,
-        city: draft.city,
-        province: draft.province,
-        dietaryRequirements: draft.dietaryRequirements,
-        specialNeeds: draft.specialNeeds,
-        agreeToTerms: draft.agreeToTerms,
+        membershipType: draft.membershipType,
+        pnaIdNumber: draft.pnaIdNumber,
+        pnaZone: draft.pnaZone,
+        pnaChapter: draft.pnaChapter,
+        prcLicenseNumber: draft.prcLicenseNumber,
+        prcInitialRegistrationDate: draft.prcInitialRegistrationDate,
+        prcExpirationDate: draft.prcExpirationDate,
+        registrationMode: draft.registrationMode,
+        registrationRate: draft.registrationRate,
+        seniorPwdIdNumber: draft.seniorPwdIdNumber,
+        foodPreference: draft.foodPreference,
+        foodAllergyNote: draft.foodAllergyNote,
+        sponsorConsent: draft.sponsorConsent,
+        dataPrivacyConsent: draft.dataPrivacyConsent,
       });
-      setRegistrationMode(draft.mode);
       setMembers(
-        draft.mode === "group"
+        draft.registrationMode === "group"
           ? draft.members.length > 0
-            ? draft.members.map((m) => ({
-                ...m,
-                phone: toPhMobileLocalDigits(m.phone),
-              }))
+            ? draft.members.map((m) => ({ ...m, phone: toPhMobileLocalDigits(m.phone) }))
             : [createEmptyGroupMember()]
           : []
       );
+      setPaymentReference(draft.paymentReference ?? "");
       setShowDraftRestored(true);
     } else {
       setFormData(initialFormData);
-      setRegistrationMode("individual");
       setMembers([]);
+      setPaymentReference("");
       setShowDraftRestored(false);
     }
 
+    setPnaIdFile(null);
+    setPrcIdFile(null);
+    setSeniorPwdIdFile(null);
     setReceiptFile(null);
+    setBir2303File(null);
+    setBir2307File(null);
+    setReferenceConfirmed(false);
+    setOcrStatus("idle");
+    setOcrMessage("");
     setErrors({});
     setMemberErrors({});
     setTouched({});
     setFormPhase("details");
-    registrationMutation.reset();
-    groupRegistrationMutation.reset();
+    setEarlyBird(null);
     setDraftLoaded(true);
   }, [eventId]);
 
@@ -312,23 +624,57 @@ export function RegistrationForm({
 
     const timeout = window.setTimeout(() => {
       saveRegistrationDraft(eventId, {
-        ...formData,
-        mode: registrationMode,
-        members: registrationMode === "group" ? members : [],
+        mode: formData.registrationMode,
+        lastName: formData.lastName,
+        firstName: formData.firstName,
+        middleName: formData.middleName,
+        email: formData.email,
+        phone: formData.phone,
+        dateOfBirth: formData.dateOfBirth,
+        age: String(calculateAge(formData.dateOfBirth) ?? ""),
+        gender: formData.gender,
+        organization: formData.organization,
+        institutionAddress: formData.institutionAddress,
+        position: formData.position,
+        membershipType: formData.membershipType,
+        pnaIdNumber: formData.pnaIdNumber,
+        pnaZone: formData.pnaZone,
+        pnaChapter: formData.pnaChapter,
+        prcLicenseNumber: formData.prcLicenseNumber,
+        prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
+        prcExpirationDate: formData.prcExpirationDate,
+        registrationMode: formData.registrationMode,
+        registrationRate: formData.registrationRate,
+        seniorPwdIdNumber: formData.seniorPwdIdNumber,
+        members: formData.registrationMode === "group" ? members : [],
+        foodPreference: formData.foodPreference,
+        foodAllergyNote: formData.foodAllergyNote,
+        sponsorConsent: formData.sponsorConsent,
+        dataPrivacyConsent: formData.dataPrivacyConsent,
+        paymentReference,
       });
     }, 400);
 
     return () => window.clearTimeout(timeout);
-  }, [draftLoaded, eventId, formData, registrationMode, members]);
+  }, [draftLoaded, eventId, formData, members, paymentReference]);
 
   useEffect(() => {
     if (!draftLoaded) return;
 
     const timeout = window.setTimeout(() => {
       setErrors((prev) => {
-        const next: Partial<Record<FormFieldKey | "receipt", string>> = { ...prev };
+        const next: Errors = { ...prev };
+        const allFields: FormFieldKey[] = [
+          ...PERSONAL_FIELDS,
+          ...MEMBERSHIP_FIELDS,
+          ...LICENSE_FIELDS,
+          ...PAYMENT_FIELDS,
+          "seniorPwdIdNumber",
+          "foodAllergyNote",
+          ...REVIEW_FIELDS,
+        ];
 
-        for (const field of LIVE_VALIDATE_FIELDS) {
+        for (const field of allFields) {
           if (!touched[field]) continue;
           const error = getFieldError(field, formData);
           if (error) next[field] = error;
@@ -345,61 +691,63 @@ export function RegistrationForm({
   useEffect(() => {
     if (!onStepStatesChange) return;
     onStepStatesChange(
-      buildStepStates(formData, touched, receiptFile, Boolean(errors.receipt), formPhase)
+      buildStepStates(
+        formData,
+        touched,
+        files,
+        paymentReference,
+        referenceConfirmed,
+        membersValid,
+        formPhase
+      )
     );
-  }, [formData, touched, receiptFile, errors.receipt, formPhase, onStepStatesChange]);
+  }, [
+    formData,
+    touched,
+    files,
+    paymentReference,
+    referenceConfirmed,
+    membersValid,
+    formPhase,
+    onStepStatesChange,
+  ]);
+
+  useEffect(() => {
+    if (formPhase !== "payment") return;
+    let cancelled = false;
+
+    fetchEarlyBirdStatus(eventId)
+      .then((status) => {
+        if (!cancelled) setEarlyBird(status);
+      })
+      .catch(() => {
+        if (!cancelled) setEarlyBird(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formPhase, eventId]);
 
   useEffect(() => {
     if (!onPaymentBreakdownChange) return;
 
-    if (
-      formPhase !== "payment" ||
-      !formData.category ||
-      !formData.feeTier ||
-      !(formData.category in conference.registration.fees)
-    ) {
+    if (formPhase !== "payment" || !appliedFee) {
       onPaymentBreakdownChange(null);
       return;
     }
 
-    const category = formData.category as RegistrationCategory;
     onPaymentBreakdownChange({
-      categoryLabel: conference.registration.fees[category].label,
-      feeTierLabel: formData.feeTier === "regular" ? "Regular" : "Early Bird",
-      unitFee,
+      categoryLabel: "Conference Registration",
+      feeTierLabel: appliedFee.label,
+      unitFee: appliedFee.amount,
       headcount,
       totalFee,
     });
-  }, [
-    formPhase,
-    formData.category,
-    formData.feeTier,
-    unitFee,
-    headcount,
-    totalFee,
-    onPaymentBreakdownChange,
-  ]);
-
-  function getMemberFieldError(
-    member: GroupMemberDraft,
-    field: keyof GroupMemberDraft
-  ): string | undefined {
-    switch (field) {
-      case "lastName":
-        return getNameLengthError(member.lastName, "lastName", "Surname") ?? undefined;
-      case "firstName":
-        return getNameLengthError(member.firstName, "firstName", "First name") ?? undefined;
-      case "email":
-        return getEmailValidationError(member.email) ?? undefined;
-      case "phone":
-        return getRegistrationPhoneValidationError(member.phone) ?? undefined;
-      default:
-        return undefined;
-    }
-  }
+  }, [formPhase, appliedFee, headcount, totalFee, onPaymentBreakdownChange]);
 
   function validateMembers(): boolean {
-    if (registrationMode !== "group") {
+    if (formData.registrationMode !== "group") {
       setMemberErrors({});
       setErrors((prev) => {
         const next = { ...prev };
@@ -412,7 +760,7 @@ export function RegistrationForm({
     if (members.length < 1) {
       setErrors((prev) => ({
         ...prev,
-        members: "Add at least one additional participant for group registration.",
+        members: "Add at least one additional participant sharing this payment.",
       }));
       return false;
     }
@@ -423,7 +771,7 @@ export function RegistrationForm({
 
     members.forEach((member, index) => {
       const fieldErrors: Partial<Record<keyof GroupMemberDraft, string>> = {};
-      for (const field of ["lastName", "firstName", "email", "phone"] as const) {
+      for (const field of MEMBER_VALIDATE_FIELDS) {
         const error = getMemberFieldError(member, field);
         if (error) {
           fieldErrors[field] = error;
@@ -453,7 +801,7 @@ export function RegistrationForm({
   }
 
   function validateDetails(): boolean {
-    const newErrors: Partial<Record<FormFieldKey | "receipt" | "members", string>> = {};
+    const newErrors: Errors = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
     for (const field of DETAILS_VALIDATE_FIELDS) {
@@ -462,41 +810,53 @@ export function RegistrationForm({
       if (error) newErrors[field] = error;
     }
 
+    if (!pnaIdFile) newErrors.pnaIdFile = "Please upload a copy of your PNA ID.";
+    if (!prcIdFile) newErrors.prcIdFile = "Please upload a copy of your valid PRC ID.";
+
     setTouched(allTouched);
-    const membersOk = validateMembers();
     setErrors((prev) => {
       const next = { ...prev };
       for (const field of DETAILS_VALIDATE_FIELDS) {
         if (newErrors[field]) next[field] = newErrors[field];
         else delete next[field];
       }
+      if (newErrors.pnaIdFile) next.pnaIdFile = newErrors.pnaIdFile;
+      else delete next.pnaIdFile;
+      if (newErrors.prcIdFile) next.prcIdFile = newErrors.prcIdFile;
+      else delete next.prcIdFile;
       return next;
     });
-    return Object.keys(newErrors).length === 0 && membersOk;
+
+    return Object.keys(newErrors).length === 0;
   }
 
-  function validate(): boolean {
-    const newErrors: Partial<
-      Record<FormFieldKey | "receipt" | "paymentReference" | "members", string>
-    > = {};
+  function validatePayment(): boolean {
+    const newErrors: Errors = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
 
-    for (const field of LIVE_VALIDATE_FIELDS) {
+    const fieldsToCheck: FormFieldKey[] = [...PAYMENT_FIELDS, ...REVIEW_FIELDS];
+    if (formData.registrationRate === "seniorPwd") fieldsToCheck.push("seniorPwdIdNumber");
+    if (formData.foodPreference === "allergy") fieldsToCheck.push("foodAllergyNote");
+
+    for (const field of fieldsToCheck) {
       allTouched[field] = true;
       const error = getFieldError(field, formData);
       if (error) newErrors[field] = error;
     }
 
     if (!receiptFile) {
-      newErrors.receipt = "Proof of payment is required before you can submit.";
-    } else if (receiptFile.size > 5 * 1024 * 1024) {
-      newErrors.receipt = "Receipt must be 5 MB or smaller.";
+      newErrors.receiptFile = "Proof of payment is required before you can submit.";
+    } else if (receiptFile.size > MAX_FILE_SIZE) {
+      newErrors.receiptFile = "Receipt must be 10 MB or smaller.";
+    }
+
+    if (!bir2303File) {
+      newErrors.bir2303File = "BIR Form 2303 (Certificate of Registration) is required.";
     }
 
     const trimmedRef = paymentReference.trim();
     if (!trimmedRef) {
-      newErrors.paymentReference =
-        "Enter the payment / transfer reference from your receipt.";
+      newErrors.paymentReference = "Enter the payment / transfer reference from your receipt.";
     } else if (trimmedRef.length < 4) {
       newErrors.paymentReference = "Payment reference looks too short. Please check your receipt.";
     } else if (!referenceConfirmed) {
@@ -506,7 +866,21 @@ export function RegistrationForm({
 
     setTouched(allTouched);
     const membersOk = validateMembers();
-    setErrors(newErrors);
+    setErrors((prev) => {
+      const next: Errors = { ...prev };
+      for (const field of fieldsToCheck) {
+        if (newErrors[field]) next[field] = newErrors[field];
+        else delete next[field];
+      }
+      if (newErrors.receiptFile) next.receiptFile = newErrors.receiptFile;
+      else delete next.receiptFile;
+      if (newErrors.bir2303File) next.bir2303File = newErrors.bir2303File;
+      else delete next.bir2303File;
+      if (newErrors.paymentReference) next.paymentReference = newErrors.paymentReference;
+      else delete next.paymentReference;
+      return next;
+    });
+
     return Object.keys(newErrors).length === 0 && membersOk;
   }
 
@@ -525,6 +899,31 @@ export function RegistrationForm({
     });
   }
 
+  function handleGenericFileSelected(
+    file: File | null,
+    key: "pnaIdFile" | "prcIdFile" | "seniorPwdIdFile" | "bir2303File" | "bir2307File",
+    setFile: (file: File | null) => void
+  ) {
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+    if (!file) {
+      setFile(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setErrors((prev) => ({ ...prev, [key]: "File must be 10 MB or smaller." }));
+      setFile(null);
+      return;
+    }
+
+    setFile(file);
+  }
+
   async function handleReceiptSelected(file: File | null) {
     setReceiptFile(file);
     setPaymentReference("");
@@ -533,17 +932,17 @@ export function RegistrationForm({
     setOcrStatus("idle");
     setErrors((prev) => {
       const next = { ...prev };
-      delete next.receipt;
+      delete next.receiptFile;
       delete next.paymentReference;
       return next;
     });
 
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE) {
       setErrors((prev) => ({
         ...prev,
-        receipt: "Receipt must be 5 MB or smaller.",
+        receiptFile: "Receipt must be 10 MB or smaller.",
       }));
       setReceiptFile(null);
       return;
@@ -587,6 +986,27 @@ export function RegistrationForm({
     }
   }
 
+  function resetFormState() {
+    setFormData(initialFormData);
+    setMembers([]);
+    setShowDraftRestored(false);
+    setPnaIdFile(null);
+    setPrcIdFile(null);
+    setSeniorPwdIdFile(null);
+    setReceiptFile(null);
+    setBir2303File(null);
+    setBir2307File(null);
+    setPaymentReference("");
+    setOcrStatus("idle");
+    setOcrMessage("");
+    setReferenceConfirmed(false);
+    setErrors({});
+    setMemberErrors({});
+    setTouched({});
+    setFormPhase("details");
+    setEarlyBird(null);
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
@@ -595,16 +1015,16 @@ export function RegistrationForm({
       return;
     }
 
-    if (!validate()) return;
+    if (!validatePayment()) return;
 
-    const isGroup = registrationMode === "group";
+    const isGroup = formData.registrationMode === "group";
     requestConfirm({
-      title: isGroup ? "Submit group registration?" : "Submit registration?",
+      title: "Submit registration?",
       message: isGroup
-        ? `Submit registration for ${headcount} participants? One payment of ${formatPeso(totalFee)} covers the group. Each person will receive their own confirmation email.`
+        ? `Submit your registration and note ${members.length} additional participant(s) sharing this deposit? Every attendee must still complete and submit their own registration individually.`
         : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
-      confirmLabel: isGroup ? "Submit group registration" : "Submit registration",
-      loadingMessage: "Submitting registration and uploading receipt...",
+      confirmLabel: "Submit registration",
+      loadingMessage: "Submitting registration and uploading documents...",
       errorTitle: "Registration could not be submitted",
       showSuccess: false,
       action: async () => {
@@ -614,122 +1034,99 @@ export function RegistrationForm({
             throw new Error("Enter a valid mobile number starting with 9 (e.g. 9606207919).");
           }
 
-          let details: RegistrationSuccessDetails;
+          const age = calculateAge(formData.dateOfBirth);
 
-          if (isGroup) {
-            const normalizedMembers = members.map((member) => {
-              const memberPhone = toPhMobileInternational(member.phone);
-              if (!memberPhone) {
-                throw new Error(
-                  "Each participant needs a valid mobile number starting with 9."
-                );
-              }
-              return {
-                firstName: member.firstName,
-                lastName: member.lastName,
-                middleInitial: member.middleInitial,
-                email: member.email,
-                phone: memberPhone,
-              };
-            });
+          const groupMembersNote = isGroup
+            ? members.map((member) => ({
+                ...member,
+                phone: toPhMobileInternational(member.phone) ?? member.phone,
+              }))
+            : undefined;
 
-            const result = await groupRegistrationMutation.mutateAsync({
-              primary: {
-                ...formData,
-                phone,
-                eventId,
-              },
-              members: normalizedMembers,
-              eventId,
-            });
+          const registration = await submitRegistration({
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName.trim(),
+            middleName: formData.middleName.trim(),
+            email: formData.email.trim(),
+            phone,
+            dateOfBirth: formData.dateOfBirth,
+            age,
+            gender: formData.gender,
+            organization: formData.organization.trim(),
+            institutionAddress: formData.institutionAddress.trim(),
+            position: formData.position.trim(),
+            membershipType: formData.membershipType as MembershipType,
+            pnaIdNumber: formData.pnaIdNumber.trim(),
+            pnaZone: formData.pnaZone,
+            pnaChapter: formData.pnaChapter.trim(),
+            prcLicenseNumber: formData.prcLicenseNumber.trim(),
+            prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
+            prcExpirationDate: formData.prcExpirationDate,
+            registrationMode: formData.registrationMode,
+            registrationRate: formData.registrationRate as RegistrationRateChoice,
+            seniorPwdIdNumber:
+              formData.registrationRate === "seniorPwd"
+                ? formData.seniorPwdIdNumber.trim()
+                : undefined,
+            groupMembersNote,
+            foodPreference: formData.foodPreference as FoodPreference,
+            foodAllergyNote: formData.foodAllergyNote.trim() || undefined,
+            sponsorConsent: formData.sponsorConsent as SponsorConsent,
+            dataPrivacyConsent: formData.dataPrivacyConsent,
+            paymentReference: paymentReference.trim(),
+            eventId,
+          });
 
-            let uploaded = false;
-            let receiptUploadFailed = false;
-            try {
-              await submitReceipt(
-                result.registration.referenceNumber,
-                receiptFile!,
-                formData.email,
-                paymentReference.trim()
-              );
-              uploaded = true;
-            } catch {
-              receiptUploadFailed = true;
-            }
-
-            details = {
-              referenceNumber: result.registration.referenceNumber,
-              firstName: result.registration.firstName,
-              lastName: result.registration.lastName,
-              middleInitial: result.registration.middleInitial,
-              email: result.registration.email,
-              phone,
-              organization: formData.organization,
-              position: formData.position,
-              category: conference.registration.fees[result.registration.category].label,
-              receiptUploaded: uploaded,
-              receiptUploadFailed,
-              groupSize: result.group.groupSize ?? headcount,
-              totalPaymentAmount: result.group.totalPaymentAmount,
-              groupMembers: result.group.participants.map((p) => ({
-                firstName: p.firstName,
-                lastName: p.lastName,
-                middleInitial: p.middleInitial,
-                email: p.email,
-                referenceNumber: p.referenceNumber,
-              })),
-            };
-          } else {
-            const registration = await registrationMutation.mutateAsync({
-              ...formData,
-              phone,
-              eventId,
-            });
-
-            let uploaded = false;
-            let receiptUploadFailed = false;
-            try {
-              await submitReceipt(
-                registration.referenceNumber,
-                receiptFile!,
-                formData.email,
-                paymentReference.trim()
-              );
-              uploaded = true;
-            } catch {
-              receiptUploadFailed = true;
-            }
-
-            details = {
-              referenceNumber: registration.referenceNumber,
-              firstName: registration.firstName,
-              lastName: registration.lastName,
-              middleInitial: registration.middleInitial,
-              email: registration.email,
-              phone,
-              organization: formData.organization,
-              position: formData.position,
-              category: conference.registration.fees[registration.category].label,
-              receiptUploaded: uploaded,
-              receiptUploadFailed,
-            };
+          let receiptUploaded = false;
+          let receiptUploadFailed = false;
+          try {
+            await submitReceipt(
+              registration.referenceNumber,
+              receiptFile!,
+              formData.email.trim(),
+              paymentReference.trim()
+            );
+            receiptUploaded = true;
+          } catch {
+            receiptUploadFailed = true;
           }
+
+          try {
+            await submitRegistrationDocuments({
+              referenceNumber: registration.referenceNumber,
+              email: formData.email.trim(),
+              pnaId: pnaIdFile,
+              prcId: prcIdFile,
+              bir2303: bir2303File,
+              bir2307: bir2307File,
+              seniorPwdId: formData.registrationRate === "seniorPwd" ? seniorPwdIdFile : null,
+            });
+          } catch {
+            // Best-effort document upload; registration itself already succeeded.
+          }
+
+          const middleInitial =
+            (registration.middleName ?? formData.middleName).trim().charAt(0) || undefined;
+
+          const details: RegistrationSuccessDetails = {
+            referenceNumber: registration.referenceNumber,
+            firstName: registration.firstName,
+            lastName: registration.lastName,
+            middleInitial,
+            email: registration.email,
+            phone,
+            organization: formData.organization.trim(),
+            position: formData.position.trim(),
+            category: registration.feeLabel || appliedFee?.label || "Conference Registration",
+            receiptUploaded,
+            receiptUploadFailed,
+            groupSize: isGroup ? headcount : undefined,
+          };
 
           setSuccessDetails(details);
           setShowSuccessModal(true);
           clearRegistrationDraft(eventId);
-          setFormData(initialFormData);
-          setRegistrationMode("individual");
-          setMembers([]);
-          setShowDraftRestored(false);
-          setReceiptFile(null);
-          setPaymentReference("");
-          setOcrStatus("idle");
-          setOcrMessage("");
-          setReferenceConfirmed(false);
-          setErrors({});
-          setMemberErrors({});
-          setFormPhase("details");
+          resetFormState();
         } catch (error) {
           throw error instanceof Error
             ? error
@@ -744,19 +1141,18 @@ export function RegistrationForm({
     setSuccessDetails(null);
     onCompleted?.();
   }
+
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
-    if (registrationMutation.isError) registrationMutation.reset();
-    if (groupRegistrationMutation.isError) groupRegistrationMutation.reset();
   }
 
-  function setMode(mode: RegistrationMode) {
-    setRegistrationMode(mode);
+  function setRegistrationMode(mode: RegistrationMode) {
+    updateField("registrationMode", mode);
     if (mode === "group" && members.length === 0) {
       setMembers([createEmptyGroupMember()]);
     }
-    if (mode === "individual") {
+    if (mode === "single") {
       setMembers([]);
       setMemberErrors({});
       setErrors((prev) => {
@@ -771,9 +1167,6 @@ export function RegistrationForm({
     setMembers((prev) =>
       prev.map((member, i) => {
         if (i !== index) return member;
-        if (field === "middleInitial") {
-          return { ...member, middleInitial: value.toUpperCase().slice(0, 1) };
-        }
         if (field === "phone") {
           return { ...member, phone: toPhMobileLocalDigits(value) };
         }
@@ -782,6 +1175,9 @@ export function RegistrationForm({
         }
         if (field === "lastName") {
           return { ...member, lastName: value.slice(0, NAME_LIMITS.lastName) };
+        }
+        if (field === "foodPreference") {
+          return { ...member, foodPreference: value as FoodPreference };
         }
         return { ...member, [field]: value };
       })
@@ -818,6 +1214,7 @@ export function RegistrationForm({
   }
 
   const isPaymentPhase = formPhase === "payment";
+  const age = calculateAge(formData.dateOfBirth);
 
   return (
     <>
@@ -845,629 +1242,826 @@ export function RegistrationForm({
           className={`registration-form ${className}`.trim()}
           noValidate
         >
-
-      {!isPaymentPhase ? (
-        <>
-      <fieldset className="registration-form-section">
-        <legend className="registration-form-legend">Registration type</legend>
-        <p className="registration-form-help mb-3">
-          Register yourself only, or register a group with one combined payment. Each group
-          member still needs their own name, email, and phone so they receive a check-in QR by
-          email.
-        </p>
-        <div className="registration-mode-toggle" role="group" aria-label="Registration type">
-          <button
-            type="button"
-            className={`registration-mode-option${
-              registrationMode === "individual" ? " is-selected" : ""
-            }`}
-            onClick={() => setMode("individual")}
-          >
-            Individual
-          </button>
-          <button
-            type="button"
-            className={`registration-mode-option${
-              registrationMode === "group" ? " is-selected" : ""
-            }`}
-            onClick={() => setMode("group")}
-          >
-            Group
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="registration-form-section">
-        <legend className="registration-form-legend">
-          <UserSectionIcon />
-          {registrationMode === "group" ? "Primary registrant" : "Personal Information"}
-        </legend>
-        <div className="row g-3">
-          <FormField
-            label="Surname"
-            id="lastName"
-            required
-            value={formData.lastName}
-            onChange={(v) => updateField("lastName", v.slice(0, NAME_LIMITS.lastName))}
-            onBlur={() => markFieldTouched("lastName")}
-            error={errors.lastName}
-            maxLength={NAME_LIMITS.lastName}
-            placeholder="Dela Cruz"
-          />
-          <FormField
-            label="First Name"
-            id="firstName"
-            required
-            value={formData.firstName}
-            onChange={(v) => updateField("firstName", v.slice(0, NAME_LIMITS.firstName))}
-            onBlur={() => markFieldTouched("firstName")}
-            error={errors.firstName}
-            maxLength={NAME_LIMITS.firstName}
-            placeholder="Juan"
-          />
-          <FormField
-            label="Middle Initial (M.I.)"
-            id="middleInitial"
-            value={formData.middleInitial ?? ""}
-            onChange={(v) => updateField("middleInitial", v.toUpperCase().slice(0, 1))}
-            error={errors.middleInitial}
-            placeholder="A"
-            maxLength={1}
-          />
-          <FormField
-            label="Email Address"
-            id="email"
-            type="email"
-            required
-            value={formData.email}
-            onChange={(v) => updateField("email", v)}
-            onBlur={() => markFieldTouched("email")}
-            error={errors.email}
-            placeholder="juandelacruz@gmail.com"
-          />
-          <div className="col-12 col-md-6">
-            <label htmlFor="phone" className="form-label registration-form-label">
-              Phone Number <span className="text-accent">*</span>
-            </label>
-            <div className={`registration-phone-field${errors.phone ? " is-error" : ""}`}>
-              <span className="registration-phone-prefix" aria-hidden="true">
-                +63
-              </span>
-              <input
-                type="tel"
-                id="phone"
-                inputMode="numeric"
-                autoComplete="tel-national"
-                value={toPhMobileLocalDigits(formData.phone)}
-                onChange={(e) => updateField("phone", toPhMobileLocalDigits(e.target.value))}
-                onBlur={() => markFieldTouched("phone")}
-                placeholder="9606207919"
-                maxLength={10}
-                className={`input-dark registration-phone-input${errors.phone ? " input-dark-error" : ""}`}
-              />
-            </div>
-            <p className="registration-phone-hint mb-0">
-              Enter 10 digits starting with 9 (do not include 0).
-            </p>
-            {errors.phone && <p className="mt-1 text-xs text-red-400">{errors.phone}</p>}
-          </div>
-        </div>
-      </fieldset>
-
-      {registrationMode === "group" ? (
-        <fieldset className="registration-form-section">
-          <legend className="registration-form-legend">
-            <UsersSectionIcon />
-            Additional participants
-          </legend>
-          <p className="registration-form-help mb-3">
-            Enter each participant&apos;s name, email, and phone. Organization, category, and
-            address from the primary registrant apply to everyone. Maximum {MAX_GROUP_SIZE}{" "}
-            people including you.
-          </p>
-          {errors.members ? (
-            <p className="mb-3 text-xs text-red-500">{errors.members}</p>
-          ) : null}
-          <div className="registration-group-members">
-            {members.map((member, index) => (
-              <div key={index} className="registration-group-member">
-                <div className="registration-group-member-header">
-                  <p className="registration-group-member-title mb-0">
-                    Participant {index + 2}
-                  </p>
-                  {members.length > 1 ? (
-                    <button
-                      type="button"
-                      className="registration-group-member-remove"
-                      onClick={() => removeMember(index)}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
+          {!isPaymentPhase ? (
+            <>
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <UserSectionIcon />
+                  Personal Information
+                </legend>
                 <div className="row g-3">
                   <FormField
                     label="Surname"
-                    id={`member-${index}-lastName`}
+                    id="lastName"
                     required
-                    value={member.lastName}
-                    onChange={(v) => updateMember(index, "lastName", v)}
-                    error={memberErrors[index]?.lastName}
+                    value={formData.lastName}
+                    onChange={(v) => updateField("lastName", v.slice(0, NAME_LIMITS.lastName))}
+                    onBlur={() => markFieldTouched("lastName")}
+                    error={errors.lastName}
                     maxLength={NAME_LIMITS.lastName}
                     placeholder="Dela Cruz"
                   />
                   <FormField
                     label="First Name"
-                    id={`member-${index}-firstName`}
+                    id="firstName"
                     required
-                    value={member.firstName}
-                    onChange={(v) => updateMember(index, "firstName", v)}
-                    error={memberErrors[index]?.firstName}
+                    value={formData.firstName}
+                    onChange={(v) => updateField("firstName", v.slice(0, NAME_LIMITS.firstName))}
+                    onBlur={() => markFieldTouched("firstName")}
+                    error={errors.firstName}
                     maxLength={NAME_LIMITS.firstName}
                     placeholder="Juan"
                   />
                   <FormField
-                    label="Middle Initial (M.I.)"
-                    id={`member-${index}-middleInitial`}
-                    value={member.middleInitial}
-                    onChange={(v) => updateMember(index, "middleInitial", v)}
-                    placeholder="A"
-                    maxLength={1}
+                    label="Middle Name"
+                    id="middleName"
+                    required
+                    value={formData.middleName}
+                    onChange={(v) => updateField("middleName", v)}
+                    onBlur={() => markFieldTouched("middleName")}
+                    error={errors.middleName}
+                    placeholder="Santos"
                   />
                   <FormField
                     label="Email Address"
-                    id={`member-${index}-email`}
+                    id="email"
                     type="email"
                     required
-                    value={member.email}
-                    onChange={(v) => updateMember(index, "email", v)}
-                    error={memberErrors[index]?.email}
+                    value={formData.email}
+                    onChange={(v) => updateField("email", v)}
+                    onBlur={() => markFieldTouched("email")}
+                    error={errors.email}
                     placeholder="juandelacruz@gmail.com"
                   />
+                  <PhoneField
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(v) => updateField("phone", v)}
+                    onBlur={() => markFieldTouched("phone")}
+                    error={errors.phone}
+                  />
+                  <FormField
+                    label="Date of Birth"
+                    id="dateOfBirth"
+                    type="date"
+                    required
+                    value={formData.dateOfBirth}
+                    onChange={(v) => updateField("dateOfBirth", v)}
+                    onBlur={() => markFieldTouched("dateOfBirth")}
+                    error={errors.dateOfBirth}
+                  />
                   <div className="col-12 col-md-6">
-                    <label
-                      htmlFor={`member-${index}-phone`}
-                      className="form-label registration-form-label"
-                    >
-                      Phone Number <span className="text-accent">*</span>
+                    <label htmlFor="age" className="form-label registration-form-label">
+                      Age
+                      <span className="registration-form-optional"> (Automatic)</span>
                     </label>
-                    <div
-                      className={`registration-phone-field${
-                        memberErrors[index]?.phone ? " is-error" : ""
-                      }`}
-                    >
-                      <span className="registration-phone-prefix" aria-hidden="true">
-                        +63
-                      </span>
-                      <input
-                        type="tel"
-                        id={`member-${index}-phone`}
-                        inputMode="numeric"
-                        autoComplete="tel-national"
-                        value={toPhMobileLocalDigits(member.phone)}
-                        onChange={(e) => updateMember(index, "phone", e.target.value)}
-                        placeholder="9606207919"
-                        maxLength={10}
-                        className={`input-dark registration-phone-input${
-                          memberErrors[index]?.phone ? " input-dark-error" : ""
+                    <input
+                      id="age"
+                      type="text"
+                      readOnly
+                      value={age ?? ""}
+                      placeholder="—"
+                      className="input-dark"
+                    />
+                  </div>
+                  <SelectField
+                    label="Gender"
+                    id="gender"
+                    required
+                    value={formData.gender}
+                    onChange={(v) => updateField("gender", v)}
+                    options={GENDER_OPTIONS}
+                    error={errors.gender}
+                    placeholder="Select gender"
+                  />
+                  <FormField
+                    label="Institution / Organization"
+                    id="organization"
+                    required
+                    value={formData.organization}
+                    onChange={(v) => updateField("organization", v)}
+                    onBlur={() => markFieldTouched("organization")}
+                    error={errors.organization}
+                    className="col-12"
+                  />
+                  <FormField
+                    label="Institution Address"
+                    id="institutionAddress"
+                    required
+                    value={formData.institutionAddress}
+                    onChange={(v) => updateField("institutionAddress", v)}
+                    onBlur={() => markFieldTouched("institutionAddress")}
+                    error={errors.institutionAddress}
+                    className="col-12"
+                  />
+                  <FormField
+                    label="Position / Title"
+                    id="position"
+                    required
+                    value={formData.position}
+                    onChange={(v) => updateField("position", v)}
+                    onBlur={() => markFieldTouched("position")}
+                    error={errors.position}
+                    className="col-12"
+                  />
+                </div>
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <IdCardSectionIcon />
+                  Membership Information
+                </legend>
+                <div className="row g-3">
+                  <SelectField
+                    label="Membership Type"
+                    id="membershipType"
+                    required
+                    value={formData.membershipType}
+                    onChange={(v) => updateField("membershipType", v as MembershipType | "")}
+                    options={MEMBERSHIP_TYPE_OPTIONS}
+                    error={errors.membershipType}
+                    placeholder="Select membership type"
+                  />
+                  <FormField
+                    label="PNA ID Number"
+                    id="pnaIdNumber"
+                    required
+                    value={formData.pnaIdNumber}
+                    onChange={(v) => updateField("pnaIdNumber", v)}
+                    onBlur={() => markFieldTouched("pnaIdNumber")}
+                    error={errors.pnaIdNumber}
+                  />
+                  <SelectField
+                    label="PNA Zone"
+                    id="pnaZone"
+                    required
+                    value={formData.pnaZone}
+                    onChange={(v) => updateField("pnaZone", v)}
+                    options={PNA_ZONE_OPTIONS}
+                    error={errors.pnaZone}
+                    placeholder="Select PNA zone"
+                  />
+                  <FormField
+                    label="PNA Chapter"
+                    id="pnaChapter"
+                    required
+                    value={formData.pnaChapter}
+                    onChange={(v) => updateField("pnaChapter", v)}
+                    onBlur={() => markFieldTouched("pnaChapter")}
+                    error={errors.pnaChapter}
+                  />
+                  <FileField
+                    label="Upload PNA ID"
+                    id="pnaIdFile"
+                    required
+                    accept="image/*"
+                    hint="(Image, max 10 MB)"
+                    file={pnaIdFile}
+                    onChange={(file) => handleGenericFileSelected(file, "pnaIdFile", setPnaIdFile)}
+                    error={errors.pnaIdFile}
+                    className="col-12"
+                  />
+                </div>
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <LicenseSectionIcon />
+                  License Information
+                </legend>
+                <div className="row g-3">
+                  <FormField
+                    label="PRC License Number"
+                    id="prcLicenseNumber"
+                    required
+                    value={formData.prcLicenseNumber}
+                    onChange={(v) => updateField("prcLicenseNumber", v)}
+                    onBlur={() => markFieldTouched("prcLicenseNumber")}
+                    error={errors.prcLicenseNumber}
+                  />
+                  <FormField
+                    label="Initial Registration Date"
+                    id="prcInitialRegistrationDate"
+                    type="date"
+                    required
+                    value={formData.prcInitialRegistrationDate}
+                    onChange={(v) => updateField("prcInitialRegistrationDate", v)}
+                    onBlur={() => markFieldTouched("prcInitialRegistrationDate")}
+                    error={errors.prcInitialRegistrationDate}
+                  />
+                  <FormField
+                    label="Expiration Date"
+                    id="prcExpirationDate"
+                    type="date"
+                    required
+                    value={formData.prcExpirationDate}
+                    onChange={(v) => updateField("prcExpirationDate", v)}
+                    onBlur={() => markFieldTouched("prcExpirationDate")}
+                    error={errors.prcExpirationDate}
+                  />
+                  <FileField
+                    label="Upload PRC ID"
+                    id="prcIdFile"
+                    required
+                    accept="image/*"
+                    hint="(Image, max 10 MB)"
+                    file={prcIdFile}
+                    onChange={(file) => handleGenericFileSelected(file, "prcIdFile", setPrcIdFile)}
+                    error={errors.prcIdFile}
+                    className="col-12"
+                  />
+                </div>
+              </fieldset>
+            </>
+          ) : (
+            <>
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <UsersSectionIcon />
+                  Registration & Fee
+                </legend>
+                <p className="registration-form-help mb-3">
+                  <strong>All attendees must register individually.</strong> Choose{" "}
+                  <strong>Group</strong> only if you and other attendees are sharing a single
+                  deposit slip for payment. Each participant listed below must still complete and
+                  submit their own registration form separately.
+                </p>
+                <div className="registration-mode-toggle" role="group" aria-label="Registration type">
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.registrationMode === "single" ? " is-selected" : ""
+                    }`}
+                    onClick={() => setRegistrationMode("single")}
+                  >
+                    Single
+                  </button>
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.registrationMode === "group" ? " is-selected" : ""
+                    }`}
+                    onClick={() => setRegistrationMode("group")}
+                  >
+                    Group (one deposit slip)
+                  </button>
+                </div>
+
+                <p className="form-label registration-form-label mt-4 mb-2">
+                  Choose your registration rate <span className="text-accent">*</span>
+                </p>
+                <div className="registration-fee-choice-grid">
+                  {(["regular", "seniorPwd"] as const).map((rate) => {
+                    const amount =
+                      rate === "seniorPwd"
+                        ? seniorPwdAmount
+                        : remaining > 0
+                          ? earlyBirdAmount
+                          : regularAmount;
+                    const tierLabel =
+                      rate === "seniorPwd"
+                        ? "Senior / PWD"
+                        : remaining > 0
+                          ? "Early Bird"
+                          : "Regular";
+                    const meta =
+                      rate === "seniorPwd"
+                        ? "Valid Senior Citizen or PWD ID required"
+                        : "Standard registration rate";
+                    const selected = formData.registrationRate === rate;
+                    return (
+                      <button
+                        key={rate}
+                        type="button"
+                        className={`registration-fee-choice${selected ? " is-selected" : ""}`}
+                        onClick={() => updateField("registrationRate", rate)}
+                      >
+                        <span className="registration-fee-choice-tier">{tierLabel}</span>
+                        <span className="registration-fee-choice-amount">{formatPeso(amount)}</span>
+                        <span className="registration-fee-choice-meta">{meta}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors.registrationRate && (
+                  <p className="mt-1 text-xs text-red-400">{errors.registrationRate}</p>
+                )}
+
+                {formData.registrationRate === "seniorPwd" ? (
+                  <div className="row g-3 mt-1">
+                    <FormField
+                      label="Senior Citizen / PWD ID Number"
+                      id="seniorPwdIdNumber"
+                      required
+                      value={formData.seniorPwdIdNumber}
+                      onChange={(v) => updateField("seniorPwdIdNumber", v)}
+                      onBlur={() => markFieldTouched("seniorPwdIdNumber")}
+                      error={errors.seniorPwdIdNumber}
+                    />
+                    <FileField
+                      label="Upload Senior Citizen / PWD ID"
+                      id="seniorPwdIdFile"
+                      accept="image/*"
+                      hint="(Optional, image, max 10 MB)"
+                      file={seniorPwdIdFile}
+                      onChange={(file) =>
+                        handleGenericFileSelected(file, "seniorPwdIdFile", setSeniorPwdIdFile)
+                      }
+                      error={errors.seniorPwdIdFile}
+                    />
+                  </div>
+                ) : null}
+              </fieldset>
+
+              {formData.registrationMode === "group" ? (
+                <fieldset className="registration-form-section">
+                  <legend className="registration-form-legend">
+                    <UsersSectionIcon />
+                    Additional participants
+                  </legend>
+                  <p className="registration-form-help mb-3">
+                    List each attendee sharing this deposit slip. Maximum {MAX_GROUP_SIZE} people
+                    including you. Remember: each person listed must still submit their own
+                    registration individually.
+                  </p>
+                  {errors.members ? (
+                    <p className="mb-3 text-xs text-red-500">{errors.members}</p>
+                  ) : null}
+                  <div className="registration-group-members">
+                    {members.map((member, index) => (
+                      <div key={index} className="registration-group-member">
+                        <div className="registration-group-member-header">
+                          <p className="registration-group-member-title mb-0">
+                            Participant {index + 2}
+                          </p>
+                          {members.length > 1 ? (
+                            <button
+                              type="button"
+                              className="registration-group-member-remove"
+                              onClick={() => removeMember(index)}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="row g-3">
+                          <FormField
+                            label="Surname"
+                            id={`member-${index}-lastName`}
+                            required
+                            value={member.lastName}
+                            onChange={(v) => updateMember(index, "lastName", v)}
+                            error={memberErrors[index]?.lastName}
+                            maxLength={NAME_LIMITS.lastName}
+                            placeholder="Dela Cruz"
+                          />
+                          <FormField
+                            label="First Name"
+                            id={`member-${index}-firstName`}
+                            required
+                            value={member.firstName}
+                            onChange={(v) => updateMember(index, "firstName", v)}
+                            error={memberErrors[index]?.firstName}
+                            maxLength={NAME_LIMITS.firstName}
+                            placeholder="Juan"
+                          />
+                          <FormField
+                            label="Middle Name"
+                            id={`member-${index}-middleName`}
+                            required
+                            value={member.middleName}
+                            onChange={(v) => updateMember(index, "middleName", v)}
+                            error={memberErrors[index]?.middleName}
+                            placeholder="Santos"
+                          />
+                          <FormField
+                            label="Email Address"
+                            id={`member-${index}-email`}
+                            type="email"
+                            required
+                            value={member.email}
+                            onChange={(v) => updateMember(index, "email", v)}
+                            error={memberErrors[index]?.email}
+                            placeholder="juandelacruz@gmail.com"
+                          />
+                          <PhoneField
+                            id={`member-${index}-phone`}
+                            value={member.phone}
+                            onChange={(v) => updateMember(index, "phone", v)}
+                            error={memberErrors[index]?.phone}
+                          />
+                          <FormField
+                            label="Date of Birth"
+                            id={`member-${index}-dateOfBirth`}
+                            type="date"
+                            required
+                            value={member.dateOfBirth}
+                            onChange={(v) => updateMember(index, "dateOfBirth", v)}
+                            error={memberErrors[index]?.dateOfBirth}
+                          />
+                          <FormField
+                            label="PRC License Number"
+                            id={`member-${index}-prcLicenseNumber`}
+                            required
+                            value={member.prcLicenseNumber}
+                            onChange={(v) => updateMember(index, "prcLicenseNumber", v)}
+                            error={memberErrors[index]?.prcLicenseNumber}
+                          />
+                          <FormField
+                            label="PRC Initial Registration Date"
+                            id={`member-${index}-prcInitialRegistrationDate`}
+                            type="date"
+                            required
+                            value={member.prcInitialRegistrationDate}
+                            onChange={(v) => updateMember(index, "prcInitialRegistrationDate", v)}
+                            error={memberErrors[index]?.prcInitialRegistrationDate}
+                          />
+                          <FormField
+                            label="PRC Expiration Date"
+                            id={`member-${index}-prcExpirationDate`}
+                            type="date"
+                            required
+                            value={member.prcExpirationDate}
+                            onChange={(v) => updateMember(index, "prcExpirationDate", v)}
+                            error={memberErrors[index]?.prcExpirationDate}
+                          />
+                          <SelectField
+                            label="Food Preference"
+                            id={`member-${index}-foodPreference`}
+                            required
+                            value={member.foodPreference}
+                            onChange={(v) => updateMember(index, "foodPreference", v)}
+                            options={FOOD_PREFERENCE_OPTIONS}
+                            error={memberErrors[index]?.foodPreference}
+                            placeholder="Select food preference"
+                          />
+                          {member.foodPreference === "allergy" ? (
+                            <FormField
+                              label="Food Allergy Note"
+                              id={`member-${index}-foodAllergyNote`}
+                              required
+                              value={member.foodAllergyNote}
+                              onChange={(v) => updateMember(index, "foodAllergyNote", v)}
+                              error={memberErrors[index]?.foodAllergyNote}
+                              className="col-12"
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {1 + members.length < MAX_GROUP_SIZE ? (
+                    <button type="button" className="registration-group-add-btn mt-3" onClick={addMember}>
+                      + Add participant
+                    </button>
+                  ) : (
+                    <p className="mt-3 mb-0 text-xs text-muted">
+                      Maximum of {MAX_GROUP_SIZE} participants reached.
+                    </p>
+                  )}
+                </fieldset>
+              ) : null}
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <MealSectionIcon />
+                  Meal Preference
+                </legend>
+                <div className="row g-3">
+                  <SelectField
+                    label="Food Preference"
+                    id="foodPreference"
+                    required
+                    value={formData.foodPreference}
+                    onChange={(v) => updateField("foodPreference", v as FoodPreference | "")}
+                    options={FOOD_PREFERENCE_OPTIONS}
+                    error={errors.foodPreference}
+                    placeholder="Select food preference"
+                  />
+                  {formData.foodPreference === "allergy" ? (
+                    <div className="col-12">
+                      <label htmlFor="foodAllergyNote" className="form-label registration-form-label">
+                        Food Allergy Note <span className="text-accent">*</span>
+                      </label>
+                      <textarea
+                        id="foodAllergyNote"
+                        rows={2}
+                        value={formData.foodAllergyNote}
+                        onChange={(e) => updateField("foodAllergyNote", e.target.value)}
+                        onBlur={() => markFieldTouched("foodAllergyNote")}
+                        placeholder="Please describe your food allergy"
+                        className={`input-dark resize-none ${
+                          errors.foodAllergyNote ? "input-dark-error" : ""
                         }`}
                       />
+                      {errors.foodAllergyNote && (
+                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
+                      )}
                     </div>
-                    {memberErrors[index]?.phone ? (
-                      <p className="mt-1 text-xs text-red-400">{memberErrors[index]?.phone}</p>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </div>
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <ReceiptSectionIcon />
+                  Proof of Payment
+                </legend>
+                <p className="registration-form-help mb-3">
+                  Pay using the QR code or bank transfer below, then upload your receipt or
+                  screenshot. Proof of payment is required to complete registration.
+                  {formData.registrationMode === "group"
+                    ? " One payment and one receipt cover the whole group."
+                    : ""}{" "}
+                  Registration payments are subject to applicable Philippine tax documentation,
+                  including BIR Form 2303 (Certificate of Registration) and BIR Form 2307
+                  (Certificate of Creditable Tax Withheld at Source).
+                </p>
+
+                {appliedFee ? (
+                  <div className="registration-group-total mb-4">
+                    <div className="registration-group-total-row">
+                      <span>Rate</span>
+                      <strong>{appliedFee.label}</strong>
+                    </div>
+                    <div className="registration-group-total-row">
+                      <span>Fee per person</span>
+                      <strong>{formatPeso(unitFee)}</strong>
+                    </div>
+                    {formData.registrationMode === "group" ? (
+                      <div className="registration-group-total-row">
+                        <span>Participants</span>
+                        <strong>{headcount}</strong>
+                      </div>
+                    ) : null}
+                    <div className="registration-group-total-row is-total">
+                      <span>Total due</span>
+                      <strong>{formatPeso(totalFee)}</strong>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="registration-form-payment-panel mb-4">
+                  <RegistrationPaymentQr variant="form" eventId={eventId} />
+                </div>
+
+                <div className="col-12">
+                  <label htmlFor="receiptFile" className="form-label registration-form-label">
+                    Upload Proof of Payment <span className="text-accent">*</span>
+                    <span className="registration-form-optional"> (Image or PDF, max 10 MB)</span>
+                  </label>
+                  <input
+                    id="receiptFile"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className={`input-dark ${errors.receiptFile ? "input-dark-error" : ""}`}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      void handleReceiptSelected(file);
+                    }}
+                  />
+                  {receiptFile && (
+                    <p className="mt-2 mb-0 text-xs text-muted">Selected: {receiptFile.name}</p>
+                  )}
+                  {ocrStatus === "scanning" ? (
+                    <p className="mt-2 mb-0 text-xs text-muted" role="status">
+                      Scanning receipt for payment reference…
+                    </p>
+                  ) : null}
+                  {ocrMessage ? (
+                    <p className="mt-2 mb-0 text-xs text-muted" role="status">
+                      {ocrMessage}
+                    </p>
+                  ) : null}
+                  {errors.receiptFile && (
+                    <p className="mt-1 text-xs text-red-400">{errors.receiptFile}</p>
+                  )}
+                </div>
+
+                {receiptFile ? (
+                  <div className="col-12 mt-3 registration-payment-reference-panel">
+                    <label htmlFor="paymentReference" className="form-label registration-form-label">
+                      Payment / transfer reference <span className="text-accent">*</span>
+                    </label>
+                    <p className="registration-form-help mb-2">
+                      We try to read this from your receipt. Please check it carefully and correct
+                      it if needed.
+                    </p>
+                    <input
+                      id="paymentReference"
+                      type="text"
+                      value={paymentReference}
+                      onChange={(e) => {
+                        setPaymentReference(e.target.value);
+                        setReferenceConfirmed(false);
+                        if (errors.paymentReference) {
+                          setErrors((prev) => ({ ...prev, paymentReference: undefined }));
+                        }
+                      }}
+                      placeholder="e.g. GCash Ref No. or bank transfer reference"
+                      className={`input-dark ${errors.paymentReference ? "input-dark-error" : ""}`}
+                      autoComplete="off"
+                    />
+                    <label className="d-flex align-items-start gap-2 mt-3 mb-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="registration-form-checkbox mt-1"
+                        checked={referenceConfirmed}
+                        onChange={(e) => {
+                          setReferenceConfirmed(e.target.checked);
+                          if (e.target.checked && errors.paymentReference) {
+                            setErrors((prev) => ({ ...prev, paymentReference: undefined }));
+                          }
+                        }}
+                      />
+                      <span className="small text-muted lh-base">
+                        Yes, this payment reference looks right (or I corrected it to match my
+                        receipt).
+                      </span>
+                    </label>
+                    {errors.paymentReference && (
+                      <p className="mt-1 text-xs text-red-400">{errors.paymentReference}</p>
+                    )}
+                  </div>
+                ) : null}
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <DocumentSectionIcon />
+                  Tax Documents
+                </legend>
+                <div className="row g-3">
+                  <FileField
+                    label="Upload BIR Form 2303"
+                    id="bir2303File"
+                    required
+                    accept="image/*,application/pdf"
+                    hint="(Certificate of Registration, max 10 MB)"
+                    file={bir2303File}
+                    onChange={(file) =>
+                      handleGenericFileSelected(file, "bir2303File", setBir2303File)
+                    }
+                    error={errors.bir2303File}
+                  />
+                  <FileField
+                    label="Upload BIR Form 2307"
+                    id="bir2307File"
+                    accept="image/*,application/pdf"
+                    hint="(Optional, Certificate of Creditable Tax Withheld, max 10 MB)"
+                    file={bir2307File}
+                    onChange={(file) =>
+                      handleGenericFileSelected(file, "bir2307File", setBir2307File)
+                    }
+                    error={errors.bir2307File}
+                  />
+                </div>
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <ClipboardCheckSectionIcon />
+                  Review & Consent
+                </legend>
+                <p className="form-label registration-form-label mb-2">
+                  Do you consent to being acknowledged as a sponsor/delegate representing your
+                  institution at this conference? <span className="text-accent">*</span>
+                </p>
+                <div className="registration-mode-toggle" role="group" aria-label="Sponsor consent">
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.sponsorConsent === "yes" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("sponsorConsent", "yes")}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.sponsorConsent === "no" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("sponsorConsent", "no")}
+                  >
+                    No
+                  </button>
+                </div>
+                {errors.sponsorConsent && (
+                  <p className="mt-1 text-xs text-red-400">{errors.sponsorConsent}</p>
+                )}
+              </fieldset>
+
+              <div className="registration-form-terms rounded-lg bg-white border border-green-100 p-3 p-md-4">
+                <label className="d-flex align-items-start gap-3 mb-0 cursor-pointer">
+                  <input
+                    id="dataPrivacyConsent"
+                    name="dataPrivacyConsent"
+                    type="checkbox"
+                    checked={formData.dataPrivacyConsent}
+                    onChange={(e) => updateField("dataPrivacyConsent", e.target.checked)}
+                    className="registration-form-checkbox mt-1"
+                  />
+                  <span className="small text-muted lh-base">
+                    I hereby confirm that the information provided is accurate and complete. I
+                    acknowledge the terms and conditions governing participation in the{" "}
+                    {conference.conferenceName}, including the requirement for payment confirmation
+                    prior to the event, and compliance with applicable Philippine tax documentation
+                    such as BIR Form 2303 (Certificate of Registration) and BIR Form 2307
+                    (Certificate of Creditable Tax Withheld at Source), where applicable. I consent
+                    to the collection and processing of my personal data in accordance with the
+                    Data Privacy Act of 2012 (Republic Act No. 10173).
+                  </span>
+                </label>
+                {errors.dataPrivacyConsent && (
+                  <p className="mt-2 mb-0 text-xs text-red-500 ps-4 ms-3">
+                    {errors.dataPrivacyConsent}
+                  </p>
+                )}
               </div>
-            ))}
-          </div>
-          {1 + members.length < MAX_GROUP_SIZE ? (
+            </>
+          )}
+
+          <div className="registration-form-footer">
             <button
               type="button"
-              className="registration-group-add-btn mt-3"
-              onClick={addMember}
+              className="registration-form-footer-btn registration-form-footer-btn--ghost"
+              onClick={isPaymentPhase ? handleBackFromPayment : onBack}
             >
-              + Add participant
+              <span aria-hidden="true">←</span>
+              Back
             </button>
-          ) : (
-            <p className="mt-3 mb-0 text-xs text-muted">
-              Maximum of {MAX_GROUP_SIZE} participants reached.
-            </p>
-          )}
-        </fieldset>
-      ) : null}
-
-      <fieldset className="registration-form-section">
-        <legend className="registration-form-legend">
-          <BriefcaseSectionIcon />
-          Professional Details
-        </legend>
-        {registrationMode === "group" ? (
-          <p className="registration-form-help mb-3">
-            Category and fee apply to every participant in the group.
-          </p>
-        ) : null}
-        <div className="row g-3">
-          <FormField
-            label="Organization / Agency"
-            id="organization"
-            required
-            value={formData.organization}
-            onChange={(v) => updateField("organization", v)}
-            onBlur={() => markFieldTouched("organization")}
-            error={errors.organization}
-            className="col-12"
-          />
-          <FormField
-            label="Position / Title"
-            id="position"
-            required
-            value={formData.position}
-            onChange={(v) => updateField("position", v)}
-            onBlur={() => markFieldTouched("position")}
-            error={errors.position}
-          />
-          <div className="col-12 col-md-6">
-            <label htmlFor="category" className="form-label registration-form-label">
-              Registration Category <span className="text-accent">*</span>
-            </label>
-            <PnaSelect
-              id="category"
-              value={formData.category}
-              onChange={(next) => {
-                const category = next as RegistrationCategory | "";
-                updateField("category", category);
-                if (category && !formData.feeTier) {
-                  updateField("feeTier", resolveFeeTier(null));
-                }
+            <button
+              type="button"
+              className="registration-form-footer-btn registration-form-footer-btn--outline"
+              onClick={() => {
+                saveRegistrationDraft(eventId, {
+                  mode: formData.registrationMode,
+                  lastName: formData.lastName,
+                  firstName: formData.firstName,
+                  middleName: formData.middleName,
+                  email: formData.email,
+                  phone: formData.phone,
+                  dateOfBirth: formData.dateOfBirth,
+                  age: String(calculateAge(formData.dateOfBirth) ?? ""),
+                  gender: formData.gender,
+                  organization: formData.organization,
+                  institutionAddress: formData.institutionAddress,
+                  position: formData.position,
+                  membershipType: formData.membershipType,
+                  pnaIdNumber: formData.pnaIdNumber,
+                  pnaZone: formData.pnaZone,
+                  pnaChapter: formData.pnaChapter,
+                  prcLicenseNumber: formData.prcLicenseNumber,
+                  prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
+                  prcExpirationDate: formData.prcExpirationDate,
+                  registrationMode: formData.registrationMode,
+                  registrationRate: formData.registrationRate,
+                  seniorPwdIdNumber: formData.seniorPwdIdNumber,
+                  members: formData.registrationMode === "group" ? members : [],
+                  foodPreference: formData.foodPreference,
+                  foodAllergyNote: formData.foodAllergyNote,
+                  sponsorConsent: formData.sponsorConsent,
+                  dataPrivacyConsent: formData.dataPrivacyConsent,
+                  paymentReference,
+                });
+                setDraftSavedNotice(true);
+                window.setTimeout(() => setDraftSavedNotice(false), 2500);
               }}
-              className={errors.category ? "pna-select--error" : ""}
-              placeholder="Select a category"
-              required
-              options={[
-                { value: "", label: "Select a category" },
-                ...Object.entries(conference.registration.fees).map(([key, fee]) => ({
-                  value: key,
-                  label: fee.label,
-                })),
-              ]}
-            />
-            {errors.category && <p className="mt-1 text-xs text-red-400">{errors.category}</p>}
-          </div>
-
-          {formData.category ? (
-            <div className="col-12">
-              <p className="form-label registration-form-label mb-2">
-                Choose payment amount <span className="text-accent">*</span>
-              </p>
-              <div className="registration-fee-choice-grid">
-                {(["early", "regular"] as const).map((tier) => {
-                  const amount = resolvePaymentAmount(
-                    formData.category as RegistrationCategory,
-                    tier,
-                    null
-                  );
-                  const selected = formData.feeTier === tier;
-                  return (
-                    <button
-                      key={tier}
-                      type="button"
-                      className={`registration-fee-choice${selected ? " is-selected" : ""}`}
-                      onClick={() => updateField("feeTier", tier)}
-                    >
-                      <span className="registration-fee-choice-tier">
-                        {tier === "early" ? "Early bird" : "Regular"}
-                      </span>
-                      <span className="registration-fee-choice-amount">{formatPeso(amount)}</span>
-                      <span className="registration-fee-choice-meta">
-                        {conference.registration.fees[formData.category as RegistrationCategory].label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {errors.feeTier && <p className="mt-1 text-xs text-red-400">{errors.feeTier}</p>}
-            </div>
-          ) : null}
-        </div>
-      </fieldset>
-
-      <fieldset className="registration-form-section">
-        <legend className="registration-form-legend">
-          <HomeSectionIcon />
-          Address
-        </legend>
-        <div className="row g-3">
-          <PhLocationSuggest
-            label="Street Address"
-            id="address"
-            type="street"
-            required
-            value={formData.address}
-            onChange={(v) => updateField("address", v)}
-            onBlur={() => markFieldTouched("address")}
-            onSelect={(suggestion: PhPlaceSuggestion) => {
-              updateField("address", suggestion.street || suggestion.label);
-              if (suggestion.city) updateField("city", suggestion.city);
-              if (suggestion.province) updateField("province", suggestion.province);
-            }}
-            error={errors.address}
-            placeholder="Start typing a street or barangay"
-            className="col-12"
-          />
-          <PhLocationSuggest
-            label="City / Municipality"
-            id="city"
-            type="city"
-            required
-            value={formData.city}
-            onChange={(v) => updateField("city", v)}
-            onBlur={() => markFieldTouched("city")}
-            onSelect={(suggestion: PhPlaceSuggestion) => {
-              updateField("city", suggestion.city || suggestion.label);
-              if (suggestion.province) updateField("province", suggestion.province);
-            }}
-            error={errors.city}
-            placeholder="Start typing a city or municipality"
-          />
-          <PhLocationSuggest
-            label="Province"
-            id="province"
-            type="province"
-            required
-            value={formData.province}
-            onChange={(v) => updateField("province", v)}
-            onBlur={() => markFieldTouched("province")}
-            onSelect={(suggestion: PhPlaceSuggestion) => {
-              updateField("province", suggestion.province || suggestion.label);
-            }}
-            error={errors.province}
-            placeholder="Start typing a province"
-          />
-        </div>
-      </fieldset>
-
-      <fieldset className="registration-form-section">
-        <legend>
-          Additional Information <span className="registration-form-optional">(Optional)</span>
-        </legend>
-        <div className="row g-3">
-          <FormField
-            label="Dietary Requirements"
-            id="dietaryRequirements"
-            value={formData.dietaryRequirements}
-            onChange={(v) => updateField("dietaryRequirements", v)}
-            placeholder="e.g., Vegetarian, Halal, None"
-            className="col-12"
-          />
-          <div className="col-12">
-            <label htmlFor="specialNeeds" className="form-label registration-form-label">
-              Special Needs / Accessibility Requirements
-            </label>
-            <textarea
-              id="specialNeeds"
-              rows={3}
-              value={formData.specialNeeds}
-              onChange={(e) => updateField("specialNeeds", e.target.value)}
-              placeholder="Please describe any accessibility needs"
-              className="input-dark resize-none"
-            />
-          </div>
-        </div>
-      </fieldset>
-        </>
-      ) : (
-        <>
-      <fieldset className="registration-form-section">
-        <legend className="registration-form-legend">
-          <ReceiptSectionIcon />
-          Proof of Payment
-        </legend>
-        <p className="registration-form-help mb-3">
-          Pay using the QR code or bank transfer below, then upload your receipt or screenshot.
-          Proof of payment is required to complete registration.
-          {registrationMode === "group"
-            ? " One payment and one receipt cover the whole group."
-            : ""}{" "}
-          Registration payments are subject to applicable Philippine tax documentation,
-          including BIR Form 2303 (Certificate of Registration) and BIR Form 2307
-          (Certificate of Creditable Tax Withheld at Source).
-        </p>
-
-        {formData.category && formData.feeTier ? (
-          <div className="registration-group-total mb-4">
-            <div className="registration-group-total-row">
-              <span>Category</span>
-              <strong>
-                {conference.registration.fees[formData.category as RegistrationCategory].label}
-              </strong>
-            </div>
-            <div className="registration-group-total-row">
-              <span>Rate</span>
-              <strong>{formData.feeTier === "regular" ? "Regular" : "Early Bird"}</strong>
-            </div>
-            <div className="registration-group-total-row">
-              <span>Fee per person</span>
-              <strong>{formatPeso(unitFee)}</strong>
-            </div>
-            {registrationMode === "group" ? (
-              <div className="registration-group-total-row">
-                <span>Participants</span>
-                <strong>{headcount}</strong>
-              </div>
-            ) : null}
-            <div className="registration-group-total-row is-total">
-              <span>Total due</span>
-              <strong>{formatPeso(totalFee)}</strong>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="registration-form-payment-panel mb-4">
-          <RegistrationPaymentQr variant="form" eventId={eventId} />
-        </div>
-
-        <div className="col-12">
-          <label htmlFor="receipt" className="form-label registration-form-label">
-            Upload Proof of Payment <span className="text-accent">*</span>
-            <span className="registration-form-optional"> (Image or PDF, max 5 MB)</span>
-          </label>
-          <input
-            id="receipt"
-            type="file"
-            accept="image/*,application/pdf"
-            className={`input-dark ${errors.receipt ? "input-dark-error" : ""}`}
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              void handleReceiptSelected(file);
-            }}
-          />
-          {receiptFile && (
-            <p className="mt-2 mb-0 text-xs text-muted">Selected: {receiptFile.name}</p>
-          )}
-          {ocrStatus === "scanning" ? (
-            <p className="mt-2 mb-0 text-xs text-muted" role="status">
-              Scanning receipt for payment reference…
-            </p>
-          ) : null}
-          {ocrMessage ? (
-            <p className="mt-2 mb-0 text-xs text-muted" role="status">
-              {ocrMessage}
-            </p>
-          ) : null}
-          {errors.receipt && <p className="mt-1 text-xs text-red-400">{errors.receipt}</p>}
-        </div>
-
-        {receiptFile ? (
-          <div className="col-12 mt-3 registration-payment-reference-panel">
-            <label htmlFor="paymentReference" className="form-label registration-form-label">
-              Payment / transfer reference <span className="text-accent">*</span>
-            </label>
-            <p className="registration-form-help mb-2">
-              We try to read this from your receipt. Please check it carefully and correct it if
-              needed.
-            </p>
-            <input
-              id="paymentReference"
-              type="text"
-              value={paymentReference}
-              onChange={(e) => {
-                setPaymentReference(e.target.value);
-                setReferenceConfirmed(false);
-                if (errors.paymentReference) {
-                  setErrors((prev) => ({ ...prev, paymentReference: undefined }));
-                }
-              }}
-              placeholder="e.g. GCash Ref No. or bank transfer reference"
-              className={`input-dark ${errors.paymentReference ? "input-dark-error" : ""}`}
-              autoComplete="off"
-            />
-            <label className="d-flex align-items-start gap-2 mt-3 mb-0 cursor-pointer">
-              <input
-                type="checkbox"
-                className="registration-form-checkbox mt-1"
-                checked={referenceConfirmed}
-                onChange={(e) => {
-                  setReferenceConfirmed(e.target.checked);
-                  if (e.target.checked && errors.paymentReference) {
-                    setErrors((prev) => ({ ...prev, paymentReference: undefined }));
-                  }
-                }}
-              />
-              <span className="small text-muted lh-base">
-                Yes, this payment reference looks right (or I corrected it to match my receipt).
-              </span>
-            </label>
-            {errors.paymentReference && (
-              <p className="mt-1 text-xs text-red-400">{errors.paymentReference}</p>
+            >
+              <BookmarkIcon />
+              Save Draft
+            </button>
+            {isPaymentPhase ? (
+              <button
+                type="submit"
+                disabled={loading || ocrStatus === "scanning"}
+                className="registration-form-footer-btn registration-form-footer-btn--primary"
+              >
+                {loading
+                  ? "Processing..."
+                  : ocrStatus === "scanning"
+                    ? "Scanning receipt..."
+                    : "Submit registration"}
+                <span aria-hidden="true">→</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="registration-form-footer-btn registration-form-footer-btn--primary"
+                onClick={handleContinueToPayment}
+              >
+                Next
+                <span aria-hidden="true">→</span>
+              </button>
             )}
           </div>
-        ) : null}
-      </fieldset>
-
-      <div className="registration-form-terms rounded-lg bg-white border border-green-100 p-3 p-md-4">
-        <label className="d-flex align-items-start gap-3 mb-0 cursor-pointer">
-          <input
-            id="agreeToTerms"
-            name="agreeToTerms"
-            type="checkbox"
-            checked={formData.agreeToTerms}
-            onChange={(e) => updateField("agreeToTerms", e.target.checked)}
-            className="registration-form-checkbox mt-1"
-          />
-          <span className="small text-muted lh-base">
-            I hereby confirm that the information provided is accurate and complete. I acknowledge the
-            terms and conditions governing participation in the {conference.conferenceName}, including
-            the requirement for payment confirmation prior to the event, and compliance with applicable
-            Philippine tax documentation such as BIR Form 2303 (Certificate of Registration) and BIR
-            Form 2307 (Certificate of Creditable Tax Withheld at Source), where applicable. I consent
-            to the collection and processing of my personal data in accordance with the Data Privacy
-            Act of 2012 (Republic Act No. 10173).
-          </span>
-        </label>
-        {errors.agreeToTerms && (
-          <p className="mt-2 mb-0 text-xs text-red-500 ps-4 ms-3">{errors.agreeToTerms}</p>
-        )}
-      </div>
-        </>
-      )}
-
-      <div className="registration-form-footer">
-        <button
-          type="button"
-          className="registration-form-footer-btn registration-form-footer-btn--ghost"
-          onClick={isPaymentPhase ? handleBackFromPayment : onBack}
-        >
-          <span aria-hidden="true">←</span>
-          Back
-        </button>
-        <button
-          type="button"
-          className="registration-form-footer-btn registration-form-footer-btn--outline"
-          onClick={() => {
-            saveRegistrationDraft(eventId, {
-              ...formData,
-              mode: registrationMode,
-              members: registrationMode === "group" ? members : [],
-            });
-            setDraftSavedNotice(true);
-            window.setTimeout(() => setDraftSavedNotice(false), 2500);
-          }}
-        >
-          <BookmarkIcon />
-          Save Draft
-        </button>
-        {isPaymentPhase ? (
-          <button
-            type="submit"
-            disabled={loading || isSubmitting || ocrStatus === "scanning"}
-            className="registration-form-footer-btn registration-form-footer-btn--primary"
-          >
-            {loading || isSubmitting
-              ? "Processing..."
-              : ocrStatus === "scanning"
-                ? "Scanning receipt..."
-              : registrationMode === "group"
-                ? "Submit group registration"
-                : "Submit registration"}
-            <span aria-hidden="true">→</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="registration-form-footer-btn registration-form-footer-btn--primary"
-            onClick={handleContinueToPayment}
-          >
-            Next
-            <span aria-hidden="true">→</span>
-          </button>
-        )}
-      </div>
-      {draftSavedNotice ? (
-        <p className="registration-form-draft-saved" role="status">
-          Draft saved.
-        </p>
-      ) : null}
+          {draftSavedNotice ? (
+            <p className="registration-form-draft-saved" role="status">
+              Draft saved.
+            </p>
+          ) : null}
         </form>
       </div>
     </>
@@ -1494,19 +2088,31 @@ function UsersSectionIcon() {
   );
 }
 
-function BriefcaseSectionIcon() {
+function IdCardSectionIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.75" />
-      <path d="M9 8V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.75" />
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <circle cx="8.5" cy="11" r="1.6" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M6.8 15.2c.4-1.2 1.4-1.8 1.7-1.8s1.3.6 1.7 1.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M13.5 10h5M13.5 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
 
-function HomeSectionIcon() {
+function LicenseSectionIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-8.5Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M8 9h8M8 12.5h8M8 16h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MealSectionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 3v7a2 2 0 0 0 4 0V3M9 10v11" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M16 3c-1.2 1.2-2 3-2 5s.8 3.6 2 4.6V21" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </svg>
   );
 }
@@ -1515,6 +2121,25 @@ function ReceiptSectionIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M7 4h10v16l-2-1.5L13 20l-2-1.5L9 20l-2-1.5L5 20V4Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DocumentSectionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M14 3v4h4" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ClipboardCheckSectionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="6" y="4" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" stroke="currentColor" strokeWidth="1.75" />
+      <path d="m9 13 2 2 4-4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1567,6 +2192,135 @@ function FormField({
         maxLength={maxLength}
         className={`input-dark ${error ? "input-dark-error" : ""}`}
       />
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  id,
+  required = false,
+  value,
+  onChange,
+  options,
+  error,
+  placeholder,
+  className = "col-12 col-md-6",
+}: {
+  label: string;
+  id: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  options: PnaSelectOption[];
+  error?: string;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="form-label registration-form-label">
+        {label} {required && <span className="text-accent">*</span>}
+      </label>
+      <PnaSelect
+        id={id}
+        value={value}
+        onChange={onChange}
+        options={options}
+        placeholder={placeholder}
+        required={required}
+        className={error ? "pna-select--error" : ""}
+      />
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function PhoneField({
+  id,
+  label = "Phone Number",
+  required = true,
+  value,
+  onChange,
+  onBlur,
+  error,
+  className = "col-12 col-md-6",
+}: {
+  id: string;
+  label?: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="form-label registration-form-label">
+        {label} {required && <span className="text-accent">*</span>}
+      </label>
+      <div className={`registration-phone-field${error ? " is-error" : ""}`}>
+        <span className="registration-phone-prefix" aria-hidden="true">
+          +63
+        </span>
+        <input
+          type="tel"
+          id={id}
+          inputMode="numeric"
+          autoComplete="tel-national"
+          value={toPhMobileLocalDigits(value)}
+          onChange={(e) => onChange(toPhMobileLocalDigits(e.target.value))}
+          onBlur={onBlur}
+          placeholder="9606207919"
+          maxLength={10}
+          className={`input-dark registration-phone-input${error ? " input-dark-error" : ""}`}
+        />
+      </div>
+      <p className="registration-phone-hint mb-0">
+        Enter 10 digits starting with 9 (do not include 0).
+      </p>
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function FileField({
+  label,
+  id,
+  required = false,
+  accept,
+  hint,
+  file,
+  onChange,
+  error,
+  className = "col-12 col-md-6",
+}: {
+  label: string;
+  id: string;
+  required?: boolean;
+  accept?: string;
+  hint?: string;
+  file: File | null;
+  onChange: (file: File | null) => void;
+  error?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="form-label registration-form-label">
+        {label} {required && <span className="text-accent">*</span>}
+        {hint ? <span className="registration-form-optional"> {hint}</span> : null}
+      </label>
+      <input
+        id={id}
+        type="file"
+        accept={accept}
+        className={`input-dark ${error ? "input-dark-error" : ""}`}
+        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+      />
+      {file ? <p className="mt-2 mb-0 text-xs text-muted">Selected: {file.name}</p> : null}
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
     </div>
   );

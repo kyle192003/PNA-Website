@@ -1,21 +1,24 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import { conference, type RegistrationCategory } from "@/lib/conference";
+import { conference } from "@/lib/conference";
 import { generateAndSaveRegistrationQr } from "@/lib/registration-qr";
+import { normalizeEventFees } from "@/lib/registration-fees";
 import type {
   ConferenceEvent,
+  EventFees,
   EventInput,
   EventSpeaker,
   EventSpeakerInput,
   EventStatus,
   PublicEvent,
 } from "@/lib/types/admin";
+import { getDefaultEventFees } from "@/lib/types/admin";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const EVENTS_FILE = path.join(DATA_DIR, "events.json");
 
-const defaultFees = conference.registration.fees;
+const defaultFees = getDefaultEventFees();
 
 async function ensureEventsFile(): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
@@ -70,6 +73,7 @@ function normalizeEvent(
       event.showQrInRegistration ?? event.highlightQrOnHomepage ?? false,
     registrationQrCodeUrl: event.registrationQrCodeUrl ?? null,
     venueMapsUrl: event.venueMapsUrl?.trim() || null,
+    fees: normalizeEventFees(event.fees),
     speakers: normalizeSpeakers(event.speakers),
   };
 }
@@ -251,15 +255,8 @@ export async function getRegistrationQrEvent(
   return event;
 }
 
-function normalizeFees(
-  fees: EventInput["fees"]
-): Record<RegistrationCategory, ConferenceEvent["fees"][RegistrationCategory]> {
-  return {
-    member: fees.member ?? defaultFees.member,
-    government: fees.government ?? defaultFees.government,
-    private: fees.private ?? defaultFees.private,
-    student: fees.student ?? defaultFees.student,
-  };
+function normalizeFees(fees: EventInput["fees"] | unknown): EventFees {
+  return normalizeEventFees(fees ?? defaultFees);
 }
 
 export async function createEvent(input: EventInput): Promise<ConferenceEvent> {

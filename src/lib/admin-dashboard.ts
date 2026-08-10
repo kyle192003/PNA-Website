@@ -60,7 +60,11 @@ function getRegistrationsByCategory(
   const counts = new Map<string, number>();
 
   for (const registration of registrations) {
-    const label = conference.registration.fees[registration.category]?.label ?? registration.category;
+    const label =
+      registration.feeLabel?.trim() ||
+      (conference.registration.fees as Record<string, { label?: string }>)[registration.category]
+        ?.label ||
+      registration.category;
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
 

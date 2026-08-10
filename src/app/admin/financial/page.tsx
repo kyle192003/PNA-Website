@@ -181,11 +181,14 @@ export default async function AdminFinancialPage({
                     <td>{formatParticipantName(registration)}</td>
                     <td>{registration.referenceNumber}</td>
                     <td>
-                      {conference.registration.fees[registration.category]?.label ??
+                      {registration.feeLabel?.trim() ||
+                        (conference.registration.fees as Record<string, { label?: string }>)[
+                          registration.category
+                        ]?.label ||
                         registration.category}
                     </td>
                     <td>{formatPeso(registration.paymentAmount)}</td>
-                    <td>{registration.feeTier === "regular" ? "Regular" : "Early bird"}</td>
+                    <td>{registration.feeLabel || registration.appliedFeeKey || registration.feeTier}</td>
                   </tr>
                 ))}
               </tbody>

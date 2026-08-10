@@ -21,6 +21,8 @@ const ALLOWED_RECEIPT_TYPES = new Set([
 ]);
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_CERTIFICATE_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_REGISTRATION_DOC_SIZE = 10 * 1024 * 1024;
+const REGISTRATION_DOCS_DIR = path.join(PRIVATE_STORAGE_ROOT, "registration-docs");
 
 const ALLOWED_CERTIFICATE_TYPES = new Set([
   ...ALLOWED_IMAGE_TYPES,
@@ -47,6 +49,7 @@ const MAGIC_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
 async function ensureUploadDirs(): Promise<void> {
   await fs.mkdir(QR_DIR, { recursive: true });
   await fs.mkdir(RECEIPT_DIR, { recursive: true });
+  await fs.mkdir(REGISTRATION_DOCS_DIR, { recursive: true });
   await fs.mkdir(SPEAKER_DIR, { recursive: true });
   await fs.mkdir(CERTIFICATE_DIR, { recursive: true });
 }
@@ -200,7 +203,7 @@ export async function saveReceipt(
   file: File
 ): Promise<string> {
   await ensureUploadDirs();
-  const validation = validateFile(file, ALLOWED_RECEIPT_TYPES);
+  const validation = validateFile(file, ALLOWED_RECEIPT_TYPES, MAX_REGISTRATION_DOC_SIZE);
   if (!validation.ok) throw new Error(validation.error);
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -216,6 +219,93 @@ export async function saveReceipt(
 
   await fs.writeFile(filepath, buffer);
   return buildReceiptStorageRef(registrationId, ext);
+}
+
+export type RegistrationDocKind =
+  | "pnaId"
+  | "prcId"
+  | "bir2303"
+  | "bir2307"
+  | "seniorPwdId";
+
+export function buildRegistrationDocRef(
+  registrationId: string,
+  kind: RegistrationDocKind,
+  ext: string
+): string {
+  return `private:registration-docs/${registrationId}-${kind}${ext}`;
+}
+
+export async function saveRegistrationDocument(
+  registrationId: string,
+  kind: RegistrationDocKind,
+  file: File,
+  options?: { imagesOnly?: boolean }
+): Promise<string> {
+  await ensureUploadDirs();
+  const allowed = options?.imagesOnly ? ALLOWED_IMAGE_TYPES : ALLOWED_RECEIPT_TYPES;
+  const validation = validateFile(file, allowed, MAX_REGISTRATION_DOC_SIZE);
+  if (!validation.ok) throw new Error(validation.error);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeCheck = await validateBufferMime(buffer, validation.mimeType, allowed);
+  if (!mimeCheck.ok) throw new Error(mimeCheck.error);
+
+  const ext = getExtension(file.name, mimeCheck.mimeType);
+  const filename = `${registrationId}-${kind}${ext}`;
+  const filepath = assertInsideRoot(
+    REGISTRATION_DOCS_DIR,
+    path.join(REGISTRATION_DOCS_DIR, filename)
+  );
+
+  // Clear prior variants for this kind.
+  for (const candidateExt of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
+    const prior = path.join(REGISTRATION_DOCS_DIR, `${registrationId}-${kind}${candidateExt}`);
+    try {
+      await fs.unlink(prior);
+    } catch {
+      // ignore
+    }
+  }
+
+  await fs.writeFile(filepath, buffer);
+  return buildRegistrationDocRef(registrationId, kind, ext);
+}
+
+export async function resolveRegistrationDocument(
+  registrationId: string,
+  kind: RegistrationDocKind,
+  storedRef?: string | null
+): Promise<ResolvedReceiptFile | null> {
+  await ensureUploadDirs();
+  const candidates: string[] = [];
+  if (storedRef?.startsWith("private:registration-docs/")) {
+    candidates.push(path.join(PRIVATE_STORAGE_ROOT, storedRef.replace(/^private:/, "")));
+  }
+  for (const ext of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
+    candidates.push(path.join(REGISTRATION_DOCS_DIR, `${registrationId}-${kind}${ext}`));
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    const root = path.resolve(REGISTRATION_DOCS_DIR);
+    if (!(normalized.startsWith(root + path.sep) || normalized === root)) continue;
+    try {
+      await fs.access(normalized);
+      const ext = path.extname(normalized).toLowerCase();
+      return {
+        absolutePath: normalized,
+        mimeType: EXTENSION_MIME_MAP[ext] ?? "application/octet-stream",
+        filename: path.basename(normalized),
+      };
+    } catch {
+      // continue
+    }
+  }
+  return null;
 }
 
 export type ResolvedReceiptFile = {

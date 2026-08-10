@@ -503,7 +503,10 @@ export function ParticipantsTable({
                       ) : null}
                     </td>
                     <td>
-                      {conference.registration.fees[participant.category]?.label ??
+                      {participant.feeLabel?.trim() ||
+                        (conference.registration.fees as Record<string, { label?: string }>)[
+                          participant.category
+                        ]?.label ||
                         participant.category}
                     </td>
                     <td>{formatPeso(participant.paymentAmount ?? 0)}</td>
@@ -577,19 +580,27 @@ export function ParticipantsTable({
                 <dt>Payment amount</dt>
                 <dd>
                   {formatPeso(selected.paymentAmount ?? 0)}
-                  {selected.feeTier
-                    ? ` (${selected.feeTier === "regular" ? "Regular" : "Early bird"})`
-                    : ""}
+                  {selected.feeLabel ? ` (${selected.feeLabel})` : ""}
                 </dd>
               </div>
               <div>
                 <dt>Payment reference</dt>
                 <dd>{selected.paymentReference?.trim() || "—"}</dd>
               </div>
+              {selected.seniorPwdIdNumber ? (
+                <div>
+                  <dt>Senior/PWD ID number</dt>
+                  <dd>{selected.seniorPwdIdNumber}</dd>
+                </div>
+              ) : null}
               <div>
-                <dt>Category</dt>
+                <dt>Category / rate</dt>
                 <dd>
-                  {conference.registration.fees[selected.category]?.label ?? selected.category}
+                  {selected.feeLabel?.trim() ||
+                    (conference.registration.fees as Record<string, { label?: string }>)[
+                      selected.category
+                    ]?.label ||
+                    selected.category}
                 </dd>
               </div>
             </dl>
@@ -601,6 +612,37 @@ export function ParticipantsTable({
               referenceNumber={selected.referenceNumber}
               paymentReference={selected.paymentReference}
             />
+
+            <div className="admin-registration-docs mt-3">
+              <p className="admin-label mb-2">Uploaded documents</p>
+              <div className="d-flex flex-wrap gap-2">
+                {(
+                  [
+                    ["pnaId", "PNA ID", selected.pnaIdUrl],
+                    ["prcId", "PRC ID", selected.prcIdUrl],
+                    ["bir2303", "BIR 2303", selected.bir2303Url],
+                    ["bir2307", "BIR 2307", selected.bir2307Url],
+                    ["seniorPwdId", "Senior/PWD ID", selected.seniorPwdIdUrl],
+                  ] as const
+                ).map(([kind, label, url]) =>
+                  url ? (
+                    <a
+                      key={kind}
+                      className="admin-link-btn"
+                      href={`/api/admin/registration-docs/${encodeURIComponent(selected.id)}/${kind}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {label}
+                    </a>
+                  ) : (
+                    <span key={kind} className="admin-muted small">
+                      {label}: —
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
 
             <label className="admin-label mt-3">Admin Notes</label>
             <textarea

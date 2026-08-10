@@ -30,8 +30,10 @@ async function resolveEventLabel(eventId?: string | null): Promise<string> {
   return event?.title ?? "Selected event";
 }
 
-function categoryLabel(category: RegistrationRecord["category"]): string {
-  return conference.registration.fees[category]?.label ?? category;
+function categoryLabel(category: RegistrationRecord["category"] | string, feeLabel?: string): string {
+  if (feeLabel?.trim()) return feeLabel;
+  const fees = conference.registration.fees as Record<string, { label?: string }>;
+  return fees[category]?.label ?? String(category);
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -126,7 +128,7 @@ export async function buildFinancialExport(
       registration.referenceNumber,
       formatParticipantName(registration),
       registration.email,
-      categoryLabel(registration.category),
+      categoryLabel(registration.category, registration.feeLabel),
       registration.feeTier === "regular" ? "Regular" : "Early bird",
       formatPeso(registration.paymentAmount ?? 0),
       PAYMENT_STATUS_LABELS[registration.paymentStatus],
@@ -213,7 +215,7 @@ export async function buildParticipantsExport(
       registration.phone,
       registration.organization,
       registration.position,
-      categoryLabel(registration.category),
+      categoryLabel(registration.category, registration.feeLabel),
       formatPeso(registration.paymentAmount ?? 0),
       registration.feeTier === "regular" ? "Regular" : "Early bird",
       PAYMENT_STATUS_LABELS[registration.paymentStatus],

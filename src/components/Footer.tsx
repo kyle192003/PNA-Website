@@ -75,14 +75,13 @@ export function Footer() {
               <h3 className="pna-footer-heading">Registration</h3>
               <ul className="pna-footer-list">
                 {Object.values(conference.registration.fees).map((fee) => (
-                  <li key={fee.label}>{fee.label}</li>
+                  <li key={fee.label}>
+                    {fee.label}: ₱{fee.amount.toLocaleString("en-PH")}
+                  </li>
                 ))}
               </ul>
-              <p className="pna-footer-meta">
-                Early bird until {conference.registration.earlyBirdDeadline}
-              </p>
               <p className="pna-footer-meta mb-0">
-                Regular registration until {conference.registration.regularDeadline}
+                Registration closes {conference.registration.registrationClosesAt}
               </p>
             </div>
           </div>

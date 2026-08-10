@@ -1,4 +1,5 @@
-import type { RegistrationCategory } from "@/lib/conference";
+import type { EventFeeKey, RegistrationCategory } from "@/lib/conference";
+import { conference } from "@/lib/conference";
 
 export type PaymentStatus =
   | "pending"
@@ -15,11 +16,22 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   rejected: "Rejected",
 };
 
+export interface EventRateFee {
+  amount: number;
+  label: string;
+  caption?: string;
+  /** Early-bird capacity; only used for earlyBird. */
+  cap?: number;
+}
+
+/** @deprecated Legacy nested early/regular fee shape. */
 export interface EventFee {
   early: number;
   regular: number;
   label: string;
 }
+
+export type EventFees = Record<EventFeeKey, EventRateFee>;
 
 export type EventStatus = "draft" | "upcoming" | "open" | "finished";
 
@@ -53,12 +65,11 @@ export interface PublicEvent {
   datesDisplay: string;
   venueName: string;
   venueAddress: string;
-  /** Optional Google Maps link. When empty, the site builds a search link from the address. */
   venueMapsUrl: string | null;
   earlyBirdDeadline: string;
   regularDeadline: string;
   status: Extract<EventStatus, "upcoming" | "open">;
-  fees: Record<RegistrationCategory, EventFee>;
+  fees: EventFees;
   featuredOnHomepage: boolean;
   speakers: EventSpeaker[];
 }
@@ -71,13 +82,11 @@ export interface ConferenceEvent {
   datesDisplay: string;
   venueName: string;
   venueAddress: string;
-  /** Optional Google Maps link. When empty, the site builds a search link from the address. */
   venueMapsUrl: string | null;
   earlyBirdDeadline: string;
   regularDeadline: string;
-  fees: Record<RegistrationCategory, EventFee>;
+  fees: EventFees;
   qrCodeUrl: string | null;
-  /** Auto-generated pubmat QR linking to this event's registration form. */
   registrationQrCodeUrl: string | null;
   showQrInRegistration: boolean;
   status: EventStatus;
@@ -99,7 +108,7 @@ export interface EventInput {
   venueMapsUrl?: string | null;
   earlyBirdDeadline: string;
   regularDeadline: string;
-  fees: Record<RegistrationCategory, EventFee>;
+  fees: EventFees;
   showQrInRegistration?: boolean;
   status?: EventStatus;
   featuredOnHomepage?: boolean;
@@ -140,9 +149,38 @@ export interface CertificateTemplate {
   updatedAt: string;
 }
 
+/** Participant rate choice on the form. */
+export type RegistrationRateChoice = "regular" | "seniorPwd";
+
+/** Snapshot of which published fee was charged. */
+export type AppliedFeeKey = EventFeeKey;
+
+/** @deprecated Prefer appliedFeeKey / registrationRate. */
 export type FeeTier = "early" | "regular";
 
+export type MembershipType = "lifetime" | "regular" | "non_member";
+
+export type RegistrationModeChoice = "single" | "group";
+
+export type FoodPreference = "regular" | "vegetarian" | "no_pork" | "allergy";
+
+export type SponsorConsent = "yes" | "no";
+
 export type RegistrationGroupRole = "primary" | "member";
+
+export interface RegistrationGroupMemberNote {
+  lastName: string;
+  firstName: string;
+  middleName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  prcLicenseNumber: string;
+  prcInitialRegistrationDate: string;
+  prcExpirationDate: string;
+  foodPreference: FoodPreference;
+  foodAllergyNote: string;
+}
 
 export interface RegistrationRecord {
   id: string;
@@ -150,36 +188,65 @@ export interface RegistrationRecord {
   eventId: string | null;
   firstName: string;
   lastName: string;
+  /** @deprecated Prefer middleName. */
   middleInitial: string;
+  middleName: string;
   email: string;
   phone: string;
+  dateOfBirth: string;
+  age: number | null;
+  gender: string;
+  /** Institution / company name. */
   organization: string;
+  institutionAddress: string;
   position: string;
+  membershipType: MembershipType | "";
+  pnaIdNumber: string;
+  pnaIdUrl: string | null;
+  pnaZone: string;
+  pnaChapter: string;
+  prcLicenseNumber: string;
+  prcInitialRegistrationDate: string;
+  prcExpirationDate: string;
+  prcIdUrl: string | null;
+  registrationMode: RegistrationModeChoice;
+  registrationRate: RegistrationRateChoice | "";
+  appliedFeeKey: AppliedFeeKey | "";
+  feeLabel: string;
+  seniorPwdIdNumber: string;
+  seniorPwdIdUrl: string | null;
+  groupMembersNote: RegistrationGroupMemberNote[];
+  bir2303Url: string | null;
+  bir2307Url: string | null;
+  foodPreference: FoodPreference | "";
+  foodAllergyNote: string;
+  sponsorConsent: SponsorConsent | "";
+  dataPrivacyConsent: boolean;
+  /**
+   * @deprecated Legacy fee category. New records store appliedFeeKey / feeLabel.
+   * May still hold old values like "member".
+   */
   category: RegistrationCategory;
-  /** Snapshot of early vs regular pricing chosen/applied at registration. */
+  /** @deprecated Prefer appliedFeeKey. */
   feeTier: FeeTier;
-  /** Snapshot of the fee amount in PHP at registration time. */
   paymentAmount: number;
+  /** @deprecated Personal address fields — institution address is preferred. */
   address: string;
   city: string;
   province: string;
+  /** @deprecated Prefer foodPreference. */
   dietaryRequirements: string;
   specialNeeds: string;
   agreeToTerms: boolean;
   paymentStatus: PaymentStatus;
   receiptUrl: string | null;
   receiptUploadedAt: string | null;
-  /** Transfer / transaction reference from the participant's proof of payment. */
   paymentReference: string;
   paymentNotes: string;
   adminNotes: string;
-  /** Shared id for group registrations; null for individual. */
   groupId: string | null;
-  /** Primary is the payer/receipt owner; member shares org/category/address. */
   groupRole: RegistrationGroupRole | null;
-  /** Headcount for the group batch; null for individual. */
   groupSize: number | null;
-  /** Unguessable check-in token; assigned once at registration and never regenerated. */
   checkInToken: string;
   checkInStatus: CheckInStatus;
   checkedInAt: string | null;
@@ -201,28 +268,57 @@ export interface RegistrationRecord {
 export interface GroupMemberInput {
   firstName: string;
   lastName: string;
+  middleName?: string;
   middleInitial?: string;
   email: string;
   phone: string;
+  dateOfBirth?: string;
+  prcLicenseNumber?: string;
+  prcInitialRegistrationDate?: string;
+  prcExpirationDate?: string;
+  foodPreference?: FoodPreference;
+  foodAllergyNote?: string;
 }
 
 export interface RegistrationInput {
   firstName: string;
   lastName: string;
+  middleName?: string;
   middleInitial?: string;
   email: string;
   phone: string;
+  dateOfBirth: string;
+  age?: number | null;
+  gender: string;
   organization: string;
+  institutionAddress: string;
   position: string;
-  category: RegistrationCategory;
+  membershipType: MembershipType;
+  pnaIdNumber: string;
+  pnaZone: string;
+  pnaChapter: string;
+  prcLicenseNumber: string;
+  prcInitialRegistrationDate: string;
+  prcExpirationDate: string;
+  registrationMode: RegistrationModeChoice;
+  registrationRate: RegistrationRateChoice;
+  seniorPwdIdNumber?: string;
+  groupMembersNote?: RegistrationGroupMemberNote[];
+  foodPreference: FoodPreference;
+  foodAllergyNote?: string;
+  sponsorConsent: SponsorConsent;
+  dataPrivacyConsent: boolean;
+  paymentReference: string;
+  /** @deprecated */
+  category?: RegistrationCategory;
   feeTier?: FeeTier;
   paymentAmount?: number;
-  address: string;
-  city: string;
-  province: string;
+  address?: string;
+  city?: string;
+  province?: string;
   dietaryRequirements?: string;
   specialNeeds?: string;
-  agreeToTerms: boolean;
+  agreeToTerms?: boolean;
   eventId?: string | null;
 }
 
@@ -266,4 +362,26 @@ export interface AdminStats {
   rejected: number;
   activeEvents: number;
   upcomingEvents: number;
+}
+
+export function getDefaultEventFees(): EventFees {
+  const fees = conference.registration.fees;
+  return {
+    earlyBird: {
+      amount: fees.earlyBird.amount,
+      label: fees.earlyBird.label,
+      caption: fees.earlyBird.caption,
+      cap: fees.earlyBird.cap,
+    },
+    regular: {
+      amount: fees.regular.amount,
+      label: fees.regular.label,
+      caption: fees.regular.caption,
+    },
+    seniorPwd: {
+      amount: fees.seniorPwd.amount,
+      label: fees.seniorPwd.label,
+      caption: fees.seniorPwd.caption,
+    },
+  };
 }

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { conference } from "@/lib/conference";
-import type { ConferenceEvent, EventStatus } from "@/lib/types/admin";
+import type { ConferenceEvent, EventFees, EventStatus } from "@/lib/types/admin";
+import { getDefaultEventFees } from "@/lib/types/admin";
+import { normalizeEventFees } from "@/lib/registration-fees";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
@@ -48,6 +50,9 @@ export function EventForm({
   const [regularDeadline, setRegularDeadline] = useState(
     initial?.regularDeadline ?? conference.registration.regularDeadline
   );
+  const [fees, setFees] = useState<EventFees>(() =>
+    normalizeEventFees(initial?.fees ?? getDefaultEventFees())
+  );
   const [qrPreviewUrl, setQrPreviewUrl] = useState<string | null>(null);
   const [currentFeatured, setCurrentFeatured] = useState<{ id: string; title: string } | null>(
     null
@@ -90,6 +95,7 @@ export function EventForm({
       initial?.earlyBirdDeadline ?? conference.registration.earlyBirdDeadline
     );
     setRegularDeadline(initial?.regularDeadline ?? conference.registration.regularDeadline);
+    setFees(normalizeEventFees(initial?.fees ?? getDefaultEventFees()));
   }, [
     initial?.id,
     initial?.status,
@@ -97,6 +103,7 @@ export function EventForm({
     initial?.datesDisplay,
     initial?.earlyBirdDeadline,
     initial?.regularDeadline,
+    initial?.fees,
     isCreate,
   ]);
 
@@ -136,7 +143,7 @@ export function EventForm({
       featuredOnHomepage:
         (nextStatus === "open" || nextStatus === "upcoming") && featuredOnHomepage,
       showQrInRegistration: formData.get("showQrInRegistration") === "on",
-      fees: conference.registration.fees,
+      fees,
     };
   }
 
@@ -320,6 +327,105 @@ export function EventForm({
               onChange={setRegularDeadline}
               disabled={loading}
             />
+          </div>
+
+          <div className="col-12">
+            <p className="admin-label mb-2">Registration fees (editable per event)</p>
+            <div className="row g-3">
+              <div className="col-md-4">
+                <label className="admin-label" htmlFor="feeEarlyBird">
+                  Early Bird amount (₱)
+                </label>
+                <input
+                  id="feeEarlyBird"
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="admin-input"
+                  value={fees.earlyBird.amount}
+                  onChange={(e) =>
+                    setFees((prev) => ({
+                      ...prev,
+                      earlyBird: {
+                        ...prev.earlyBird,
+                        amount: Number(e.target.value) || 0,
+                      },
+                    }))
+                  }
+                  disabled={loading}
+                />
+                <label className="admin-label mt-2" htmlFor="feeEarlyBirdCap">
+                  Early Bird cap (first N)
+                </label>
+                <input
+                  id="feeEarlyBirdCap"
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="admin-input"
+                  value={fees.earlyBird.cap ?? 500}
+                  onChange={(e) =>
+                    setFees((prev) => ({
+                      ...prev,
+                      earlyBird: {
+                        ...prev.earlyBird,
+                        cap: Number(e.target.value) || 500,
+                      },
+                    }))
+                  }
+                  disabled={loading}
+                />
+              </div>
+              <div className="col-md-4">
+                <label className="admin-label" htmlFor="feeRegular">
+                  Regular amount (₱)
+                </label>
+                <input
+                  id="feeRegular"
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="admin-input"
+                  value={fees.regular.amount}
+                  onChange={(e) =>
+                    setFees((prev) => ({
+                      ...prev,
+                      regular: {
+                        ...prev.regular,
+                        amount: Number(e.target.value) || 0,
+                      },
+                    }))
+                  }
+                  disabled={loading}
+                />
+              </div>
+              <div className="col-md-4">
+                <label className="admin-label" htmlFor="feeSenior">
+                  Senior Citizen/PWD amount (₱)
+                </label>
+                <input
+                  id="feeSenior"
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="admin-input"
+                  value={fees.seniorPwd.amount}
+                  onChange={(e) =>
+                    setFees((prev) => ({
+                      ...prev,
+                      seniorPwd: {
+                        ...prev.seniorPwd,
+                        amount: Number(e.target.value) || 0,
+                      },
+                    }))
+                  }
+                  disabled={loading}
+                />
+              </div>
+            </div>
+            <p className="admin-field-help">
+              Defaults come from the site schedule. Changing these only affects this event.
+            </p>
           </div>
 
           <div className="col-md-6">

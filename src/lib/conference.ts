@@ -11,6 +11,7 @@ export const conference = {
     "Strengthening Institutions Through Collaborative Governance and National Excellence",
   tagline:
     "Advancing public service, institutional integrity, and inclusive national development across the Republic of the Philippines.",
+  membershipRenewalUrl: "https://www.philippinenurses.org",
   hero: {
     headline: "Advancing Governance, Service, and National Development",
     description:
@@ -54,7 +55,7 @@ export const conference = {
   cta: {
     title: "Official Registration Now Open",
     description:
-      "Secure your participation before the early registration deadline on {earlyBirdDeadline}. Delegates are encouraged to complete registration promptly to confirm attendance and conference materials.",
+      "Secure your participation before the registration deadline on {regularDeadline}. Delegates are encouraged to complete registration promptly to confirm attendance and conference materials.",
   },
   dates: {
     start: "October 19, 2026",
@@ -72,18 +73,33 @@ export const conference = {
     registrationEmail: "pnanatcon2026@gmail.com",
   },
   registration: {
-    earlyBirdDeadline: "August 31, 2026",
-    regularDeadline: "September 30, 2026",
+    earlyBirdDeadline: "October 6, 2026",
+    regularDeadline: "October 6, 2026",
+    registrationClosesAt: "October 6, 2026, at 12:00 MN",
+    includes:
+      "2 snacks, lunch and conference kit for the 3 day event",
     bankTransfer: {
       accountName: "Philippine Nurses Association, Inc.",
-      accountNumber: "0012-3456-7890",
-      bankName: "BDO Unibank",
+      accountNumber: "3061-0869-26",
+      bankName: "Bank of the Philippine Islands (BPI)",
     },
     fees: {
-      member: { early: 3500, regular: 4500, label: "PNA Member" },
-      government: { early: 4000, regular: 5000, label: "Government Official" },
-      private: { early: 5500, regular: 6500, label: "Private Sector Delegate" },
-      student: { early: 1500, regular: 2000, label: "Student / Academic Delegate" },
+      earlyBird: {
+        amount: 500,
+        label: "Early Bird Rate",
+        caption: "First 500 registrants only",
+        cap: 500,
+      },
+      regular: {
+        amount: 1000,
+        label: "Regular Rate",
+        caption: "Will open after the early bird is filled",
+      },
+      seniorPwd: {
+        amount: 700,
+        label: "Senior Citizen/PWD Rate",
+        caption: "With valid Senior Citizen or PWD ID",
+      },
     },
   },
   stats: [
@@ -111,7 +127,15 @@ export const conference = {
   },
 } as const;
 
-export type RegistrationCategory = keyof typeof conference.registration.fees;
+export type EventFeeKey = keyof typeof conference.registration.fees;
+
+/** @deprecated Legacy category keys kept for older registration records. */
+export type RegistrationCategory =
+  | EventFeeKey
+  | "member"
+  | "government"
+  | "private"
+  | "student";
 
 export type { PaymentStatus, RegistrationRecord as Registration } from "@/lib/types/admin";
 
@@ -122,6 +146,28 @@ export const navLinks = [
   { href: "/register", label: "Register" },
   { href: "/contact", label: "Contact" },
 ] as const;
+
+export const PNA_ZONES = [
+  "NCR",
+  "CAR",
+  "Region 1",
+  "Region 2",
+  "Region 3",
+  "Region 4",
+  "Region 5",
+  "Region 6",
+  "Region 7",
+  "Region 8",
+  "Region 9",
+  "Region 10",
+  "Region 11",
+  "Region 12",
+  "BARMM",
+  "CARAGA",
+  "Foreign-based",
+] as const;
+
+export type PnaZone = (typeof PNA_ZONES)[number];
 
 export const objectives = [
   {

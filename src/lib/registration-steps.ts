@@ -1,7 +1,7 @@
 export const REGISTRATION_STEPS = [
   "Personal",
-  "Professional",
-  "Address",
+  "Membership",
+  "License",
   "Payment",
   "Review",
 ] as const;

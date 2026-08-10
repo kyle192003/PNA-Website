@@ -2,19 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
-import { formatPeso } from "@/lib/registration-fees";
+import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
+import type { EventFees } from "@/lib/types/admin";
 import { RegistrationLookup } from "@/components/RegistrationLookup";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 
-interface SidebarEvent {
-  id: string;
-  title: string;
-  datesDisplay: string;
-  venueName: string;
-  earlyBirdDeadline: string;
-  fees: typeof conference.registration.fees;
-}
-
+// Re-export for RegistrationModal compatibility
 export type RegistrationPaymentBreakdown = {
   categoryLabel: string;
   feeTierLabel: string;
@@ -23,15 +16,23 @@ export type RegistrationPaymentBreakdown = {
   totalFee: number;
 };
 
+interface SidebarEvent {
+  id: string;
+  title: string;
+  datesDisplay: string;
+  venueName: string;
+  earlyBirdDeadline: string;
+  regularDeadline?: string;
+  fees: EventFees;
+}
+
 export function RegistrationSidebar({
   eventId = null,
   showPaymentQr = true,
   paymentBreakdown = null,
 }: {
   eventId?: string | null;
-  /** When false, QR/bank payment card is hidden (shown in the payment form step instead). */
   showPaymentQr?: boolean;
-  /** When set (Payment / Review steps), replaces the fee schedule with this participant's total. */
   paymentBreakdown?: RegistrationPaymentBreakdown | null;
 }) {
   const [event, setEvent] = useState<SidebarEvent | null>(null);
@@ -46,38 +47,31 @@ export function RegistrationSidebar({
       .catch(() => setEvent(null));
   }, [eventId]);
 
-  const fees = event?.fees ?? conference.registration.fees;
-  const sidebarFeeKeys: Array<keyof typeof conference.registration.fees> = ["member", "government", "private"];
+  const fees = normalizeEventFees(event?.fees ?? conference.registration.fees);
   const datesDisplay = event?.datesDisplay ?? conference.dates.display;
   const venueName = event?.venueName ?? conference.venue.name;
-  const earlyBirdDeadline = event?.earlyBirdDeadline ?? conference.registration.earlyBirdDeadline;
+  const deadline =
+    conference.registration.registrationClosesAt ??
+    event?.regularDeadline ??
+    conference.registration.regularDeadline;
+  const bank = conference.registration.bankTransfer;
+  const renewalUrl = conference.membershipRenewalUrl;
 
   return (
     <aside className="registration-modal-sidebar" aria-label="Registration information">
       <div className="registration-sidebar-card">
         <div className="registration-sidebar-card-head">
           <SidebarClipboardIcon />
-          <h3 className="registration-sidebar-card-title">Registration Summary</h3>
+          <h3 className="registration-sidebar-card-title">Important Reminder</h3>
         </div>
-        <ul className="registration-sidebar-summary-list">
-          <li>
-            <SidebarCalendarIcon />
-            <span>{datesDisplay}</span>
-          </li>
-          <li>
-            <SidebarPinIcon />
-            <span>{venueName}</span>
-          </li>
-          <li className="registration-sidebar-summary-list-item--accent">
-            <SidebarClockIcon />
-            <span>
-              Early Bird Deadline: <strong>{earlyBirdDeadline}</strong>
-            </span>
-          </li>
-        </ul>
+        <p className="registration-sidebar-card-copy mb-0">
+          Registrants must be active members. Please renew your membership before registration. Renew
+          here:{" "}
+          <a href={renewalUrl} target="_blank" rel="noopener noreferrer">
+            www.philippinenurses.org
+          </a>
+        </p>
       </div>
-
-      {showPaymentQr ? <RegistrationPaymentQr variant="sidebar" eventId={eventId} /> : null}
 
       <div className="registration-sidebar-card">
         <div className="registration-sidebar-card-head">
@@ -95,13 +89,8 @@ export function RegistrationSidebar({
                   Rate <strong>{paymentBreakdown.feeTierLabel}</strong>
                 </span>
                 <span>
-                  Fee per person <strong>{formatPeso(paymentBreakdown.unitFee)}</strong>
+                  Amount due <strong>{formatPeso(paymentBreakdown.totalFee)}</strong>
                 </span>
-                {paymentBreakdown.headcount > 1 ? (
-                  <span>
-                    Participants <strong>{paymentBreakdown.headcount}</strong>
-                  </span>
-                ) : null}
               </div>
             </div>
             <div className="registration-sidebar-payment-total">
@@ -111,24 +100,98 @@ export function RegistrationSidebar({
           </div>
         ) : (
           <div className="registration-sidebar-fees">
-            {sidebarFeeKeys.map((key) => {
-              const fee = fees[key];
-              return (
-                <div key={key} className="registration-sidebar-fee-row">
-                  <p className="registration-sidebar-fee-label">{fee.label}</p>
-                  <div className="registration-sidebar-fee-prices">
-                    <span>
-                      Early Bird <strong>₱{fee.early.toLocaleString()}</strong>
-                    </span>
-                    <span>
-                      Regular <strong>₱{fee.regular.toLocaleString()}</strong>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="registration-sidebar-fee-row">
+              <p className="registration-sidebar-fee-label">{fees.earlyBird.label}</p>
+              <p className="registration-sidebar-fee-caption mb-1">
+                {fees.earlyBird.caption ?? "First 500 registrants only"}
+              </p>
+              <strong className="registration-sidebar-fee-amount">
+                {formatPeso(fees.earlyBird.amount)}
+              </strong>
+            </div>
+            <div className="registration-sidebar-fee-row">
+              <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
+              <p className="registration-sidebar-fee-caption mb-1">
+                {fees.regular.caption ?? "Will open after the early bird is filled"}
+              </p>
+              <strong className="registration-sidebar-fee-amount">
+                {formatPeso(fees.regular.amount)}
+              </strong>
+            </div>
+            <div className="registration-sidebar-fee-row">
+              <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
+              <p className="registration-sidebar-fee-caption mb-1">
+                {fees.seniorPwd.caption ?? "With valid Senior Citizen or PWD ID"}
+              </p>
+              <strong className="registration-sidebar-fee-amount">
+                {formatPeso(fees.seniorPwd.amount)}
+              </strong>
+            </div>
+            <p className="registration-sidebar-card-copy mt-3 mb-0">
+              <strong>Registration Includes:</strong> {conference.registration.includes}
+            </p>
           </div>
         )}
+      </div>
+
+      <div className="registration-sidebar-card">
+        <div className="registration-sidebar-card-head">
+          <SidebarClipboardIcon />
+          <h3 className="registration-sidebar-card-title">Important Information</h3>
+        </div>
+        <ul className="registration-sidebar-info-list">
+          <li>
+            <strong>Update Your Membership:</strong> All participants are required to update their
+            PNA membership before proceeding with the registration.
+          </li>
+          <li>
+            <strong>Registration Deadline:</strong> Closes on {deadline}.
+          </li>
+          <li>All attendees must register through the website.</li>
+          <li>No Onsite Registration.</li>
+          <li>Register online immediately after payment to avoid inconvenience.</li>
+          <li>Payment without completing the registration form will not be considered.</li>
+        </ul>
+        <p className="registration-sidebar-card-copy mb-0 mt-3">
+          {datesDisplay} · {venueName}
+        </p>
+      </div>
+
+      <div className="registration-sidebar-card">
+        <div className="registration-sidebar-card-head">
+          <SidebarTagIcon />
+          <h3 className="registration-sidebar-card-title">Payment Details</h3>
+        </div>
+        <p className="registration-sidebar-card-copy">
+          Deposit your registration fee to the following account:
+        </p>
+        <div className="registration-bank-details">
+          <p className="registration-bank-details-bank">{bank.bankName}</p>
+          <p className="registration-bank-details-label">Account Name</p>
+          <p className="registration-bank-details-value">{bank.accountName}</p>
+          <p className="registration-bank-details-label">Current Account Number</p>
+          <p className="registration-bank-details-value registration-bank-details-number">
+            {bank.accountNumber}
+          </p>
+        </div>
+      </div>
+
+      {showPaymentQr ? <RegistrationPaymentQr variant="sidebar" eventId={eventId} /> : null}
+
+      <div className="registration-sidebar-card">
+        <div className="registration-sidebar-card-head">
+          <SidebarClipboardIcon />
+          <h3 className="registration-sidebar-card-title">Prepare These Documents</h3>
+        </div>
+        <ol className="registration-sidebar-info-list registration-sidebar-info-list--ordered">
+          <li>Copy or screenshot of the proof of payment</li>
+          <li>Updated PNA ID</li>
+          <li>Valid PRC ID</li>
+          <li>Senior Citizen/PWD ID (if applicable)</li>
+        </ol>
+        <p className="registration-sidebar-card-copy mb-0 mt-3">
+          Thank you for your cooperation, and we look forward to your participation!
+        </p>
       </div>
 
       <div className="registration-sidebar-card">
@@ -164,37 +227,6 @@ function SidebarClipboardIcon() {
   );
 }
 
-function SidebarCalendarIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.75" />
-      <path d="M8 3V7M16 3V7M4 10H20" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SidebarPinIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 21s6-5.33 6-10a6 6 0 1 0-12 0c0 4.67 6 10 6 10Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <circle cx="12" cy="11" r="2.25" stroke="currentColor" strokeWidth="1.75" />
-    </svg>
-  );
-}
-
-function SidebarClockIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="8.25" stroke="currentColor" strokeWidth="1.75" />
-      <path d="M12 8.5V12l2.5 2.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function SidebarTagIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -212,12 +244,7 @@ function SidebarTagIcon() {
 function SidebarHelpIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4 14a8 8 0 0 1 16 0"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
+      <path d="M4 14a8 8 0 0 1 16 0" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
       <path d="M8 14v1.5a4 4 0 0 0 8 0V14" stroke="currentColor" strokeWidth="1.75" />
       <path d="M12 18.5v2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </svg>

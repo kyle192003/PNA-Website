@@ -79,7 +79,10 @@ export async function getFinancialStats(eventId?: string | null): Promise<Financ
   const categoryMap = new Map<string, number>();
   for (const registration of scoped) {
     const label =
-      conference.registration.fees[registration.category]?.label ?? registration.category;
+      registration.feeLabel?.trim() ||
+      (conference.registration.fees as Record<string, { label?: string }>)[registration.category]
+        ?.label ||
+      registration.category;
     categoryMap.set(label, (categoryMap.get(label) ?? 0) + (registration.paymentAmount || 0));
   }
 
@@ -128,7 +131,10 @@ export async function getParticipantInsightStats(
   const categoryMap = new Map<string, number>();
   for (const registration of scoped) {
     const label =
-      conference.registration.fees[registration.category]?.label ?? registration.category;
+      registration.feeLabel?.trim() ||
+      (conference.registration.fees as Record<string, { label?: string }>)[registration.category]
+        ?.label ||
+      registration.category;
     categoryMap.set(label, (categoryMap.get(label) ?? 0) + 1);
   }
 
