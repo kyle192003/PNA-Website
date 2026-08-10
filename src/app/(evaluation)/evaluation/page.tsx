@@ -30,6 +30,18 @@ function EvaluationPageInner() {
       setError(null);
       setTokenStatus(null);
 
+      if (!token.trim()) {
+        if (!cancelled) {
+          setError(
+            "Missing or invalid evaluation link. Please use the link sent in your email."
+          );
+          setFormConfig(null);
+          setTokenStatus(null);
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         const validateRes = await fetch(
           `/api/evaluation/validate?t=${encodeURIComponent(token)}`,

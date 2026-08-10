@@ -36,7 +36,22 @@ export function ContactInquiryForm() {
   function validateForm(): boolean {
     const nextErrors = validateContactInquiry(form);
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    const invalid = Object.keys(nextErrors) as Array<keyof ContactInquiryFieldErrors>;
+    if (invalid.length === 0) return true;
+
+    const firstId =
+      invalid[0] === "name"
+        ? "contact-name"
+        : invalid[0] === "email"
+          ? "contact-email"
+          : invalid[0] === "mobile"
+            ? "contact-mobile"
+            : "contact-message";
+    window.requestAnimationFrame(() => {
+      document.getElementById(firstId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById(firstId)?.focus();
+    });
+    return false;
   }
 
   async function handleSubmit(event: FormEvent) {

@@ -578,6 +578,9 @@ function buildStepStates(
 
   let activeAssigned = false;
   return raw.map((step) => {
+    if (phase === "details" && (step.label === "Payment" || step.label === "Review")) {
+      return { ...step, status: "pending" as const };
+    }
     if (step.status === "complete" || step.status === "error") {
       return step;
     }

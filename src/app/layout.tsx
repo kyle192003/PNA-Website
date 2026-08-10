@@ -34,9 +34,12 @@ export const metadata: Metadata = {
     "Registration",
   ],
   icons: {
-    icon: [{ url: conference.logo.src, type: "image/jpeg" }],
-    apple: [{ url: conference.logo.src, type: "image/jpeg" }],
-    shortcut: conference.logo.src,
+    icon: [
+      { url: "/images/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/images/pna-logo.png", sizes: "256x256", type: "image/png" },
+    ],
+    apple: [{ url: "/images/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: "/images/favicon-32.png",
   },
 };
 

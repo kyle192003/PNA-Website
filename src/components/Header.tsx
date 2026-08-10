@@ -206,6 +206,7 @@ export function Header({
         <div
           className={`pna-mobile-nav ${mobileOpen ? "pna-mobile-nav--open" : ""}`}
           aria-hidden={!mobileOpen}
+          inert={!mobileOpen ? true : undefined}
         >
           <button
             type="button"
@@ -217,8 +218,8 @@ export function Header({
           <div
             id="pna-mobile-nav-drawer"
             className="pna-mobile-nav-drawer"
-            role="dialog"
-            aria-modal="true"
+            role={mobileOpen ? "dialog" : undefined}
+            aria-modal={mobileOpen ? true : undefined}
             aria-label="Site menu"
           >
             <div className="pna-mobile-nav-header">
@@ -226,7 +227,7 @@ export function Header({
                 <span className="pna-logo-badge pna-logo-badge--image">
                   <Image
                     src={conference.logo.src}
-                    alt=""
+                    alt={conference.logo.alt}
                     width={36}
                     height={36}
                     className="pna-brand-logo"
@@ -239,6 +240,7 @@ export function Header({
                 className="pna-mobile-nav-close"
                 onClick={closeMobileMenu}
                 aria-label="Close menu"
+                tabIndex={mobileOpen ? 0 : -1}
               >
                 <MenuIcon open />
               </button>
@@ -251,6 +253,7 @@ export function Header({
                     <button
                       type="button"
                       onClick={handleMobileRegister}
+                      tabIndex={mobileOpen ? 0 : -1}
                       className={`pna-mobile-nav-link ${
                         pathname === link.href ? "pna-mobile-nav-link--active" : ""
                       }`}
@@ -261,6 +264,7 @@ export function Header({
                     <Link
                       href={link.href}
                       onClick={closeMobileMenu}
+                      tabIndex={mobileOpen ? 0 : -1}
                       className={`pna-mobile-nav-link ${
                         pathname === link.href ? "pna-mobile-nav-link--active" : ""
                       }`}
@@ -279,6 +283,7 @@ export function Header({
                     href="/admin"
                     className="pna-back-to-dashboard pna-back-to-dashboard--mobile"
                     onClick={closeMobileMenu}
+                    tabIndex={mobileOpen ? 0 : -1}
                   >
                     Back to Dashboard
                   </Link>
@@ -286,6 +291,7 @@ export function Header({
                   <RegisterButton
                     className="btn-pill-arrow w-100 justify-content-center"
                     onClick={closeMobileMenu}
+                    tabIndex={mobileOpen ? 0 : -1}
                   >
                     Register Now
                   </RegisterButton>

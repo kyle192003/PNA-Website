@@ -20,10 +20,7 @@ export function getSigningSecret(): string {
 
   const password = process.env.ADMIN_PASSWORD?.trim();
   if (password) {
-    if (isProductionRuntime()) {
-      // Still usable, but operators should set ADMIN_SESSION_SECRET separately.
-      return password;
-    }
+    // Prefer ADMIN_SESSION_SECRET in production; password fallback kept for compatibility.
     return password;
   }
 

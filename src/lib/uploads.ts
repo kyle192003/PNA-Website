@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { put } from "@vercel/blob";
 
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 const PRIVATE_STORAGE_ROOT = path.join(process.cwd(), "storage");
@@ -8,6 +9,10 @@ const RECEIPT_DIR = path.join(PRIVATE_STORAGE_ROOT, "receipts");
 const LEGACY_RECEIPT_DIR = path.join(UPLOADS_ROOT, "receipts");
 const SPEAKER_DIR = path.join(UPLOADS_ROOT, "speakers");
 const CERTIFICATE_DIR = path.join(UPLOADS_ROOT, "certificates");
+
+function hasBlobToken(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+}
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -162,6 +167,19 @@ export async function saveQrCode(eventId: string, file: File): Promise<string> {
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
   const filename = `${eventId}${ext}`;
+
+  // Durable public URL on Vercel; local filesystem for development.
+  if (hasBlobToken()) {
+    const blob = await put(`uploads/qrcodes/${filename}`, buffer, {
+      access: "public",
+      contentType: mimeCheck.mimeType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 60 * 60 * 24 * 30,
+    });
+    return blob.url;
+  }
+
   const filepath = assertInsideRoot(QR_DIR, path.join(QR_DIR, filename));
   await fs.writeFile(filepath, buffer);
 
@@ -183,6 +201,18 @@ export async function saveSpeakerPhoto(
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
   const filename = `${eventId}-${speakerId}${ext}`;
+
+  if (hasBlobToken()) {
+    const blob = await put(`uploads/speakers/${filename}`, buffer, {
+      access: "public",
+      contentType: mimeCheck.mimeType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 60 * 60 * 24 * 30,
+    });
+    return blob.url;
+  }
+
   const filepath = assertInsideRoot(SPEAKER_DIR, path.join(SPEAKER_DIR, filename));
   await fs.writeFile(filepath, buffer);
 

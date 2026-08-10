@@ -18,6 +18,10 @@ interface RegistrationSidebarEvent {
   bankTransfer: BankTransferInfo;
 }
 
+function isRemoteImageUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
 export function RegistrationPaymentQr({
   variant = "sidebar",
   eventId = null,
@@ -27,6 +31,7 @@ export function RegistrationPaymentQr({
 }) {
   const [event, setEvent] = useState<RegistrationSidebarEvent | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("qr");
+  const [qrBroken, setQrBroken] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -37,6 +42,7 @@ export function RegistrationPaymentQr({
       .then((data) => {
         const nextEvent = data.event ?? null;
         setEvent(nextEvent);
+        setQrBroken(false);
         if (nextEvent && !nextEvent.qrCodeUrl) {
           setPaymentMethod("bank");
         }
@@ -47,9 +53,10 @@ export function RegistrationPaymentQr({
   if (!event) return null;
 
   const isSidebar = variant === "sidebar";
-  const hasQr = Boolean(event.qrCodeUrl);
+  const hasQr = Boolean(event.qrCodeUrl) && !qrBroken;
   const showQr = paymentMethod === "qr" && hasQr;
-  const showBank = paymentMethod === "bank";
+  const showBank = paymentMethod === "bank" || (paymentMethod === "qr" && !hasQr);
+  const qrIsRemote = Boolean(event.qrCodeUrl && isRemoteImageUrl(event.qrCodeUrl));
 
   return (
     <div className={isSidebar ? "registration-sidebar-card" : "registration-payment-qr-form"}>
@@ -68,6 +75,11 @@ export function RegistrationPaymentQr({
             width={200}
             height={200}
             className="registration-payment-qr-image"
+            unoptimized={qrIsRemote || event.qrCodeUrl!.startsWith("/uploads/")}
+            onError={() => {
+              setQrBroken(true);
+              setPaymentMethod("bank");
+            }}
           />
         </div>
       ) : showBank ? (
@@ -90,12 +102,16 @@ export function RegistrationPaymentQr({
 
       <div className="registration-payment-toggle">
         <p className="registration-payment-toggle-label">Accepted via:</p>
-        <div className="registration-payment-toggle-options" role="tablist" aria-label="Payment method">
+        <div
+          className="registration-payment-toggle-options"
+          role="group"
+          aria-label="Payment method"
+        >
           <button
             type="button"
-            role="tab"
-            aria-selected={paymentMethod === "qr"}
-            className={`registration-payment-toggle-btn${paymentMethod === "qr" ? " is-active" : ""}`}
+            className={`registration-payment-toggle-btn${
+              paymentMethod === "qr" ? " is-active" : ""
+            }`}
             onClick={() => setPaymentMethod("qr")}
             disabled={!hasQr}
           >
@@ -103,9 +119,9 @@ export function RegistrationPaymentQr({
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={paymentMethod === "bank"}
-            className={`registration-payment-toggle-btn${paymentMethod === "bank" ? " is-active" : ""}`}
+            className={`registration-payment-toggle-btn${
+              paymentMethod === "bank" ? " is-active" : ""
+            }`}
             onClick={() => setPaymentMethod("bank")}
           >
             Bank Transfer

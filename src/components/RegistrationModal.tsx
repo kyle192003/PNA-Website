@@ -72,12 +72,13 @@ export function RegistrationModal({
       containScroll
       contentClassName="p-0"
       dialogClassName="registration-modal-dialog"
+      labelledBy="registration-modal-title"
     >
       <div className="registration-modal-layout">
         <div className="registration-modal-main">
           <div className="registration-modal-main-header">
             <div>
-              <h2 id="modal-title" className="registration-modal-page-title font-display">
+              <h2 id="registration-modal-title" className="registration-modal-page-title font-display">
                 {specialLane
                   ? inviteSpecialRole === "committee"
                     ? "Exclusive Committee Registration"

@@ -14,8 +14,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <RegistrationProvider>
           <EventOverviewProvider>
             <LoadingScreen />
+            <a href="#main-content" className="pna-skip-link">
+              Skip to main content
+            </a>
             <Header />
-            <main className="flex-grow-1">
+            <main id="main-content" className="flex-grow-1">
               <SitePageMotion>{children}</SitePageMotion>
             </main>
             <Footer />

@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { RegisterEventPickerModal } from "@/components/RegisterEventPickerModal";
 import { RegistrationModal } from "@/components/RegistrationModal";
 import { Modal } from "@/components/ui/Modal";
+import { useAdminSession } from "@/hooks/use-admin-session";
 import type { PublicEvent } from "@/lib/types/admin";
 
 interface RegistrationContextValue {
@@ -38,17 +39,6 @@ async function fetchPublicEvents(): Promise<PublicEvent[]> {
   return data.events ?? [];
 }
 
-async function isAdminAuthenticated(): Promise<boolean> {
-  try {
-    const res = await fetch("/api/admin/session", { cache: "no-store" });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { authenticated?: boolean };
-    return Boolean(data.authenticated);
-  } catch {
-    return false;
-  }
-}
-
 export function RegistrationProvider({ children }: { children: ReactNode }) {
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -59,6 +49,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isAdmin, ready: adminSessionReady } = useAdminSession();
 
   const openRegistrationWithEvent = useCallback((eventId: string) => {
     setSelectedEventId(eventId);
@@ -108,7 +99,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
   const openRegistration = useCallback(
     async (eventId?: string) => {
-      if (await isAdminAuthenticated()) {
+      if (isAdmin) {
         return;
       }
 
@@ -138,7 +129,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
       setBlockedMessage(null);
       setPickerOpen(true);
     },
-    [openRegistrationWithEvent, resolveOpenEventId, showRegistrationUnavailable]
+    [isAdmin, openRegistrationWithEvent, resolveOpenEventId, showRegistrationUnavailable]
   );
 
   const closeRegistration = useCallback(() => {
@@ -164,11 +155,12 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const inviteToken = searchParams.get("invite")?.trim() || null;
     if (!inviteToken) return;
+    if (!adminSessionReady) return;
 
     let cancelled = false;
 
     async function openInvite() {
-      if (await isAdminAuthenticated()) {
+      if (isAdmin) {
         if (cancelled) return;
         const params = new URLSearchParams(searchParams.toString());
         params.delete("invite");
@@ -233,19 +225,21 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
     router,
     openSpecialInviteRegistration,
     showRegistrationUnavailable,
+    adminSessionReady,
+    isAdmin,
   ]);
 
   useEffect(() => {
     const shouldOpen = searchParams.get("register") === "1";
     const eventId = searchParams.get("event")?.trim() || null;
     if (searchParams.get("invite")?.trim()) return;
-
     if (!shouldOpen) return;
+    if (!adminSessionReady) return;
 
     let cancelled = false;
 
     async function maybeOpen() {
-      if (await isAdminAuthenticated()) {
+      if (isAdmin) {
         if (cancelled) return;
         const params = new URLSearchParams(searchParams.toString());
         params.delete("register");
@@ -287,6 +281,8 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
     openRegistration,
     openRegistrationWithEvent,
     resolveOpenEventId,
+    adminSessionReady,
+    isAdmin,
   ]);
 
   return (

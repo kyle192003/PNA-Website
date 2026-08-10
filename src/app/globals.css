@@ -1324,8 +1324,8 @@ body.pna-mobile-nav-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border: 0;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.12);
@@ -1749,11 +1749,66 @@ body.pna-mobile-nav-open {
 .registration-form .input-dark,
 .registration-form select.input-dark {
   background: #ffffff;
+  font-size: 1rem;
 }
 
 .registration-form .input-dark:focus,
 .registration-form select.input-dark:focus {
   background: #ffffff;
+}
+
+.registration-form .admin-range-dropdown-trigger,
+.registration-form .pna-select-trigger {
+  min-height: 2.95rem;
+  font-size: 1rem;
+  border-radius: 0.75rem;
+}
+
+.registration-form .pna-select-trigger {
+  border-color: rgba(21, 128, 61, 0.25);
+}
+
+.pna-skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100px;
+  z-index: 2000;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  background: #14532d;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pna-skip-link:focus {
+  top: 1rem;
+}
+
+.pna-mobile-nav-close {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+@media (pointer: coarse) {
+  .admin-range-calendar-day {
+    min-height: 2.75rem !important;
+  }
+
+  .admin-range-calendar-nav-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
+.registration-sidebar-help-list a,
+.registration-sidebar-card a {
+  color: #15803d;
+}
+
+.evaluation-shell a,
+.receipt-reupload-shell a {
+  color: #15803d;
 }
 
 .registration-phone-field {
@@ -4215,6 +4270,10 @@ body.pna-mobile-nav-open {
   color: rgba(236, 253, 245, 0.82);
   text-decoration: none;
   font-size: 0.8125rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.35rem 0;
   transition: color 0.2s ease;
 }
 
@@ -7630,7 +7689,8 @@ a.admin-btn-primary:hover,
 .event-card-listing-link {
   border: 0;
   background: transparent;
-  padding: 0;
+  padding: 0.65rem 0.25rem;
+  min-height: 2.75rem;
   color: #15803d;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -8084,7 +8144,8 @@ a.admin-btn-primary:hover,
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.38rem 0.62rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.85rem;
   border-radius: 0.45rem;
   background: #14532d;
   color: #fff;
@@ -9126,12 +9187,17 @@ a.admin-btn-primary:hover,
   color: #6b7280;
 }
 
+.contact-field {
+  scroll-margin-top: 5.5rem;
+}
+
 .contact-field-control {
   width: 100%;
   border: 0;
   background: transparent;
-  padding: 0;
-  font-size: 0.9375rem;
+  padding: 0.55rem 0;
+  min-height: 2.75rem;
+  font-size: 1rem;
   color: #111827;
   outline: none;
   resize: vertical;
@@ -9142,8 +9208,15 @@ a.admin-btn-primary:hover,
 }
 
 .contact-field-control--error {
-  border-color: #f87171;
-  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
+  box-shadow: none;
+}
+
+.contact-field--error {
+  border-bottom-color: #dc2626 !important;
+}
+
+.contact-field--error:focus-within {
+  border-bottom-color: #dc2626 !important;
 }
 
 .contact-field--error .contact-field-label {
@@ -10667,6 +10740,19 @@ a.admin-btn-primary:hover,
 
 .admin-range-calendar--dropdown-top.is-visible {
   transform: translateY(0) scale(1);
+}
+
+.admin-range-calendar--portal {
+  position: fixed;
+  z-index: 1300;
+  top: auto;
+  bottom: auto;
+  left: auto;
+  right: auto;
+}
+
+.admin-range-calendar--portal.admin-range-calendar--dropdown-top {
+  bottom: auto;
 }
 
 .admin-range-calendar.is-disabled {

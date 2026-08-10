@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatLongDate, todayIsoInTimeZone } from "@/lib/event-date";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
 const DROPDOWN_ANIMATION_MS = 160;
+const CALENDAR_GAP_PX = 6;
+const VIEWPORT_PADDING_PX = 8;
 const YEAR_PAGE_SIZE = 12;
+
+type CalendarPosition = {
+  top: number;
+  left: number;
+  width: number;
+  openUpward: boolean;
+};
 
 function toIsoFromParts(year: number, monthIndex: number, day: number): string {
   const m = String(monthIndex + 1).padStart(2, "0");
@@ -105,10 +115,14 @@ export function SingleDatePicker({
   const todayIso = todayIsoInTimeZone();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [panelPosition, setPanelPosition] = useState<CalendarPosition | null>(null);
   const [panel, setPanel] = useState<CalendarPanel>("days");
+  const errorId = `${id}-error`;
 
   const selected = parseIso(value);
   const focus = selected ?? parseIso(todayIso) ?? { y: new Date().getFullYear(), m: 1, d: 1 };
@@ -121,6 +135,10 @@ export function SingleDatePicker({
   const { minYear, maxYear } = useMemo(() => getYearBounds(min, max), [min, max]);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (open) {
       setRendered(true);
       const frame = window.requestAnimationFrame(() => setVisible(true));
@@ -129,18 +147,73 @@ export function SingleDatePicker({
 
     setVisible(false);
     setPanel("days");
-    const timeout = window.setTimeout(() => setRendered(false), DROPDOWN_ANIMATION_MS);
+    const timeout = window.setTimeout(() => {
+      setRendered(false);
+      setPanelPosition(null);
+    }, DROPDOWN_ANIMATION_MS);
     return () => window.clearTimeout(timeout);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function updatePosition() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const rootFontSize =
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const maxWidth = 22.5 * rootFontSize;
+      const width = Math.min(rect.width, maxWidth);
+      let left = rect.left;
+      left = Math.min(
+        Math.max(left, VIEWPORT_PADDING_PX),
+        window.innerWidth - width - VIEWPORT_PADDING_PX
+      );
+
+      const measuredHeight = panelRef.current?.offsetHeight;
+      const estimatedHeight = 320;
+      const calendarHeight = measuredHeight ?? estimatedHeight;
+      const spaceBelow = window.innerHeight - rect.bottom - CALENDAR_GAP_PX;
+
+      let openUpward = false;
+      if (placement === "top") {
+        openUpward = true;
+      } else if (placement === "bottom") {
+        openUpward = false;
+      } else {
+        openUpward = spaceBelow < calendarHeight && rect.top > spaceBelow;
+      }
+
+      const top = openUpward
+        ? Math.max(VIEWPORT_PADDING_PX, rect.top - calendarHeight - CALENDAR_GAP_PX)
+        : rect.bottom + CALENDAR_GAP_PX;
+
+      setPanelPosition({ top, left, width, openUpward });
+    }
+
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, panel, rendered, visible, placement, viewYear, viewMonth, yearPageStart]);
 
   useEffect(() => {
     if (!open) return;
 
     function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        onBlur?.(value);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
+      onBlur?.(value);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -192,6 +265,23 @@ export function SingleDatePicker({
     });
   }
 
+  function seedPanelPosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const rootFontSize =
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const width = Math.min(rect.width, 22.5 * rootFontSize);
+
+    setPanelPosition({
+      top: rect.bottom + CALENDAR_GAP_PX,
+      left: Math.max(VIEWPORT_PADDING_PX, rect.left),
+      width,
+      openUpward: placement === "top",
+    });
+  }
+
   function openCalendar() {
     if (disabled) return;
     const focusDate = parseIso(value) ?? parseIso(todayIso);
@@ -201,6 +291,7 @@ export function SingleDatePicker({
       setYearPageStart(Math.floor(focusDate.y / YEAR_PAGE_SIZE) * YEAR_PAGE_SIZE);
     }
     setPanel("days");
+    seedPanelPosition();
     setOpen(true);
   }
 
@@ -242,6 +333,201 @@ export function SingleDatePicker({
   const canPrevYearPage = yearPageStart > minYear;
   const canNextYearPage = yearPageStart + YEAR_PAGE_SIZE <= maxYear;
 
+  const showPanel = mounted && rendered && panelPosition;
+
+  const calendarPanel = showPanel ? (
+    <div
+      ref={panelRef}
+      id={`${id}-panel`}
+      className={`admin-range-calendar admin-range-calendar--dropdown admin-range-calendar--portal${
+        panelPosition.openUpward ? " admin-range-calendar--dropdown-top" : ""
+      }${visible ? " is-visible" : ""}`}
+      role="dialog"
+      aria-label={label}
+      style={{
+        top: panelPosition.top,
+        left: panelPosition.left,
+        width: panelPosition.width,
+      }}
+    >
+      <div className="admin-range-calendar-body">
+        <div className="admin-range-calendar-nav">
+          <button
+            type="button"
+            className="admin-range-calendar-nav-btn"
+            onClick={() => {
+              if (panel === "years") shiftYearPage(-1);
+              else shiftMonth(-1);
+            }}
+            disabled={disabled || (panel === "years" ? !canPrevYearPage : false)}
+            aria-label={panel === "years" ? "Previous years" : "Previous month"}
+          >
+            <CalendarChevron direction="prev" />
+          </button>
+
+          <div className="admin-range-calendar-month-controls">
+            {panel === "years" ? (
+              <p className="admin-range-calendar-month mb-0">
+                {yearPageStart} – {yearPageEnd}
+              </p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`admin-range-calendar-header-btn${
+                    panel === "months" ? " is-active" : ""
+                  }`}
+                  disabled={disabled}
+                  aria-label="Choose month"
+                  onClick={() => setPanel((current) => (current === "months" ? "days" : "months"))}
+                >
+                  {monthLabel}
+                </button>
+                <button
+                  type="button"
+                  className="admin-range-calendar-header-btn"
+                  disabled={disabled}
+                  aria-label="Choose year"
+                  onClick={() => {
+                    setYearPageStart(Math.floor(viewYear / YEAR_PAGE_SIZE) * YEAR_PAGE_SIZE);
+                    setPanel("years");
+                  }}
+                >
+                  {viewYear}
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="admin-range-calendar-nav-btn"
+            onClick={() => {
+              if (panel === "years") shiftYearPage(1);
+              else shiftMonth(1);
+            }}
+            disabled={disabled || (panel === "years" ? !canNextYearPage : false)}
+            aria-label={panel === "years" ? "Next years" : "Next month"}
+          >
+            <CalendarChevron direction="next" />
+          </button>
+        </div>
+
+        {panel === "days" ? (
+          <>
+            <div className="admin-range-calendar-weekdays" aria-hidden="true">
+              {WEEKDAYS.map((day) => (
+                <span key={day}>{day}</span>
+              ))}
+            </div>
+
+            <div className="admin-range-calendar-grid">
+              {cells.map((cell, index) => {
+                if (!cell.inMonth) {
+                  return (
+                    <span key={`empty-${index}`} className="admin-range-calendar-empty" />
+                  );
+                }
+
+                const selectedDay = Boolean(value && cell.iso === value);
+                const isToday = cell.iso === todayIso;
+                const dayDisabled = isDisabledDay(cell.iso);
+                const dayClassName = [
+                  "admin-range-calendar-day",
+                  isToday ? "is-today" : "",
+                  selectedDay ? "is-start is-end is-same-day" : "",
+                  dayDisabled ? "is-disabled" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+
+                return (
+                  <button
+                    key={cell.iso}
+                    type="button"
+                    className={dayClassName}
+                    disabled={disabled || dayDisabled}
+                    aria-label={formatLongDate(cell.iso)}
+                    aria-pressed={selectedDay}
+                    onClick={() => handleDayClick(cell.iso)}
+                  >
+                    <span className="admin-range-calendar-day-num">{cell.day}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+
+        {panel === "months" ? (
+          <div className="admin-range-calendar-picker-grid" role="listbox" aria-label="Select month">
+            {MONTH_OPTIONS.map((monthName, index) => {
+              const selectedMonth = index === viewMonth;
+              return (
+                <button
+                  key={monthName}
+                  type="button"
+                  role="option"
+                  className={`admin-range-calendar-picker-item${
+                    selectedMonth ? " is-selected" : ""
+                  }`}
+                  aria-selected={selectedMonth}
+                  disabled={disabled}
+                  onClick={() => handleMonthPick(index)}
+                >
+                  {monthName.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {panel === "years" ? (
+          <div className="admin-range-calendar-picker-grid" role="listbox" aria-label="Select year">
+            {yearPageYears.map((year) => {
+              const outOfRange = year < minYear || year > maxYear;
+              const selectedYear = year === viewYear;
+              return (
+                <button
+                  key={year}
+                  type="button"
+                  role="option"
+                  className={`admin-range-calendar-picker-item${
+                    selectedYear ? " is-selected" : ""
+                  }`}
+                  aria-selected={selectedYear}
+                  disabled={disabled || outOfRange}
+                  onClick={() => handleYearPick(year)}
+                >
+                  {year}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="admin-range-calendar-footer">
+        <p className="admin-range-calendar-hint mb-0">
+          {panel === "years"
+            ? "Choose a year inside the calendar."
+            : panel === "months"
+              ? "Choose a month inside the calendar."
+              : value
+                ? `Selected ${formatLongDate(value)}. Click outside to close.`
+                : "Select a date from the calendar."}
+        </p>
+      </div>
+    </div>
+  ) : null;
+
+  const portaledCalendar = showPanel
+    ? createPortal(
+        <div className="registration-date-field">{calendarPanel}</div>,
+        document.body
+      )
+    : null;
+
   return (
     <div className={`${className} admin-date-field registration-date-field`.trim()} ref={rootRef}>
       <label className="form-label registration-form-label" htmlFor={id}>
@@ -261,6 +547,7 @@ export function SingleDatePicker({
           aria-expanded={open}
           aria-controls={`${id}-panel`}
           aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
           onClick={() => {
             if (open) {
               setOpen(false);
@@ -290,193 +577,15 @@ export function SingleDatePicker({
           </button>
         ) : null}
 
-        {rendered ? (
-          <div
-            id={`${id}-panel`}
-            className={`admin-range-calendar admin-range-calendar--dropdown${
-              placement === "top" ? " admin-range-calendar--dropdown-top" : ""
-            }${visible ? " is-visible" : ""}`}
-            role="dialog"
-            aria-label={label}
-          >
-            <div className="admin-range-calendar-body">
-              <div className="admin-range-calendar-nav">
-                <button
-                  type="button"
-                  className="admin-range-calendar-nav-btn"
-                  onClick={() => {
-                    if (panel === "years") shiftYearPage(-1);
-                    else shiftMonth(-1);
-                  }}
-                  disabled={
-                    disabled || (panel === "years" ? !canPrevYearPage : false)
-                  }
-                  aria-label={panel === "years" ? "Previous years" : "Previous month"}
-                >
-                  <CalendarChevron direction="prev" />
-                </button>
-
-                <div className="admin-range-calendar-month-controls">
-                  {panel === "years" ? (
-                    <p className="admin-range-calendar-month mb-0">
-                      {yearPageStart} – {yearPageEnd}
-                    </p>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={`admin-range-calendar-header-btn${
-                          panel === "months" ? " is-active" : ""
-                        }`}
-                        disabled={disabled}
-                        aria-label="Choose month"
-                        onClick={() => setPanel((current) => (current === "months" ? "days" : "months"))}
-                      >
-                        {monthLabel}
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-range-calendar-header-btn"
-                        disabled={disabled}
-                        aria-label="Choose year"
-                        onClick={() => {
-                          setYearPageStart(Math.floor(viewYear / YEAR_PAGE_SIZE) * YEAR_PAGE_SIZE);
-                          setPanel("years");
-                        }}
-                      >
-                        {viewYear}
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  className="admin-range-calendar-nav-btn"
-                  onClick={() => {
-                    if (panel === "years") shiftYearPage(1);
-                    else shiftMonth(1);
-                  }}
-                  disabled={
-                    disabled || (panel === "years" ? !canNextYearPage : false)
-                  }
-                  aria-label={panel === "years" ? "Next years" : "Next month"}
-                >
-                  <CalendarChevron direction="next" />
-                </button>
-              </div>
-
-              {panel === "days" ? (
-                <>
-                  <div className="admin-range-calendar-weekdays" aria-hidden="true">
-                    {WEEKDAYS.map((day) => (
-                      <span key={day}>{day}</span>
-                    ))}
-                  </div>
-
-                  <div className="admin-range-calendar-grid">
-                    {cells.map((cell, index) => {
-                      if (!cell.inMonth) {
-                        return (
-                          <span key={`empty-${index}`} className="admin-range-calendar-empty" />
-                        );
-                      }
-
-                      const selectedDay = Boolean(value && cell.iso === value);
-                      const isToday = cell.iso === todayIso;
-                      const dayDisabled = isDisabledDay(cell.iso);
-                      const className = [
-                        "admin-range-calendar-day",
-                        isToday ? "is-today" : "",
-                        selectedDay ? "is-start is-end is-same-day" : "",
-                        dayDisabled ? "is-disabled" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ");
-
-                      return (
-                        <button
-                          key={cell.iso}
-                          type="button"
-                          className={className}
-                          disabled={disabled || dayDisabled}
-                          aria-label={formatLongDate(cell.iso)}
-                          aria-pressed={selectedDay}
-                          onClick={() => handleDayClick(cell.iso)}
-                        >
-                          <span className="admin-range-calendar-day-num">{cell.day}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : null}
-
-              {panel === "months" ? (
-                <div className="admin-range-calendar-picker-grid" role="listbox" aria-label="Select month">
-                  {MONTH_OPTIONS.map((monthName, index) => {
-                    const selectedMonth = index === viewMonth;
-                    return (
-                      <button
-                        key={monthName}
-                        type="button"
-                        role="option"
-                        className={`admin-range-calendar-picker-item${
-                          selectedMonth ? " is-selected" : ""
-                        }`}
-                        aria-selected={selectedMonth}
-                        disabled={disabled}
-                        onClick={() => handleMonthPick(index)}
-                      >
-                        {monthName.slice(0, 3)}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {panel === "years" ? (
-                <div className="admin-range-calendar-picker-grid" role="listbox" aria-label="Select year">
-                  {yearPageYears.map((year) => {
-                    const outOfRange = year < minYear || year > maxYear;
-                    const selectedYear = year === viewYear;
-                    return (
-                      <button
-                        key={year}
-                        type="button"
-                        role="option"
-                        className={`admin-range-calendar-picker-item${
-                          selectedYear ? " is-selected" : ""
-                        }`}
-                        aria-selected={selectedYear}
-                        disabled={disabled || outOfRange}
-                        onClick={() => handleYearPick(year)}
-                      >
-                        {year}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="admin-range-calendar-footer">
-              <p className="admin-range-calendar-hint mb-0">
-                {panel === "years"
-                  ? "Choose a year inside the calendar."
-                  : panel === "months"
-                    ? "Choose a month inside the calendar."
-                    : value
-                      ? `Selected ${formatLongDate(value)}. Click outside to close.`
-                      : "Select a date from the calendar."}
-              </p>
-            </div>
-          </div>
-        ) : null}
+        {portaledCalendar}
       </div>
 
       {helpText ? <p className="registration-form-help mt-1 mb-0">{helpText}</p> : null}
-      {error ? <p className="mt-1 text-xs text-red-400">{error}</p> : null}
+      {error ? (
+        <p id={errorId} className="mt-1 text-xs text-red-400">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

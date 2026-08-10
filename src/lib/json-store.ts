@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { list, put } from "@vercel/blob";
+import { get, list, put } from "@vercel/blob";
 
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const TMP_DATA_DIR = path.join("/tmp", "pna-data");
@@ -42,6 +42,16 @@ async function readBlobJson(filename: string): Promise<string | null> {
   if (!hasBlobToken()) return null;
 
   const pathname = blobPathname(filename);
+
+  try {
+    const privateBlob = await get(pathname, { access: "private" });
+    if (privateBlob?.stream) {
+      return new Response(privateBlob.stream).text();
+    }
+  } catch {
+    // Fall through to public list/fetch for legacy public blobs.
+  }
+
   const result = await list({ prefix: pathname, limit: 20 });
   const match = result.blobs.find((blob) => blob.pathname === pathname);
   if (!match) return null;
@@ -59,7 +69,7 @@ async function writeBlobJson(filename: string, contents: string): Promise<void> 
   }
 
   await put(blobPathname(filename), contents, {
-    access: "public",
+    access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,

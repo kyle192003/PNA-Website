@@ -3,7 +3,7 @@ export const conference = {
   siteName: "Philippine Nurses Association, Inc. Website",
   shortName: "PNA",
   logo: {
-    src: "/images/pna-logo.jpg",
+    src: "/images/pna-logo.webp",
     alt: "Philippine Nurses Association, Inc. logo",
   },
   conferenceName: "2026 National Conference & General Assembly",

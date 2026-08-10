@@ -4,9 +4,12 @@ import { ADMIN_COOKIE, verifySessionToken } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {  const cookieStore = await cookies();
+export async function GET() {
+  const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_COOKIE)?.value;
   const authenticated = verifySessionToken(token);
 
-  return NextResponse.json({ authenticated });
+  const response = NextResponse.json({ authenticated });
+  response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+  return response;
 }

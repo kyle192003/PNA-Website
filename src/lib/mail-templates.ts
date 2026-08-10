@@ -53,7 +53,7 @@ function escapeHtml(value: string): string {
 
 async function getLogoAttachment(): Promise<MailAttachment | null> {
   try {
-    const logoPath = path.join(process.cwd(), "public", "images", "pna-logo.jpg");
+    const logoPath = path.join(process.cwd(), "public", "images", "pna-logo.png");
     const content = await fs.readFile(logoPath);
     return {
       filename: "pna-logo.jpg",

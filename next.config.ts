@@ -21,7 +21,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
       "worker-src 'self' blob:",
       "connect-src 'self' https: blob: data:",
-      "frame-src 'self' blob:",
+      "frame-src 'self' blob: https://www.google.com https://maps.google.com https://www.google.com.ph",
       "object-src 'none'",
       "upgrade-insecure-requests",
     ].join("; "),
@@ -57,6 +57,14 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.blob.vercel-storage.com",
       },
     ],
   },
