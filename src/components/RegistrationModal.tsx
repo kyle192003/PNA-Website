@@ -23,13 +23,24 @@ interface RegistrationModalProps {
   open: boolean;
   onClose: () => void;
   eventId?: string | null;
+  inviteToken?: string | null;
+  inviteEmail?: string | null;
+  inviteEventTitle?: string | null;
 }
 
-export function RegistrationModal({ open, onClose, eventId = null }: RegistrationModalProps) {
+export function RegistrationModal({
+  open,
+  onClose,
+  eventId = null,
+  inviteToken = null,
+  inviteEmail = null,
+  inviteEventTitle = null,
+}: RegistrationModalProps) {
   const [steps, setSteps] = useState<RegistrationStepState[]>(INITIAL_STEPS);
   const [paymentBreakdown, setPaymentBreakdown] = useState<RegistrationPaymentBreakdown | null>(
     null
   );
+  const specialLane = Boolean(inviteToken);
 
   const handleStepStatesChange = useCallback((next: RegistrationStepState[]) => {
     setSteps(next);
@@ -63,9 +74,13 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
           <div className="registration-modal-main-header">
             <div>
               <h2 id="modal-title" className="registration-modal-page-title font-display">
-                {conference.pages.register.title}
+                {specialLane
+                  ? "Exclusive Committee / Speaker Registration"
+                  : conference.pages.register.title}
               </h2>
-              <p className="registration-modal-page-subtitle mb-0">{conference.conferenceName}</p>
+              <p className="registration-modal-page-subtitle mb-0">
+                {inviteEventTitle || conference.conferenceName}
+              </p>
             </div>
             <button
               type="button"
@@ -82,6 +97,9 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
           <div className="registration-modal-form">
             <RegistrationForm
               eventId={eventId}
+              inviteToken={inviteToken}
+              inviteEmail={inviteEmail}
+              inviteEventTitle={inviteEventTitle}
               onCompleted={handleClose}
               onBack={handleClose}
               onStepStatesChange={handleStepStatesChange}
@@ -92,7 +110,7 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
 
         <RegistrationSidebar
           eventId={eventId}
-          showPaymentQr={false}
+          showPaymentQr={!specialLane}
           paymentBreakdown={paymentBreakdown}
         />
       </div>

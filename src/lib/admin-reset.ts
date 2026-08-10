@@ -10,6 +10,7 @@ const JSON_RESET_TARGETS: Array<{ file: string; value: unknown }> = [
   { file: "events.json", value: [] },
   { file: "registrations.json", value: [] },
   { file: "inquiries.json", value: [] },
+  { file: "special-invites.json", value: [] },
   { file: "certificate-template.json", value: DEFAULT_CERTIFICATE_TEMPLATE },
   {
     file: "evaluation-form.json",

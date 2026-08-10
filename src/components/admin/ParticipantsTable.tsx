@@ -501,6 +501,12 @@ export function ParticipantsTable({
                           Group{participant.groupSize ? ` · ${participant.groupSize}` : ""}
                         </span>
                       ) : null}
+                      {participant.specialRole === "committee" ||
+                      participant.specialRole === "speaker" ? (
+                        <span className="admin-group-badge" title="Complimentary special invite">
+                          {participant.specialRole === "committee" ? "Committee" : "Speaker"}
+                        </span>
+                      ) : null}
                     </td>
                     <td>
                       {participant.feeLabel?.trim() ||
@@ -603,6 +609,15 @@ export function ParticipantsTable({
                     selected.category}
                 </dd>
               </div>
+              {selected.specialRole ? (
+                <div>
+                  <dt>Special role</dt>
+                  <dd>
+                    {selected.specialRole === "committee" ? "Committee" : "Speaker"}{" "}
+                    (complimentary)
+                  </dd>
+                </div>
+              ) : null}
             </dl>
 
             <AdminReceiptPreview

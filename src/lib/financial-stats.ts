@@ -66,18 +66,23 @@ export async function getFinancialStats(eventId?: string | null): Promise<Financ
     ? registrations.filter((registration) => registration.eventId === eventId)
     : registrations;
 
-  const paid = scoped.filter((registration) => registration.paymentStatus === "paid");
-  const pending = scoped.filter((registration) => registration.paymentStatus === "pending");
-  const underReview = scoped.filter(
+  const paidLane = scoped.filter(
+    (registration) =>
+      registration.appliedFeeKey !== "committee" && registration.appliedFeeKey !== "speaker"
+  );
+
+  const paid = paidLane.filter((registration) => registration.paymentStatus === "paid");
+  const pending = paidLane.filter((registration) => registration.paymentStatus === "pending");
+  const underReview = paidLane.filter(
     (registration) => registration.paymentStatus === "receipt_submitted"
   );
 
-  const totalExpected = sumAmounts(scoped);
+  const totalExpected = sumAmounts(paidLane);
   const totalCollected = sumAmounts(paid);
   const totalOutstanding = Math.max(totalExpected - totalCollected, 0);
 
   const categoryMap = new Map<string, number>();
-  for (const registration of scoped) {
+  for (const registration of paidLane) {
     const label =
       registration.feeLabel?.trim() ||
       (conference.registration.fees as Record<string, { label?: string }>)[registration.category]
@@ -93,7 +98,7 @@ export async function getFinancialStats(eventId?: string | null): Promise<Financ
     paidCount: paid.length,
     pendingCount: pending.length,
     underReviewCount: underReview.length,
-    averageTicket: scoped.length ? Math.round(totalExpected / scoped.length) : 0,
+    averageTicket: paidLane.length ? Math.round(totalExpected / paidLane.length) : 0,
     revenueByCategory: Array.from(categoryMap.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value),

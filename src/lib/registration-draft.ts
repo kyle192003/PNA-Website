@@ -9,8 +9,11 @@ import type {
 
 export type RegistrationMode = RegistrationModeChoice;
 
-export type GroupMemberDraft = Omit<RegistrationGroupMemberNote, "registrationRate"> & {
+export type GroupMemberDraft = Omit<RegistrationGroupMemberNote, "registrationRate" | "membershipType"> & {
   registrationRate: RegistrationRateChoice | "";
+  membershipType: MembershipType | "";
+  /** UI-only: copy chapter / membership / zone from Participant 1. */
+  sameAffiliationAsPrimary: boolean;
 };
 
 export type RegistrationDraft = {
@@ -59,6 +62,9 @@ export function createEmptyGroupMember(): GroupMemberDraft {
     email: "",
     phone: "",
     dateOfBirth: "",
+    membershipType: "",
+    pnaZone: "",
+    pnaChapter: "",
     prcLicenseNumber: "",
     prcInitialRegistrationDate: "",
     prcExpirationDate: "",
@@ -66,6 +72,7 @@ export function createEmptyGroupMember(): GroupMemberDraft {
     foodAllergyNote: "",
     registrationRate: "",
     seniorPwdIdNumber: "",
+    sameAffiliationAsPrimary: false,
   };
 }
 
@@ -73,6 +80,14 @@ function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft 
   return {
     ...createEmptyGroupMember(),
     ...raw,
+    membershipType:
+      raw.membershipType === "lifetime" ||
+      raw.membershipType === "regular" ||
+      raw.membershipType === "non_member"
+        ? raw.membershipType
+        : "",
+    pnaZone: raw.pnaZone ?? "",
+    pnaChapter: raw.pnaChapter ?? "",
     foodPreference: (raw.foodPreference as FoodPreference) || "regular",
     foodAllergyNote: raw.foodAllergyNote ?? "",
     registrationRate:
@@ -80,6 +95,7 @@ function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft 
         ? raw.registrationRate
         : "",
     seniorPwdIdNumber: raw.seniorPwdIdNumber ?? "",
+    sameAffiliationAsPrimary: Boolean(raw.sameAffiliationAsPrimary),
   };
 }
 

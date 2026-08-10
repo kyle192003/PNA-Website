@@ -133,6 +133,8 @@ export type EventFeeKey = keyof typeof conference.registration.fees;
 /** @deprecated Legacy category keys kept for older registration records. */
 export type RegistrationCategory =
   | EventFeeKey
+  | "committee"
+  | "speaker"
   | "member"
   | "government"
   | "private"

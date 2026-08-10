@@ -8,6 +8,10 @@ import {
   type FeeTier,
 } from "@/lib/registration-fees";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
+import {
+  consumeSpecialInvite,
+  getSpecialInviteByToken,
+} from "@/lib/special-invites";
 import type {
   AdminStats,
   AppliedFeeKey,
@@ -22,8 +26,10 @@ import type {
   RegistrationModeChoice,
   RegistrationRateChoice,
   RegistrationRecord,
+  SpecialRole,
   SponsorConsent,
 } from "@/lib/types/admin";
+import { SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
 
 const REGISTRATIONS_FILENAME = "registrations.json";
 
@@ -60,6 +66,16 @@ function deriveLegacyPayment(raw: RegistrationRecord): {
     };
   }
 
+  if (raw.appliedFeeKey === "committee" || raw.appliedFeeKey === "speaker") {
+    return {
+      feeTier: "regular",
+      paymentAmount: 0,
+      appliedFeeKey: raw.appliedFeeKey,
+      feeLabel: raw.feeLabel || SPECIAL_ROLE_LABELS[raw.appliedFeeKey],
+      registrationRate: "regular",
+    };
+  }
+
   const feeTier: FeeTier = raw.feeTier === "regular" ? "regular" : "early";
   return {
     feeTier,
@@ -84,6 +100,14 @@ function normalizeGroupMembersNote(raw: unknown): RegistrationGroupMemberNote[] 
       email: row.email?.trim() ?? "",
       phone: row.phone?.trim() ?? "",
       dateOfBirth: row.dateOfBirth?.trim() ?? "",
+      membershipType:
+        row.membershipType === "lifetime" ||
+        row.membershipType === "regular" ||
+        row.membershipType === "non_member"
+          ? row.membershipType
+          : "",
+      pnaZone: row.pnaZone?.trim() ?? "",
+      pnaChapter: row.pnaChapter?.trim() ?? "",
       prcLicenseNumber: row.prcLicenseNumber?.trim() ?? "",
       prcInitialRegistrationDate: row.prcInitialRegistrationDate?.trim() ?? "",
       prcExpirationDate: row.prcExpirationDate?.trim() ?? "",
@@ -127,6 +151,13 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
     registrationRate: derived.registrationRate,
     appliedFeeKey: derived.appliedFeeKey,
     feeLabel: derived.feeLabel,
+    specialRole:
+      raw.specialRole === "committee" || raw.specialRole === "speaker"
+        ? raw.specialRole
+        : derived.appliedFeeKey === "committee" || derived.appliedFeeKey === "speaker"
+          ? derived.appliedFeeKey
+          : null,
+    inviteId: raw.inviteId ?? null,
     seniorPwdIdNumber: raw.seniorPwdIdNumber ?? "",
     seniorPwdIdUrl: raw.seniorPwdIdUrl ?? null,
     groupMembersNote: normalizeGroupMembersNote(raw.groupMembersNote),
@@ -255,6 +286,9 @@ function buildRegistrationRecord(
     groupId?: string | null;
     groupRole?: RegistrationGroupRole | null;
     groupSize?: number | null;
+    paymentStatus?: PaymentStatus;
+    specialRole?: SpecialRole | null;
+    inviteId?: string | null;
   }
 ): RegistrationRecord {
   const now = new Date().toISOString();
@@ -292,6 +326,8 @@ function buildRegistrationRecord(
     registrationRate: input.registrationRate,
     appliedFeeKey: options.appliedFeeKey,
     feeLabel: options.feeLabel,
+    specialRole: options.specialRole ?? null,
+    inviteId: options.inviteId ?? null,
     seniorPwdIdNumber: input.seniorPwdIdNumber?.trim() ?? "",
     seniorPwdIdUrl: null,
     groupMembersNote: normalizeGroupMembersNote(input.groupMembersNote),
@@ -310,7 +346,7 @@ function buildRegistrationRecord(
     dietaryRequirements: input.foodPreference,
     specialNeeds: input.specialNeeds?.trim() ?? "",
     agreeToTerms: Boolean(input.dataPrivacyConsent ?? input.agreeToTerms),
-    paymentStatus: "pending",
+    paymentStatus: options.paymentStatus ?? "pending",
     receiptUrl: null,
     receiptUploadedAt: null,
     paymentReference: input.paymentReference.trim(),
@@ -385,6 +421,78 @@ export async function createRegistration(
 
   registrations.push(registration);
   await writeRegistrations(registrations);
+  return registration;
+}
+
+/**
+ * Complimentary committee/speaker registration via a one-time invite token.
+ * Marks the invite used after the registration is written.
+ */
+export async function createComplimentaryInviteRegistration(
+  input: RegistrationInput
+): Promise<RegistrationRecord> {
+  const token = input.inviteToken?.trim();
+  if (!token) {
+    throw new Error("A valid special invite link is required.");
+  }
+
+  const invite = await getSpecialInviteByToken(token);
+  if (!invite || invite.status !== "pending") {
+    throw new Error("This invite link is invalid or has already been used.");
+  }
+
+  const email = input.email.trim().toLowerCase();
+  if (email !== invite.email) {
+    throw new Error("This invite is locked to a different email address.");
+  }
+
+  if (input.eventId && input.eventId !== invite.eventId) {
+    throw new Error("This invite does not match the selected event.");
+  }
+
+  const specialRole = input.specialRole;
+  if (specialRole !== "committee" && specialRole !== "speaker") {
+    throw new Error("Please choose Committee or Speaker.");
+  }
+
+  if (!input.dataPrivacyConsent && !input.agreeToTerms) {
+    throw new Error("Data privacy consent is required.");
+  }
+
+  const registrations = await readRegistrations();
+  assertEmailsAvailable([email], registrations);
+
+  const registration = buildRegistrationRecord(
+    {
+      ...input,
+      email,
+      eventId: invite.eventId,
+      registrationMode: "single",
+      registrationRate: "regular",
+      paymentReference: "",
+    },
+    {
+      appliedFeeKey: specialRole,
+      feeLabel: SPECIAL_ROLE_LABELS[specialRole],
+      paymentAmount: 0,
+      feeTier: "regular",
+      existing: registrations,
+      paymentStatus: "paid",
+      specialRole,
+      inviteId: invite.id,
+    }
+  );
+
+  registrations.push(registration);
+  await writeRegistrations(registrations);
+
+  const consumed = await consumeSpecialInvite(token, registration.id);
+  if (!consumed) {
+    const next = registrations.filter((row) => row.id !== registration.id);
+    await writeRegistrations(next);
+    throw new Error("This invite link is invalid or has already been used.");
+  }
+
   return registration;
 }
 
@@ -468,10 +576,10 @@ export async function createGroupRegistrations(
       organization: input.primary.organization,
       institutionAddress: input.primary.institutionAddress,
       position: input.primary.position,
-      membershipType: input.primary.membershipType,
-      pnaIdNumber: input.primary.pnaIdNumber,
-      pnaZone: input.primary.pnaZone,
-      pnaChapter: input.primary.pnaChapter,
+      membershipType: member.membershipType,
+      pnaIdNumber: "",
+      pnaZone: member.pnaZone,
+      pnaChapter: member.pnaChapter,
       prcLicenseNumber: member.prcLicenseNumber ?? "",
       prcInitialRegistrationDate: member.prcInitialRegistrationDate ?? "",
       prcExpirationDate: member.prcExpirationDate ?? "",

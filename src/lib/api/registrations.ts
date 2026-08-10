@@ -7,6 +7,7 @@ import type {
   SponsorConsent,
   PaymentStatus,
   AppliedFeeKey,
+  SpecialRole,
 } from "@/lib/types/admin";
 
 export interface RegistrationInput {
@@ -38,6 +39,8 @@ export interface RegistrationInput {
   dataPrivacyConsent: boolean;
   paymentReference: string;
   eventId?: string | null;
+  inviteToken?: string;
+  specialRole?: SpecialRole;
 }
 
 export interface GroupMemberInput {
@@ -47,6 +50,9 @@ export interface GroupMemberInput {
   email: string;
   phone: string;
   dateOfBirth: string;
+  membershipType: MembershipType;
+  pnaZone: string;
+  pnaChapter: string;
   prcLicenseNumber: string;
   prcInitialRegistrationDate: string;
   prcExpirationDate: string;

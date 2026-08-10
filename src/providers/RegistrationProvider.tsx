@@ -21,6 +21,13 @@ interface RegistrationContextValue {
 
 const RegistrationContext = createContext<RegistrationContextValue | null>(null);
 
+type InviteContext = {
+  token: string;
+  email: string;
+  eventId: string;
+  eventTitle: string;
+};
+
 async function fetchPublicEvents(): Promise<PublicEvent[]> {
   const res = await fetch("/api/events/public");
   if (!res.ok) return [];
@@ -44,6 +51,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [inviteContext, setInviteContext] = useState<InviteContext | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicEvent[]>([]);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const router = useRouter();
@@ -52,6 +60,15 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
   const openRegistrationWithEvent = useCallback((eventId: string) => {
     setSelectedEventId(eventId);
+    setInviteContext(null);
+    setPickerOpen(false);
+    setBlockedMessage(null);
+    setRegistrationOpen(true);
+  }, []);
+
+  const openSpecialInviteRegistration = useCallback((invite: InviteContext) => {
+    setInviteContext(invite);
+    setSelectedEventId(invite.eventId);
     setPickerOpen(false);
     setBlockedMessage(null);
     setRegistrationOpen(true);
@@ -61,6 +78,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
     setRegistrationOpen(false);
     setPickerOpen(false);
     setSelectedEventId(null);
+    setInviteContext(null);
     setBlockedMessage(message);
   }, []);
 
@@ -124,6 +142,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const closeRegistration = useCallback(() => {
     setRegistrationOpen(false);
     setSelectedEventId(null);
+    setInviteContext(null);
   }, []);
 
   const closePicker = useCallback(() => {
@@ -141,8 +160,78 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    const inviteToken = searchParams.get("invite")?.trim() || null;
+    if (!inviteToken) return;
+
+    let cancelled = false;
+
+    async function openInvite() {
+      if (await isAdminAuthenticated()) {
+        if (cancelled) return;
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("invite");
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/invites/${encodeURIComponent(inviteToken!)}`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (!res.ok) {
+          showRegistrationUnavailable(
+            data.error || "This invite link is invalid or has already been used."
+          );
+        } else if (data.invite?.status === "used") {
+          showRegistrationUnavailable(
+            "This exclusive invite link has already been used and cannot be opened again."
+          );
+        } else if (data.invite?.status === "revoked") {
+          showRegistrationUnavailable(
+            "This exclusive invite link has been revoked. Please contact the secretariat."
+          );
+        } else if (data.invite?.status === "pending") {
+          openSpecialInviteRegistration({
+            token: inviteToken!,
+            email: data.invite.email,
+            eventId: data.invite.eventId,
+            eventTitle: data.invite.eventTitle,
+          });
+        } else {
+          showRegistrationUnavailable("This invite link is not available.");
+        }
+      } catch {
+        if (!cancelled) {
+          showRegistrationUnavailable("Could not open this invite link. Please try again.");
+        }
+      }
+
+      if (cancelled) return;
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("invite");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }
+
+    void openInvite();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    searchParams,
+    pathname,
+    router,
+    openSpecialInviteRegistration,
+    showRegistrationUnavailable,
+  ]);
+
+  useEffect(() => {
     const shouldOpen = searchParams.get("register") === "1";
     const eventId = searchParams.get("event")?.trim() || null;
+    if (searchParams.get("invite")?.trim()) return;
 
     if (!shouldOpen) return;
 
@@ -208,6 +297,9 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
         <RegistrationModal
           open={registrationOpen}
           eventId={selectedEventId}
+          inviteToken={inviteContext?.token ?? null}
+          inviteEmail={inviteContext?.email ?? null}
+          inviteEventTitle={inviteContext?.eventTitle ?? null}
           onClose={closeRegistration}
         />
       )}

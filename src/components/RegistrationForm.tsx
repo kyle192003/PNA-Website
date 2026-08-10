@@ -7,8 +7,10 @@ import type {
   FoodPreference,
   MembershipType,
   RegistrationRateChoice,
+  SpecialRole,
   SponsorConsent,
 } from "@/lib/types/admin";
+import { SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
 import {
   getEmailValidationError,
   getNameLengthError,
@@ -79,6 +81,7 @@ interface FormData {
   registrationMode: RegistrationMode;
   registrationRate: RegistrationRateChoice | "";
   seniorPwdIdNumber: string;
+  specialRole: SpecialRole | "";
 
   foodPreference: FoodPreference | "";
   foodAllergyNote: string;
@@ -135,6 +138,7 @@ const initialFormData: FormData = {
   registrationMode: "single",
   registrationRate: "",
   seniorPwdIdNumber: "",
+  specialRole: "",
 
   foodPreference: "",
   foodAllergyNote: "",
@@ -167,7 +171,7 @@ const MEMBERSHIP_TYPE_OPTIONS: PnaSelectOption[] = [
 ];
 
 const PNA_ZONE_OPTIONS: PnaSelectOption[] = [
-  { value: "", label: "Select PNA zone" },
+  { value: "", label: "Select PNA zone/region" },
   ...PNA_ZONES.map((zone) => ({ value: zone, label: zone })),
 ];
 
@@ -296,7 +300,7 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "pnaIdNumber":
       return data.pnaIdNumber.trim() ? undefined : "PNA ID number is required";
     case "pnaZone":
-      return data.pnaZone ? undefined : "Please select a PNA zone";
+      return data.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaChapter":
       return data.pnaChapter.trim() ? undefined : "PNA chapter is required";
     case "prcLicenseNumber":
@@ -318,13 +322,15 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
         return "Expiration date must be after the initial registration date";
       }
       if (isExpiredDateInput(data.prcExpirationDate)) {
-        return "Your PRC license is expired. Please renew it before registering.";
+        return "PRC license is expired. Please renew before registering.";
       }
       return undefined;
     case "registrationMode":
       return data.registrationMode ? undefined : "Please select a registration type";
     case "registrationRate":
       return data.registrationRate ? undefined : "Please choose your registration rate";
+    case "specialRole":
+      return data.specialRole ? undefined : "Please choose Committee or Speaker";
     case "seniorPwdIdNumber":
       if (data.registrationRate !== "seniorPwd") return undefined;
       return data.seniorPwdIdNumber.trim()
@@ -382,6 +388,9 @@ const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
   "email",
   "phone",
   "dateOfBirth",
+  "membershipType",
+  "pnaZone",
+  "pnaChapter",
   "prcLicenseNumber",
   "prcInitialRegistrationDate",
   "prcExpirationDate",
@@ -408,6 +417,12 @@ function getMemberFieldError(
       return getRegistrationPhoneValidationError(member.phone) ?? undefined;
     case "dateOfBirth":
       return member.dateOfBirth ? undefined : "Date of birth is required";
+    case "membershipType":
+      return member.membershipType ? undefined : "Please select a membership type";
+    case "pnaZone":
+      return member.pnaZone ? undefined : "Please select a PNA zone/region";
+    case "pnaChapter":
+      return member.pnaChapter.trim() ? undefined : "PNA chapter is required";
     case "prcLicenseNumber":
       return member.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
     case "prcInitialRegistrationDate":
@@ -427,7 +442,7 @@ function getMemberFieldError(
         return "Expiration date must be after the initial registration date";
       }
       if (isExpiredDateInput(member.prcExpirationDate)) {
-        return "PRC license is expired. Please renew it before registering.";
+        return "PRC license is expired. Please renew before registering.";
       }
       return undefined;
     case "registrationRate":
@@ -469,7 +484,8 @@ function getSectionStatus(
   paymentReference: string,
   referenceConfirmed: boolean,
   membersValid: boolean,
-  phase: RegistrationFormPhase
+  phase: RegistrationFormPhase,
+  specialLane: boolean
 ): RegistrationStepStatus {
   if (label === "Personal") {
     const errs = PERSONAL_FIELDS.map((field) => getFieldError(field, data));
@@ -502,6 +518,16 @@ function getSectionStatus(
 
   if (label === "Payment") {
     if (phase === "details") return "pending";
+    if (specialLane) {
+      const fields: FormFieldKey[] = ["specialRole", "foodPreference", ...REVIEW_FIELDS];
+      if (data.foodPreference === "allergy") fields.push("foodAllergyNote");
+      const errs = fields.map((field) => getFieldError(field, data));
+      const isComplete = errs.every((error) => !error);
+      const anyTouched = fields.some((field) => touched[field]);
+      if (isComplete) return "complete";
+      if (anyTouched) return "error";
+      return "pending";
+    }
     const fields: FormFieldKey[] = [...PAYMENT_FIELDS];
     if (data.registrationRate === "seniorPwd") fields.push("seniorPwdIdNumber");
     if (data.foodPreference === "allergy") fields.push("foodAllergyNote");
@@ -537,7 +563,8 @@ function buildStepStates(
   paymentReference: string,
   referenceConfirmed: boolean,
   membersValid: boolean,
-  phase: RegistrationFormPhase
+  phase: RegistrationFormPhase,
+  specialLane: boolean
 ): RegistrationStepState[] {
   const raw = REGISTRATION_STEPS.map((label) => ({
     label,
@@ -549,7 +576,8 @@ function buildStepStates(
       paymentReference,
       referenceConfirmed,
       membersValid,
-      phase
+      phase,
+      specialLane
     ),
   }));
 
@@ -573,6 +601,9 @@ export function RegistrationForm({
   onPaymentBreakdownChange,
   className = "",
   eventId = null,
+  inviteToken = null,
+  inviteEmail = null,
+  inviteEventTitle = null,
 }: {
   onCompleted?: () => void;
   onBack?: () => void;
@@ -580,7 +611,11 @@ export function RegistrationForm({
   onPaymentBreakdownChange?: (breakdown: RegistrationPaymentBreakdown | null) => void;
   className?: string;
   eventId?: string | null;
+  inviteToken?: string | null;
+  inviteEmail?: string | null;
+  inviteEventTitle?: string | null;
 } = {}) {
+  const specialLane = Boolean(inviteToken);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [members, setMembers] = useState<GroupMemberDraft[]>([]);
   const [memberErrors, setMemberErrors] = useState<
@@ -620,10 +655,6 @@ export function RegistrationForm({
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [draftSavedNotice, setDraftSavedNotice] = useState(false);
-  const [prcExpiredNotice, setPrcExpiredNotice] = useState<{
-    open: boolean;
-    who: string;
-  }>({ open: false, who: "" });
 
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
@@ -667,6 +698,30 @@ export function RegistrationForm({
       )
     );
   }, [earlyBirdAvailable]);
+
+  useEffect(() => {
+    setMembers((prev) => {
+      let changed = false;
+      const next = prev.map((member) => {
+        if (!member.sameAffiliationAsPrimary) return member;
+        if (
+          member.membershipType === formData.membershipType &&
+          member.pnaZone === formData.pnaZone &&
+          member.pnaChapter === formData.pnaChapter
+        ) {
+          return member;
+        }
+        changed = true;
+        return {
+          ...member,
+          membershipType: formData.membershipType,
+          pnaZone: formData.pnaZone,
+          pnaChapter: formData.pnaChapter,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [formData.membershipType, formData.pnaZone, formData.pnaChapter]);
 
   const appliedFee = useMemo(() => {
     if (!formData.registrationRate) return null;
@@ -795,20 +850,23 @@ export function RegistrationForm({
         prcLicenseNumber: draft.prcLicenseNumber,
         prcInitialRegistrationDate: draft.prcInitialRegistrationDate,
         prcExpirationDate: draft.prcExpirationDate,
-        registrationMode: draft.registrationMode,
+        registrationMode: specialLane ? "single" : draft.registrationMode,
         registrationRate: draft.registrationRate,
         seniorPwdIdNumber: draft.seniorPwdIdNumber,
+        specialRole: "",
         foodPreference: draft.foodPreference,
         foodAllergyNote: draft.foodAllergyNote,
         sponsorConsent: draft.sponsorConsent,
         dataPrivacyConsent: draft.dataPrivacyConsent,
       });
       setMembers(
-        draft.registrationMode === "group"
-          ? draft.members.length > 0
-            ? draft.members.map((m) => ({ ...m, phone: toPhMobileLocalDigits(m.phone) }))
-            : [createEmptyGroupMember()]
-          : []
+        specialLane
+          ? []
+          : draft.registrationMode === "group"
+            ? draft.members.length > 0
+              ? draft.members.map((m) => ({ ...m, phone: toPhMobileLocalDigits(m.phone) }))
+              : [createEmptyGroupMember()]
+            : []
       );
       setPaymentReference(draft.paymentReference ?? "");
       setShowDraftRestored(true);
@@ -834,7 +892,17 @@ export function RegistrationForm({
     setFormPhase("details");
     setEarlyBird(null);
     setDraftLoaded(true);
-  }, [eventId]);
+  }, [eventId, specialLane]);
+
+  useEffect(() => {
+    if (!specialLane || !inviteEmail) return;
+    setFormData((prev) => ({
+      ...prev,
+      email: inviteEmail,
+      registrationMode: "single",
+    }));
+    setMembers([]);
+  }, [specialLane, inviteEmail]);
 
   useEffect(() => {
     if (!draftLoaded) return;
@@ -915,7 +983,8 @@ export function RegistrationForm({
         paymentReference,
         referenceConfirmed,
         membersValid,
-        formPhase
+        formPhase,
+        specialLane
       )
     );
   }, [
@@ -926,11 +995,13 @@ export function RegistrationForm({
     referenceConfirmed,
     membersValid,
     formPhase,
+    specialLane,
     onStepStatesChange,
   ]);
 
   useEffect(() => {
     if (formPhase !== "payment") return;
+    if (specialLane) return;
     let cancelled = false;
 
     fetchEarlyBirdStatus(eventId)
@@ -944,12 +1015,32 @@ export function RegistrationForm({
     return () => {
       cancelled = true;
     };
-  }, [formPhase, eventId]);
+  }, [formPhase, eventId, specialLane]);
 
   useEffect(() => {
     if (!onPaymentBreakdownChange) return;
 
-    if (formPhase !== "payment" || !appliedFee) {
+    if (formPhase !== "payment") {
+      onPaymentBreakdownChange(null);
+      return;
+    }
+
+    if (specialLane) {
+      const roleLabel =
+        formData.specialRole && formData.specialRole in SPECIAL_ROLE_LABELS
+          ? SPECIAL_ROLE_LABELS[formData.specialRole]
+          : "Complimentary invite";
+      onPaymentBreakdownChange({
+        categoryLabel: "Special invite",
+        feeTierLabel: roleLabel,
+        unitFee: 0,
+        headcount: 1,
+        totalFee: 0,
+      });
+      return;
+    }
+
+    if (!appliedFee) {
       onPaymentBreakdownChange(null);
       return;
     }
@@ -969,9 +1060,11 @@ export function RegistrationForm({
     appliedFee,
     feeSummaryLabel,
     formData.registrationMode,
+    formData.specialRole,
     headcount,
     totalFee,
     unitFee,
+    specialLane,
     onPaymentBreakdownChange,
   ]);
 
@@ -1019,13 +1112,6 @@ export function RegistrationForm({
       }
     });
 
-    const expiredMember = members.findIndex((member) =>
-      isExpiredDateInput(member.prcExpirationDate)
-    );
-    if (expiredMember >= 0) {
-      showPrcExpiredNotice(`Participant ${expiredMember + 2}`);
-    }
-
     setMemberErrors(nextMemberErrors);
     setErrors((prev) => {
       const next = { ...prev };
@@ -1063,16 +1149,44 @@ export function RegistrationForm({
       return next;
     });
 
-    if (isExpiredDateInput(formData.prcExpirationDate)) {
-      showPrcExpiredNotice("Participant 1");
-    }
-
     return Object.keys(newErrors).length === 0;
   }
 
   function validatePayment(): boolean {
     const newErrors: Errors = {};
     const allTouched: Partial<Record<FormFieldKey, boolean>> = { ...touched };
+
+    if (specialLane) {
+      const fieldsToCheck: FormFieldKey[] = [
+        "specialRole",
+        "foodPreference",
+        ...REVIEW_FIELDS,
+      ];
+      if (formData.foodPreference === "allergy") fieldsToCheck.push("foodAllergyNote");
+
+      for (const field of fieldsToCheck) {
+        allTouched[field] = true;
+        const error = getFieldError(field, formData);
+        if (error) newErrors[field] = error;
+      }
+
+      setTouched(allTouched);
+      setErrors((prev) => {
+        const next: Errors = { ...prev };
+        for (const field of fieldsToCheck) {
+          if (newErrors[field]) next[field] = newErrors[field];
+          else delete next[field];
+        }
+        delete next.receiptFile;
+        delete next.bir2303File;
+        delete next.paymentReference;
+        delete next.members;
+        delete next.registrationRate;
+        delete next.registrationMode;
+        return next;
+      });
+      return Object.keys(newErrors).length === 0;
+    }
 
     const fieldsToCheck: FormFieldKey[] = [...PAYMENT_FIELDS, ...REVIEW_FIELDS];
     if (formData.registrationRate === "seniorPwd") fieldsToCheck.push("seniorPwdIdNumber");
@@ -1257,14 +1371,18 @@ export function RegistrationForm({
 
     if (!validatePayment()) return;
 
-    const isGroup = formData.registrationMode === "group";
+    const isGroup = !specialLane && formData.registrationMode === "group";
     requestConfirm({
       title: "Submit registration?",
-      message: isGroup
-        ? `Submit group registration for ${headcount} participants with one combined payment of ${formatPeso(totalFee)}? Each person will receive their own reference number by email.`
-        : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
+      message: specialLane
+        ? "Submit your complimentary Committee/Speaker registration? This exclusive invite link can only be used once."
+        : isGroup
+          ? `Submit group registration for ${headcount} participants with one combined payment of ${formatPeso(totalFee)}? Each person will receive their own reference number by email.`
+          : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
       confirmLabel: "Submit registration",
-      loadingMessage: "Submitting registration and uploading documents...",
+      loadingMessage: specialLane
+        ? "Submitting complimentary registration..."
+        : "Submitting registration and uploading documents...",
       errorTitle: "Registration could not be submitted",
       showSuccess: false,
       action: async () => {
@@ -1295,18 +1413,24 @@ export function RegistrationForm({
             prcLicenseNumber: formData.prcLicenseNumber.trim(),
             prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
             prcExpirationDate: formData.prcExpirationDate,
-            registrationMode: formData.registrationMode,
-            registrationRate: formData.registrationRate as RegistrationRateChoice,
+            registrationMode: "single" as const,
+            registrationRate: (specialLane
+              ? "regular"
+              : formData.registrationRate) as RegistrationRateChoice,
             seniorPwdIdNumber:
-              formData.registrationRate === "seniorPwd"
+              !specialLane && formData.registrationRate === "seniorPwd"
                 ? formData.seniorPwdIdNumber.trim()
                 : undefined,
             foodPreference: formData.foodPreference as FoodPreference,
             foodAllergyNote: formData.foodAllergyNote.trim() || undefined,
             sponsorConsent: formData.sponsorConsent as SponsorConsent,
             dataPrivacyConsent: formData.dataPrivacyConsent,
-            paymentReference: paymentReference.trim(),
+            paymentReference: specialLane ? "" : paymentReference.trim(),
             eventId,
+            inviteToken: specialLane ? inviteToken ?? undefined : undefined,
+            specialRole: specialLane
+              ? (formData.specialRole as SpecialRole)
+              : undefined,
           };
 
           let registration;
@@ -1324,7 +1448,7 @@ export function RegistrationForm({
 
           if (isGroup) {
             const result = await submitGroupRegistration({
-              primary: primaryPayload,
+              primary: { ...primaryPayload, registrationMode: "group" },
               members: members.map((member) => ({
                 firstName: member.firstName.trim(),
                 lastName: member.lastName.trim(),
@@ -1332,6 +1456,9 @@ export function RegistrationForm({
                 email: member.email.trim(),
                 phone: toPhMobileInternational(member.phone) ?? member.phone,
                 dateOfBirth: member.dateOfBirth,
+                membershipType: member.membershipType as MembershipType,
+                pnaZone: member.pnaZone,
+                pnaChapter: member.pnaChapter.trim(),
                 prcLicenseNumber: member.prcLicenseNumber.trim(),
                 prcInitialRegistrationDate: member.prcInitialRegistrationDate,
                 prcExpirationDate: member.prcExpirationDate,
@@ -1357,16 +1484,18 @@ export function RegistrationForm({
 
           let receiptUploaded = false;
           let receiptUploadFailed = false;
-          try {
-            await submitReceipt(
-              registration.referenceNumber,
-              receiptFile!,
-              formData.email.trim(),
-              paymentReference.trim()
-            );
-            receiptUploaded = true;
-          } catch {
-            receiptUploadFailed = true;
+          if (!specialLane) {
+            try {
+              await submitReceipt(
+                registration.referenceNumber,
+                receiptFile!,
+                formData.email.trim(),
+                paymentReference.trim()
+              );
+              receiptUploaded = true;
+            } catch {
+              receiptUploadFailed = true;
+            }
           }
 
           try {
@@ -1375,9 +1504,12 @@ export function RegistrationForm({
               email: formData.email.trim(),
               pnaId: pnaIdFile,
               prcId: prcIdFile,
-              bir2303: bir2303File,
-              bir2307: bir2307File,
-              seniorPwdId: formData.registrationRate === "seniorPwd" ? seniorPwdIdFile : null,
+              bir2303: specialLane ? null : bir2303File,
+              bir2307: specialLane ? null : bir2307File,
+              seniorPwdId:
+                !specialLane && formData.registrationRate === "seniorPwd"
+                  ? seniorPwdIdFile
+                  : null,
             });
           } catch {
             // Best-effort document upload; registration itself already succeeded.
@@ -1395,11 +1527,16 @@ export function RegistrationForm({
             phone,
             organization: formData.organization.trim(),
             position: formData.position.trim(),
-            category: registration.feeLabel || feeSummaryLabel || "Conference Registration",
+            category:
+              registration.feeLabel ||
+              (specialLane && formData.specialRole
+                ? SPECIAL_ROLE_LABELS[formData.specialRole]
+                : feeSummaryLabel) ||
+              "Conference Registration",
             receiptUploaded,
             receiptUploadFailed,
             groupSize: groupMeta?.groupSize,
-            totalPaymentAmount: groupMeta?.totalPaymentAmount ?? totalFee,
+            totalPaymentAmount: groupMeta?.totalPaymentAmount ?? (specialLane ? 0 : totalFee),
             groupMembers: groupMeta?.participants.map((participant) => ({
               firstName: participant.firstName,
               lastName: participant.lastName,
@@ -1426,16 +1563,6 @@ export function RegistrationForm({
     setShowSuccessModal(false);
     setSuccessDetails(null);
     onCompleted?.();
-  }
-
-  function showPrcExpiredNotice(who: string) {
-    setPrcExpiredNotice({ open: true, who });
-  }
-
-  function maybeNotifyExpiredPrc(who: string, value: string) {
-    if (isExpiredDateInput(value)) {
-      showPrcExpiredNotice(who);
-    }
   }
 
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
@@ -1475,6 +1602,16 @@ export function RegistrationForm({
         if (field === "foodPreference") {
           return { ...member, foodPreference: value as FoodPreference };
         }
+        if (field === "membershipType") {
+          const membershipType =
+            value === "lifetime" || value === "regular" || value === "non_member"
+              ? value
+              : ("" as const);
+          return { ...member, membershipType, sameAffiliationAsPrimary: false };
+        }
+        if (field === "pnaZone" || field === "pnaChapter") {
+          return { ...member, [field]: value, sameAffiliationAsPrimary: false };
+        }
         if (field === "registrationRate") {
           const registrationRate =
             value === "seniorPwd" || value === "regular" ? value : ("" as const);
@@ -1486,6 +1623,24 @@ export function RegistrationForm({
           };
         }
         return { ...member, [field]: value };
+      })
+    );
+  }
+
+  function setMemberSameAffiliation(index: number, checked: boolean) {
+    setMembers((prev) =>
+      prev.map((member, i) => {
+        if (i !== index) return member;
+        if (!checked) {
+          return { ...member, sameAffiliationAsPrimary: false };
+        }
+        return {
+          ...member,
+          sameAffiliationAsPrimary: true,
+          membershipType: formData.membershipType,
+          pnaZone: formData.pnaZone,
+          pnaChapter: formData.pnaChapter,
+        };
       })
     );
   }
@@ -1541,14 +1696,6 @@ export function RegistrationForm({
           closeLabel="Continue"
           onClose={() => setShowDraftRestored(false)}
         />
-        <MessageDialog
-          open={prcExpiredNotice.open}
-          title="PRC license expired"
-          message={`${prcExpiredNotice.who}: your PRC license expiration date has already passed. Please renew your PRC license before completing registration, then enter the updated expiration date.`}
-          variant="error"
-          closeLabel="OK"
-          onClose={() => setPrcExpiredNotice({ open: false, who: "" })}
-        />
 
         <form
           id="registration-form"
@@ -1556,6 +1703,16 @@ export function RegistrationForm({
           className={`registration-form ${className}`.trim()}
           noValidate
         >
+          {specialLane ? (
+            <div className="registration-special-invite-banner mb-3">
+              <p className="mb-1 fw-semibold">Exclusive complimentary registration</p>
+              <p className="mb-0 small text-muted">
+                You are registering via a one-time invite
+                {inviteEventTitle ? ` for ${inviteEventTitle}` : ""}. Choose Committee or Speaker
+                on the next step — no payment is required.
+              </p>
+            </div>
+          ) : null}
           {!isPaymentPhase ? (
             <>
               <fieldset className="registration-form-section">
@@ -1606,6 +1763,7 @@ export function RegistrationForm({
                     onBlur={() => markFieldTouched("email")}
                     error={errors.email}
                     placeholder="juandelacruz@gmail.com"
+                    disabled={specialLane}
                   />
                   <PhoneField
                     id="phone"
@@ -1707,17 +1865,17 @@ export function RegistrationForm({
                     error={errors.pnaIdNumber}
                   />
                   <SelectField
-                    label="PNA Zone"
+                    label="PNA Zone/Region"
                     id="pnaZone"
                     required
                     value={formData.pnaZone}
                     onChange={(v) => updateField("pnaZone", v)}
                     options={PNA_ZONE_OPTIONS}
                     error={errors.pnaZone}
-                    placeholder="Select PNA zone"
+                    placeholder="Select PNA zone/region"
                   />
                   <FormField
-                    label="PNA Chapter"
+                    label="PNA Chapter (For Local and Foreign based)"
                     id="pnaChapter"
                     required
                     value={formData.pnaChapter}
@@ -1770,10 +1928,7 @@ export function RegistrationForm({
                     required
                     value={formData.prcExpirationDate}
                     onChange={(v) => updateField("prcExpirationDate", v)}
-                    onBlur={(value) => {
-                      markFieldTouched("prcExpirationDate");
-                      maybeNotifyExpiredPrc("Participant 1", value);
-                    }}
+                    onBlur={() => markFieldTouched("prcExpirationDate")}
                     error={errors.prcExpirationDate}
                     min={formData.prcInitialRegistrationDate || undefined}
                   />
@@ -1790,6 +1945,135 @@ export function RegistrationForm({
                   />
                 </div>
               </fieldset>
+            </>
+          ) : specialLane ? (
+            <>
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <UsersSectionIcon />
+                  Participation role
+                </legend>
+                <p className="registration-form-help mb-3">
+                  Select whether you are registering as Committee or Speaker. Both are complimentary.
+                </p>
+                <div className="registration-mode-toggle" role="group" aria-label="Special role">
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.specialRole === "committee" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("specialRole", "committee")}
+                  >
+                    Committee
+                  </button>
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.specialRole === "speaker" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("specialRole", "speaker")}
+                  >
+                    Speaker
+                  </button>
+                </div>
+                {errors.specialRole ? (
+                  <p className="mt-1 text-xs text-red-400">{errors.specialRole}</p>
+                ) : null}
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <UserSectionIcon />
+                  Preferences
+                </legend>
+                <div className="row g-3">
+                  <SelectField
+                    label="Food Preference"
+                    id="foodPreference"
+                    required
+                    value={formData.foodPreference}
+                    onChange={(v) => updateField("foodPreference", v as FoodPreference | "")}
+                    options={FOOD_PREFERENCE_OPTIONS}
+                    error={errors.foodPreference}
+                    placeholder="Select food preference"
+                  />
+                  {formData.foodPreference === "allergy" ? (
+                    <div className="col-12">
+                      <label htmlFor="foodAllergyNote" className="form-label registration-form-label">
+                        Food Allergy Note <span className="text-accent">*</span>
+                      </label>
+                      <textarea
+                        id="foodAllergyNote"
+                        rows={2}
+                        value={formData.foodAllergyNote}
+                        onChange={(e) => updateField("foodAllergyNote", e.target.value)}
+                        onBlur={() => markFieldTouched("foodAllergyNote")}
+                        placeholder="Please describe your food allergy"
+                        className={`input-dark resize-none ${
+                          errors.foodAllergyNote ? "input-dark-error" : ""
+                        }`}
+                      />
+                      {errors.foodAllergyNote && (
+                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </fieldset>
+
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <ClipboardCheckSectionIcon />
+                  Review & Consent
+                </legend>
+                <p className="form-label registration-form-label mb-2">
+                  Do you consent to being acknowledged as a sponsor/delegate representing your
+                  institution at this conference? <span className="text-accent">*</span>
+                </p>
+                <div className="registration-mode-toggle" role="group" aria-label="Sponsor consent">
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.sponsorConsent === "yes" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("sponsorConsent", "yes")}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    className={`registration-mode-option${
+                      formData.sponsorConsent === "no" ? " is-selected" : ""
+                    }`}
+                    onClick={() => updateField("sponsorConsent", "no")}
+                  >
+                    No
+                  </button>
+                </div>
+                {errors.sponsorConsent && (
+                  <p className="mt-1 text-xs text-red-400">{errors.sponsorConsent}</p>
+                )}
+              </fieldset>
+
+              <div className="registration-form-terms rounded-lg bg-white border border-green-100 p-3 p-md-4">
+                <label className="d-flex align-items-start gap-3 mb-0 cursor-pointer">
+                  <input
+                    id="dataPrivacyConsent-special"
+                    name="dataPrivacyConsent"
+                    type="checkbox"
+                    checked={formData.dataPrivacyConsent}
+                    onChange={(e) => updateField("dataPrivacyConsent", e.target.checked)}
+                    className="registration-form-checkbox mt-1"
+                  />
+                  <span className="small text-muted lh-base">
+                    I consent to the collection and processing of my personal data for conference
+                    registration and related communications. <span className="text-accent">*</span>
+                  </span>
+                </label>
+                {errors.dataPrivacyConsent && (
+                  <p className="mt-2 mb-0 text-xs text-red-400">{errors.dataPrivacyConsent}</p>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -2071,6 +2355,52 @@ export function RegistrationForm({
                             error={memberErrors[index]?.dateOfBirth}
                             max={getTodayDateInput()}
                           />
+                          <div className="col-12">
+                            <label className="registration-same-affiliation d-flex align-items-start gap-2 mb-0">
+                              <input
+                                type="checkbox"
+                                className="registration-form-checkbox mt-1"
+                                checked={member.sameAffiliationAsPrimary}
+                                onChange={(e) =>
+                                  setMemberSameAffiliation(index, e.target.checked)
+                                }
+                              />
+                              <span className="small text-muted lh-base">
+                                Same membership type, PNA zone/region, and chapter as Participant 1
+                              </span>
+                            </label>
+                          </div>
+                          <SelectField
+                            label="Membership Type"
+                            id={`member-${index}-membershipType`}
+                            required
+                            value={member.membershipType}
+                            onChange={(v) => updateMember(index, "membershipType", v)}
+                            options={MEMBERSHIP_TYPE_OPTIONS}
+                            error={memberErrors[index]?.membershipType}
+                            placeholder="Select membership type"
+                            disabled={member.sameAffiliationAsPrimary}
+                          />
+                          <SelectField
+                            label="PNA Zone/Region"
+                            id={`member-${index}-pnaZone`}
+                            required
+                            value={member.pnaZone}
+                            onChange={(v) => updateMember(index, "pnaZone", v)}
+                            options={PNA_ZONE_OPTIONS}
+                            error={memberErrors[index]?.pnaZone}
+                            placeholder="Select PNA zone/region"
+                            disabled={member.sameAffiliationAsPrimary}
+                          />
+                          <FormField
+                            label="PNA Chapter (For Local and Foreign based)"
+                            id={`member-${index}-pnaChapter`}
+                            required
+                            value={member.pnaChapter}
+                            onChange={(v) => updateMember(index, "pnaChapter", v)}
+                            error={memberErrors[index]?.pnaChapter}
+                            disabled={member.sameAffiliationAsPrimary}
+                          />
                           <FormField
                             label="PRC License Number"
                             id={`member-${index}-prcLicenseNumber`}
@@ -2096,9 +2426,21 @@ export function RegistrationForm({
                             required
                             value={member.prcExpirationDate}
                             onChange={(v) => updateMember(index, "prcExpirationDate", v)}
-                            onBlur={(value) =>
-                              maybeNotifyExpiredPrc(`Participant ${index + 2}`, value)
-                            }
+                            onBlur={(value) => {
+                              const error = getMemberFieldError(
+                                { ...member, prcExpirationDate: value },
+                                "prcExpirationDate"
+                              );
+                              setMemberErrors((prev) => {
+                                const next = { ...prev };
+                                const fieldErrors = { ...(next[index] ?? {}) };
+                                if (error) fieldErrors.prcExpirationDate = error;
+                                else delete fieldErrors.prcExpirationDate;
+                                if (Object.keys(fieldErrors).length > 0) next[index] = fieldErrors;
+                                else delete next[index];
+                                return next;
+                              });
+                            }}
                             error={memberErrors[index]?.prcExpirationDate}
                             min={member.prcInitialRegistrationDate || undefined}
                           />
@@ -2601,6 +2943,7 @@ function FormField({
   maxLength,
   min,
   max,
+  disabled = false,
   className = "col-12 col-md-6",
 }: {
   label: string;
@@ -2615,6 +2958,7 @@ function FormField({
   maxLength?: number;
   min?: string;
   max?: string;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -2632,6 +2976,7 @@ function FormField({
         maxLength={maxLength}
         min={min}
         max={max}
+        disabled={disabled}
         className={`input-dark ${error ? "input-dark-error" : ""}`}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
@@ -2648,6 +2993,7 @@ function SelectField({
   options,
   error,
   placeholder,
+  disabled = false,
   className = "col-12 col-md-6",
 }: {
   label: string;
@@ -2658,6 +3004,7 @@ function SelectField({
   options: PnaSelectOption[];
   error?: string;
   placeholder?: string;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -2672,6 +3019,7 @@ function SelectField({
         options={options}
         placeholder={placeholder}
         required={required}
+        disabled={disabled}
         className={error ? "pna-select--error" : ""}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}

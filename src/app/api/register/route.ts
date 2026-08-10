@@ -6,12 +6,17 @@ import {
   toPhMobileInternational,
 } from "@/lib/form-validation";
 import {
+  createComplimentaryInviteRegistration,
   createGroupRegistrations,
   createRegistration,
   MAX_GROUP_SIZE,
 } from "@/lib/registrations";
-import { getActiveEvent, getOpenEventById } from "@/lib/events";
-import { sendRegistrationPendingEmail } from "@/lib/mail-templates";
+import { getActiveEvent, getEventById, getOpenEventById } from "@/lib/events";
+import {
+  sendComplimentaryInviteConfirmedEmail,
+  sendRegistrationPendingEmail,
+} from "@/lib/mail-templates";
+import { getSpecialInviteByToken } from "@/lib/special-invites";
 import type {
   FoodPreference,
   GroupMemberInput,
@@ -19,6 +24,7 @@ import type {
   RegistrationInput,
   RegistrationModeChoice,
   RegistrationRateChoice,
+  SpecialRole,
   SponsorConsent,
 } from "@/lib/types/admin";
 import {
@@ -32,6 +38,7 @@ const rates: RegistrationRateChoice[] = ["regular", "seniorPwd"];
 const modes: RegistrationModeChoice[] = ["single", "group"];
 const foods: FoodPreference[] = ["regular", "vegetarian", "no_pork", "allergy"];
 const sponsors: SponsorConsent[] = ["yes", "no"];
+const specialRoles: SpecialRole[] = ["committee", "speaker"];
 
 function validatePersonContact(person: {
   firstName?: string;
@@ -81,8 +88,11 @@ async function resolveTargetEvent(eventId: unknown) {
 
 function validatePrimaryFields(
   body: Record<string, unknown>,
-  phone: string
+  phone: string,
+  options?: { complimentaryInvite?: boolean }
 ): { error?: string; input?: RegistrationInput } {
+  const complimentaryInvite = Boolean(options?.complimentaryInvite);
+
   if (typeof body.middleName !== "string" || !body.middleName.trim()) {
     return { error: "Middle name is required." };
   }
@@ -128,15 +138,24 @@ function validatePrimaryFields(
   ) {
     return { error: "Complete PRC license details are required." };
   }
-  if (!rates.includes(body.registrationRate as RegistrationRateChoice)) {
-    return { error: "Please choose Regular or Senior Citizen/PWD rate." };
+
+  if (!complimentaryInvite) {
+    if (!rates.includes(body.registrationRate as RegistrationRateChoice)) {
+      return { error: "Please choose Regular or Senior Citizen/PWD rate." };
+    }
+    if (
+      body.registrationRate === "seniorPwd" &&
+      (typeof body.seniorPwdIdNumber !== "string" || !body.seniorPwdIdNumber.trim())
+    ) {
+      return { error: "Senior Citizen/PWD ID number is required for this rate." };
+    }
+    if (typeof body.paymentReference !== "string" || !body.paymentReference.trim()) {
+      return { error: "Payment reference number is required." };
+    }
+  } else if (!specialRoles.includes(body.specialRole as SpecialRole)) {
+    return { error: "Please choose Committee or Speaker." };
   }
-  if (
-    body.registrationRate === "seniorPwd" &&
-    (typeof body.seniorPwdIdNumber !== "string" || !body.seniorPwdIdNumber.trim())
-  ) {
-    return { error: "Senior Citizen/PWD ID number is required for this rate." };
-  }
+
   if (!foods.includes(body.foodPreference as FoodPreference)) {
     return { error: "Please select a food preference." };
   }
@@ -151,9 +170,6 @@ function validatePrimaryFields(
   }
   if (!body.dataPrivacyConsent) {
     return { error: "Data privacy consent is required." };
-  }
-  if (typeof body.paymentReference !== "string" || !body.paymentReference.trim()) {
-    return { error: "Payment reference number is required." };
   }
 
   return {
@@ -177,9 +193,11 @@ function validatePrimaryFields(
       prcInitialRegistrationDate: String(body.prcInitialRegistrationDate ?? ""),
       prcExpirationDate: String(body.prcExpirationDate ?? ""),
       registrationMode: "single",
-      registrationRate: body.registrationRate as RegistrationRateChoice,
+      registrationRate: complimentaryInvite
+        ? "regular"
+        : (body.registrationRate as RegistrationRateChoice),
       seniorPwdIdNumber:
-        body.registrationRate === "seniorPwd"
+        !complimentaryInvite && body.registrationRate === "seniorPwd"
           ? String(body.seniorPwdIdNumber ?? "")
           : undefined,
       foodPreference: body.foodPreference as FoodPreference,
@@ -187,7 +205,12 @@ function validatePrimaryFields(
         typeof body.foodAllergyNote === "string" ? body.foodAllergyNote : undefined,
       sponsorConsent: body.sponsorConsent as SponsorConsent,
       dataPrivacyConsent: Boolean(body.dataPrivacyConsent),
-      paymentReference: String(body.paymentReference ?? ""),
+      paymentReference: complimentaryInvite ? "" : String(body.paymentReference ?? ""),
+      inviteToken:
+        complimentaryInvite && typeof body.inviteToken === "string"
+          ? body.inviteToken
+          : undefined,
+      specialRole: complimentaryInvite ? (body.specialRole as SpecialRole) : undefined,
     },
   };
 }
@@ -235,7 +258,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+    const inviteToken =
+      typeof body.inviteToken === "string" ? body.inviteToken.trim() : "";
     const mode = body.mode === "group" ? "group" : "individual";
+
+    if (inviteToken && mode === "group") {
+      return NextResponse.json(
+        { error: "Special invite registration cannot be submitted as a group." },
+        { status: 400 }
+      );
+    }
 
     if (mode === "group") {
       const primarySource = (body.primary ?? body) as Record<string, unknown>;
@@ -307,6 +339,24 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
+        if (!membershipTypes.includes(raw.membershipType as MembershipType)) {
+          return NextResponse.json(
+            { error: `${label}: Please select a valid membership type.` },
+            { status: 400 }
+          );
+        }
+        if (typeof raw.pnaZone !== "string" || !raw.pnaZone.trim()) {
+          return NextResponse.json(
+            { error: `${label}: PNA zone/region is required.` },
+            { status: 400 }
+          );
+        }
+        if (typeof raw.pnaChapter !== "string" || !raw.pnaChapter.trim()) {
+          return NextResponse.json(
+            { error: `${label}: PNA chapter is required.` },
+            { status: 400 }
+          );
+        }
         if (!rates.includes(raw.registrationRate as RegistrationRateChoice)) {
           return NextResponse.json(
             { error: `${label}: Please choose Regular or Senior Citizen/PWD rate.` },
@@ -345,6 +395,9 @@ export async function POST(request: Request) {
           email: String(raw.email ?? ""),
           phone: contact.phone,
           dateOfBirth: String(raw.dateOfBirth ?? ""),
+          membershipType: raw.membershipType as MembershipType,
+          pnaZone: String(raw.pnaZone ?? ""),
+          pnaChapter: String(raw.pnaChapter ?? ""),
           prcLicenseNumber: String(raw.prcLicenseNumber ?? ""),
           prcInitialRegistrationDate: String(raw.prcInitialRegistrationDate ?? ""),
           prcExpirationDate: String(raw.prcExpirationDate ?? ""),
@@ -418,6 +471,59 @@ export async function POST(request: Request) {
     });
     if (contact.error || !contact.phone) {
       return NextResponse.json({ error: contact.error }, { status: 400 });
+    }
+
+    if (inviteToken) {
+      const invite = await getSpecialInviteByToken(inviteToken);
+      if (!invite || invite.status !== "pending") {
+        return NextResponse.json(
+          { error: "This invite link is invalid or has already been used." },
+          { status: 400 }
+        );
+      }
+
+      const email = String(body.email ?? "")
+        .trim()
+        .toLowerCase();
+      if (email !== invite.email) {
+        return NextResponse.json(
+          { error: "This invite is locked to a different email address." },
+          { status: 400 }
+        );
+      }
+
+      const event = await getEventById(invite.eventId);
+      if (!event) {
+        return NextResponse.json({ error: "Invite event was not found." }, { status: 400 });
+      }
+
+      const validated = validatePrimaryFields(body as Record<string, unknown>, contact.phone, {
+        complimentaryInvite: true,
+      });
+      if (validated.error || !validated.input) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+
+      const registration = await createComplimentaryInviteRegistration({
+        ...validated.input,
+        inviteToken,
+        eventId: invite.eventId,
+      });
+
+      try {
+        await sendComplimentaryInviteConfirmedEmail(registration, {
+          id: event.id,
+          title: event.title,
+          datesDisplay: event.datesDisplay,
+          venueName: event.venueName,
+          venueAddress: event.venueAddress,
+          venueMapsUrl: event.venueMapsUrl,
+        });
+      } catch (mailError) {
+        console.error("[register] complimentary invite email failed:", mailError);
+      }
+
+      return NextResponse.json(toRegistrationResponse(registration), { status: 201 });
     }
 
     if (!modes.includes(body.registrationMode)) {

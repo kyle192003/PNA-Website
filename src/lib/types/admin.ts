@@ -164,8 +164,43 @@ export interface CertificateTemplate {
 /** Participant rate choice on the form. */
 export type RegistrationRateChoice = "regular" | "seniorPwd";
 
-/** Snapshot of which published fee was charged. */
-export type AppliedFeeKey = EventFeeKey;
+/** Complimentary invite roles (not priced on the event fee card). */
+export type SpecialRole = "committee" | "speaker";
+
+/** Snapshot of which published fee was charged (or complimentary invite role). */
+export type AppliedFeeKey = EventFeeKey | SpecialRole;
+
+export const SPECIAL_ROLE_LABELS: Record<SpecialRole, string> = {
+  committee: "Committee (Complimentary)",
+  speaker: "Speaker (Complimentary)",
+};
+
+export type SpecialInviteStatus = "pending" | "used" | "revoked";
+
+export interface SpecialInviteRecord {
+  id: string;
+  token: string;
+  email: string;
+  eventId: string;
+  status: SpecialInviteStatus;
+  note: string;
+  createdAt: string;
+  sentAt: string | null;
+  usedAt: string | null;
+  usedByRegistrationId: string | null;
+}
+
+export interface SpecialInviteInput {
+  email: string;
+  eventId: string;
+  note?: string;
+}
+
+export const SPECIAL_INVITE_STATUS_LABELS: Record<SpecialInviteStatus, string> = {
+  pending: "Awaiting signup",
+  used: "Signed up",
+  revoked: "Revoked",
+};
 
 /** @deprecated Prefer appliedFeeKey / registrationRate. */
 export type FeeTier = "early" | "regular";
@@ -187,6 +222,9 @@ export interface RegistrationGroupMemberNote {
   email: string;
   phone: string;
   dateOfBirth: string;
+  membershipType: MembershipType | "";
+  pnaZone: string;
+  pnaChapter: string;
   prcLicenseNumber: string;
   prcInitialRegistrationDate: string;
   prcExpirationDate: string;
@@ -228,6 +266,9 @@ export interface RegistrationRecord {
   registrationRate: RegistrationRateChoice | "";
   appliedFeeKey: AppliedFeeKey | "";
   feeLabel: string;
+  /** Set for exclusive invite registrations (committee / speaker). */
+  specialRole: SpecialRole | null;
+  inviteId: string | null;
   seniorPwdIdNumber: string;
   seniorPwdIdUrl: string | null;
   groupMembersNote: RegistrationGroupMemberNote[];
@@ -288,6 +329,9 @@ export interface GroupMemberInput {
   email: string;
   phone: string;
   dateOfBirth?: string;
+  membershipType: MembershipType;
+  pnaZone: string;
+  pnaChapter: string;
   prcLicenseNumber?: string;
   prcInitialRegistrationDate?: string;
   prcExpirationDate?: string;
@@ -326,6 +370,9 @@ export interface RegistrationInput {
   sponsorConsent: SponsorConsent;
   dataPrivacyConsent: boolean;
   paymentReference: string;
+  /** Exclusive invite token for complimentary committee/speaker lane. */
+  inviteToken?: string;
+  specialRole?: SpecialRole;
   /** @deprecated */
   category?: RegistrationCategory;
   feeTier?: FeeTier;

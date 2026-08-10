@@ -139,6 +139,9 @@ function getBreadcrumbs(pathname: string): { label: string; href?: string }[] {
   if (pathname.startsWith("/admin/participants")) {
     return [{ label: "Workspace", href: "/admin" }, { label: "Participants" }];
   }
+  if (pathname.startsWith("/admin/invites")) {
+    return [{ label: "Workspace", href: "/admin" }, { label: "Special Invites" }];
+  }
   if (pathname.startsWith("/admin/financial")) {
     return [{ label: "Workspace", href: "/admin" }, { label: "Financial" }];
   }
@@ -253,6 +256,7 @@ export function AdminShell({
   const isDashboardActive = pathname === "/admin";
   const isEventsActive = pathname.startsWith("/admin/events");
   const isParticipantsActive = pathname.startsWith("/admin/participants");
+  const isInvitesActive = pathname.startsWith("/admin/invites");
   const isFinancialActive = pathname.startsWith("/admin/financial");
   const isCheckInActive = pathname.startsWith("/admin/check-in");
   const isEvaluationActive = pathname.startsWith("/admin/evaluation");
@@ -392,6 +396,15 @@ export function AdminShell({
                 </span>
               )}
             </span>
+          </Link>
+
+          <Link
+            href="/admin/invites"
+            className={`admin-sidebar-link ${isInvitesActive ? "active" : ""}`}
+            onClick={closeMobileNav}
+          >
+            <span className="admin-sidebar-link-icon">{inquiriesIcon}</span>
+            <span>Special Invites</span>
           </Link>
 
           <Link

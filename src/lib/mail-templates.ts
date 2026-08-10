@@ -814,3 +814,119 @@ export async function sendAdminReceiptSubmittedNotification(
 
   return sendBrandedMail({ to, subject, html, text });
 }
+
+/** Exclusive one-time invite for complimentary Committee / Speaker registration. */
+export async function sendSpecialInviteEmail(payload: {
+  to: string;
+  eventTitle: string;
+  inviteUrl: string;
+  note?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const subject = `Exclusive registration invite: ${payload.eventTitle}`;
+  const note = payload.note?.trim();
+
+  const html = wrapEmail({
+    title: subject,
+    headline: "You are invited to register as Committee or Speaker",
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hello,</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        You have received an exclusive invitation to register for
+        <strong>${escapeHtml(payload.eventTitle)}</strong> as a
+        <strong>Committee</strong> member or <strong>Speaker</strong>. This lane is complimentary —
+        no payment proof is required.
+      </p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        This link is personal and can be used only once. After you submit the form, the link will no
+        longer work.
+      </p>
+      ${
+        note
+          ? emailCallout("Note from the secretariat", escapeHtml(note))
+          : ""
+      }
+      ${emailCta(payload.inviteUrl, "Open exclusive registration")}
+      <p style="margin:8px 0 0;font-size:13px;line-height:1.7;color:${BRAND.greenMuted};">
+        If the button does not work, copy and paste this link into your browser:<br />
+        <a href="${escapeHtml(payload.inviteUrl)}" style="color:${BRAND.greenMid};word-break:break-all;">
+          ${escapeHtml(payload.inviteUrl)}
+        </a>
+      </p>
+    `,
+  });
+
+  const text = [
+    "Hello,",
+    "",
+    `You have received an exclusive invitation to register for ${payload.eventTitle} as Committee or Speaker (complimentary).`,
+    "",
+    "This link is personal and can be used only once.",
+    note ? `Note from the secretariat: ${note}` : "",
+    "",
+    `Register here: ${payload.inviteUrl}`,
+    "",
+    SPAM_NOTE,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return sendBrandedMail({ to: payload.to, subject, html, text });
+}
+
+/** Confirmation after complimentary invite registration (includes check-in QR). */
+export async function sendComplimentaryInviteConfirmedEmail(
+  registration: RegistrationRecord,
+  event: EventContext
+): Promise<{ ok: boolean; error?: string }> {
+  if (!registration.checkInToken) {
+    return { ok: false, error: "Missing check-in token on registration." };
+  }
+
+  const name = participantDisplayName(registration);
+  const eventInfo = eventBlock(event);
+  const qr = qrBlock(registration.checkInToken);
+  const roleLabel =
+    registration.specialRole === "committee"
+      ? "Committee"
+      : registration.specialRole === "speaker"
+        ? "Speaker"
+        : "special guest";
+  const subject = `You're confirmed: ${event.title}`;
+
+  const html = wrapEmail({
+    title: subject,
+    headline: "Your complimentary registration is confirmed",
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        Thank you for registering as <strong>${escapeHtml(roleLabel)}</strong> for
+        <strong>${escapeHtml(event.title)}</strong>. Your complimentary registration is confirmed —
+        no payment is required.
+      </p>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        Your reference number is <strong>${escapeHtml(registration.referenceNumber)}</strong>.
+      </p>
+      ${eventInfo.html}
+      ${qr.html}
+      <p style="margin:8px 0 0;font-size:14px;line-height:1.7;color:${BRAND.greenMuted};">
+        Please keep this email handy and show your QR code at the front desk on event day for check-in.
+      </p>
+    `,
+  });
+
+  const text = [
+    `Hi ${name},`,
+    "",
+    `Thank you for registering as ${roleLabel} for ${event.title}. Your complimentary registration is confirmed.`,
+    `Reference number: ${registration.referenceNumber}`,
+    "",
+    eventInfo.text,
+    "",
+    qr.text,
+    "",
+    SPAM_NOTE,
+  ].join("\n");
+
+  return sendBrandedMail({ to: registration.email, subject, html, text });
+}
+
