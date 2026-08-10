@@ -213,6 +213,11 @@ function isExpiredDateInput(value: string): boolean {
   return Boolean(value) && isValidDateString(value) && value < getTodayDateInput();
 }
 
+function getPrcExpiredNote(expirationDate: string): string | undefined {
+  if (!isExpiredDateInput(expirationDate)) return undefined;
+  return "Note: PRC license is expired. You may still submit this registration.";
+}
+
 function formatDisplayName(parts: {
   firstName?: string;
   middleName?: string;
@@ -314,9 +319,6 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
         data.prcExpirationDate < data.prcInitialRegistrationDate
       ) {
         return "Expiration date must be after the initial registration date";
-      }
-      if (isExpiredDateInput(data.prcExpirationDate)) {
-        return "PRC license is expired. Please renew before registering.";
       }
       return undefined;
     case "registrationMode":
@@ -436,9 +438,6 @@ function getMemberFieldError(
         member.prcExpirationDate < member.prcInitialRegistrationDate
       ) {
         return "Expiration date must be after the initial registration date";
-      }
-      if (isExpiredDateInput(member.prcExpirationDate)) {
-        return "PRC license is expired. Please renew before registering.";
       }
       return undefined;
     case "registrationRate":
@@ -1937,6 +1936,7 @@ export function RegistrationForm({
                     onChange={(v) => updateField("prcExpirationDate", v)}
                     onBlur={() => markFieldTouched("prcExpirationDate")}
                     error={errors.prcExpirationDate}
+                    helpText={getPrcExpiredNote(formData.prcExpirationDate)}
                     min={formData.prcInitialRegistrationDate || undefined}
                     placement="top"
                   />
@@ -2464,6 +2464,7 @@ export function RegistrationForm({
                               });
                             }}
                             error={memberErrors[index]?.prcExpirationDate}
+                            helpText={getPrcExpiredNote(member.prcExpirationDate)}
                             min={member.prcInitialRegistrationDate || undefined}
                             placement="top"
                           />
