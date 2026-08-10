@@ -9,7 +9,9 @@ import type {
 
 export type RegistrationMode = RegistrationModeChoice;
 
-export type GroupMemberDraft = RegistrationGroupMemberNote;
+export type GroupMemberDraft = Omit<RegistrationGroupMemberNote, "registrationRate"> & {
+  registrationRate: RegistrationRateChoice | "";
+};
 
 export type RegistrationDraft = {
   mode: RegistrationMode;
@@ -62,6 +64,22 @@ export function createEmptyGroupMember(): GroupMemberDraft {
     prcExpirationDate: "",
     foodPreference: "regular",
     foodAllergyNote: "",
+    registrationRate: "",
+    seniorPwdIdNumber: "",
+  };
+}
+
+function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft {
+  return {
+    ...createEmptyGroupMember(),
+    ...raw,
+    foodPreference: (raw.foodPreference as FoodPreference) || "regular",
+    foodAllergyNote: raw.foodAllergyNote ?? "",
+    registrationRate:
+      raw.registrationRate === "seniorPwd" || raw.registrationRate === "regular"
+        ? raw.registrationRate
+        : "",
+    seniorPwdIdNumber: raw.seniorPwdIdNumber ?? "",
   };
 }
 
@@ -97,7 +115,9 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
           ? parsed.registrationRate
           : "",
       seniorPwdIdNumber: parsed.seniorPwdIdNumber ?? "",
-      members: Array.isArray(parsed.members) ? parsed.members : [],
+      members: Array.isArray(parsed.members)
+        ? parsed.members.map((member) => normalizeDraftMember(member))
+        : [],
       foodPreference: parsed.foodPreference ?? "",
       foodAllergyNote: parsed.foodAllergyNote ?? "",
       sponsorConsent: parsed.sponsorConsent ?? "",

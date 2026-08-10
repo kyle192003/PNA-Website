@@ -27,6 +27,7 @@ import {
 } from "@/lib/registration-draft";
 import {
   fetchEarlyBirdStatus,
+  submitGroupRegistration,
   submitReceipt,
   submitRegistration,
   submitRegistrationDocuments,
@@ -308,6 +309,8 @@ const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
   "prcLicenseNumber",
   "prcInitialRegistrationDate",
   "prcExpirationDate",
+  "registrationRate",
+  "seniorPwdIdNumber",
   "foodPreference",
   "foodAllergyNote",
 ];
@@ -335,6 +338,13 @@ function getMemberFieldError(
       return member.prcInitialRegistrationDate ? undefined : "Initial registration date is required";
     case "prcExpirationDate":
       return member.prcExpirationDate ? undefined : "Expiration date is required";
+    case "registrationRate":
+      return member.registrationRate ? undefined : "Please choose Regular or Senior Citizen/PWD";
+    case "seniorPwdIdNumber":
+      if (member.registrationRate !== "seniorPwd") return undefined;
+      return member.seniorPwdIdNumber.trim()
+        ? undefined
+        : "Senior Citizen/PWD ID number is required";
     case "foodPreference":
       return member.foodPreference ? undefined : "Food preference is required";
     case "foodAllergyNote":
@@ -553,9 +563,81 @@ export function RegistrationForm({
     fallbackFees,
   ]);
 
+  const feeLines = useMemo(() => {
+    const lines: { key: string; name: string; label: string; amount: number }[] = [];
+    let earlyUsed = 0;
+
+    const resolveLine = (
+      rate: RegistrationRateChoice | "",
+      name: string,
+      key: string
+    ) => {
+      if (!rate) return;
+      if (rate === "seniorPwd") {
+        lines.push({
+          key,
+          name,
+          label: fallbackFees.seniorPwd.label,
+          amount: seniorPwdAmount,
+        });
+        return;
+      }
+      if (remaining - earlyUsed > 0) {
+        lines.push({
+          key,
+          name,
+          label: fallbackFees.earlyBird.label,
+          amount: earlyBirdAmount,
+        });
+        earlyUsed += 1;
+        return;
+      }
+      lines.push({
+        key,
+        name,
+        label: fallbackFees.regular.label,
+        amount: regularAmount,
+      });
+    };
+
+    resolveLine(
+      formData.registrationRate,
+      formData.firstName.trim() || "You",
+      "primary"
+    );
+
+    if (formData.registrationMode === "group") {
+      members.forEach((member, index) => {
+        resolveLine(
+          member.registrationRate,
+          member.firstName.trim() || `Participant ${index + 2}`,
+          `member-${index}`
+        );
+      });
+    }
+
+    return lines;
+  }, [
+    formData.registrationRate,
+    formData.firstName,
+    formData.registrationMode,
+    members,
+    remaining,
+    earlyBirdAmount,
+    regularAmount,
+    seniorPwdAmount,
+    fallbackFees,
+  ]);
+
   const headcount = formData.registrationMode === "group" ? 1 + members.length : 1;
   const unitFee = appliedFee?.amount ?? 0;
-  const totalFee = unitFee * headcount;
+  const totalFee = feeLines.reduce((sum, line) => sum + line.amount, 0);
+  const feeSummaryLabel =
+    formData.registrationMode === "group" && feeLines.length > 1
+      ? feeLines.every((line) => line.label === feeLines[0]?.label)
+        ? feeLines[0].label
+        : "Combined rates"
+      : appliedFee?.label ?? "Conference Registration";
 
   useEffect(() => {
     const draft = loadRegistrationDraft(eventId);
@@ -738,13 +820,25 @@ export function RegistrationForm({
     }
 
     onPaymentBreakdownChange({
-      categoryLabel: "Conference Registration",
-      feeTierLabel: appliedFee.label,
-      unitFee: appliedFee.amount,
+      categoryLabel:
+        formData.registrationMode === "group"
+          ? "Group registration"
+          : "Conference Registration",
+      feeTierLabel: feeSummaryLabel,
+      unitFee: formData.registrationMode === "group" ? totalFee : unitFee,
       headcount,
       totalFee,
     });
-  }, [formPhase, appliedFee, headcount, totalFee, onPaymentBreakdownChange]);
+  }, [
+    formPhase,
+    appliedFee,
+    feeSummaryLabel,
+    formData.registrationMode,
+    headcount,
+    totalFee,
+    unitFee,
+    onPaymentBreakdownChange,
+  ]);
 
   function validateMembers(): boolean {
     if (formData.registrationMode !== "group") {
@@ -1021,7 +1115,7 @@ export function RegistrationForm({
     requestConfirm({
       title: "Submit registration?",
       message: isGroup
-        ? `Submit your registration and note ${members.length} additional participant(s) sharing this deposit? Every attendee must still complete and submit their own registration individually.`
+        ? `Submit group registration for ${headcount} participants with one combined payment of ${formatPeso(totalFee)}? Each person will receive their own reference number by email.`
         : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
       confirmLabel: "Submit registration",
       loadingMessage: "Submitting registration and uploading documents...",
@@ -1036,14 +1130,7 @@ export function RegistrationForm({
 
           const age = calculateAge(formData.dateOfBirth);
 
-          const groupMembersNote = isGroup
-            ? members.map((member) => ({
-                ...member,
-                phone: toPhMobileInternational(member.phone) ?? member.phone,
-              }))
-            : undefined;
-
-          const registration = await submitRegistration({
+          const primaryPayload = {
             firstName: formData.firstName.trim(),
             lastName: formData.lastName.trim(),
             middleName: formData.middleName.trim(),
@@ -1068,14 +1155,59 @@ export function RegistrationForm({
               formData.registrationRate === "seniorPwd"
                 ? formData.seniorPwdIdNumber.trim()
                 : undefined,
-            groupMembersNote,
             foodPreference: formData.foodPreference as FoodPreference,
             foodAllergyNote: formData.foodAllergyNote.trim() || undefined,
             sponsorConsent: formData.sponsorConsent as SponsorConsent,
             dataPrivacyConsent: formData.dataPrivacyConsent,
             paymentReference: paymentReference.trim(),
             eventId,
-          });
+          };
+
+          let registration;
+          let groupMeta: {
+            groupSize: number;
+            totalPaymentAmount: number;
+            participants: {
+              referenceNumber: string;
+              firstName: string;
+              lastName: string;
+              middleInitial?: string;
+              email: string;
+            }[];
+          } | null = null;
+
+          if (isGroup) {
+            const result = await submitGroupRegistration({
+              primary: primaryPayload,
+              members: members.map((member) => ({
+                firstName: member.firstName.trim(),
+                lastName: member.lastName.trim(),
+                middleName: member.middleName.trim(),
+                email: member.email.trim(),
+                phone: toPhMobileInternational(member.phone) ?? member.phone,
+                dateOfBirth: member.dateOfBirth,
+                prcLicenseNumber: member.prcLicenseNumber.trim(),
+                prcInitialRegistrationDate: member.prcInitialRegistrationDate,
+                prcExpirationDate: member.prcExpirationDate,
+                foodPreference: member.foodPreference,
+                foodAllergyNote: member.foodAllergyNote.trim() || undefined,
+                registrationRate: member.registrationRate as RegistrationRateChoice,
+                seniorPwdIdNumber:
+                  member.registrationRate === "seniorPwd"
+                    ? member.seniorPwdIdNumber.trim()
+                    : undefined,
+              })),
+              eventId,
+            });
+            registration = result.registration;
+            groupMeta = {
+              groupSize: result.group.groupSize ?? headcount,
+              totalPaymentAmount: result.group.totalPaymentAmount,
+              participants: result.group.participants,
+            };
+          } else {
+            registration = await submitRegistration(primaryPayload);
+          }
 
           let receiptUploaded = false;
           let receiptUploadFailed = false;
@@ -1117,10 +1249,18 @@ export function RegistrationForm({
             phone,
             organization: formData.organization.trim(),
             position: formData.position.trim(),
-            category: registration.feeLabel || appliedFee?.label || "Conference Registration",
+            category: registration.feeLabel || feeSummaryLabel || "Conference Registration",
             receiptUploaded,
             receiptUploadFailed,
-            groupSize: isGroup ? headcount : undefined,
+            groupSize: groupMeta?.groupSize,
+            totalPaymentAmount: groupMeta?.totalPaymentAmount ?? totalFee,
+            groupMembers: groupMeta?.participants.map((participant) => ({
+              firstName: participant.firstName,
+              lastName: participant.lastName,
+              middleInitial: participant.middleInitial,
+              email: participant.email,
+              referenceNumber: participant.referenceNumber,
+            })),
           };
 
           setSuccessDetails(details);
@@ -1178,6 +1318,16 @@ export function RegistrationForm({
         }
         if (field === "foodPreference") {
           return { ...member, foodPreference: value as FoodPreference };
+        }
+        if (field === "registrationRate") {
+          const registrationRate =
+            value === "seniorPwd" || value === "regular" ? value : ("" as const);
+          return {
+            ...member,
+            registrationRate,
+            seniorPwdIdNumber:
+              registrationRate === "seniorPwd" ? member.seniorPwdIdNumber : "",
+          };
         }
         return { ...member, [field]: value };
       })
@@ -1482,10 +1632,9 @@ export function RegistrationForm({
                   Registration & Fee
                 </legend>
                 <p className="registration-form-help mb-3">
-                  <strong>All attendees must register individually.</strong> Choose{" "}
-                  <strong>Group</strong> only if you and other attendees are sharing a single
-                  deposit slip for payment. Each participant listed below must still complete and
-                  submit their own registration form separately.
+                  Choose <strong>Single</strong> for one person, or <strong>Group</strong> when two
+                  or more attendees share one deposit slip. Group registration creates a record for
+                  every participant in one submission, with one combined payment and one receipt.
                 </p>
                 <div className="registration-mode-toggle" role="group" aria-label="Registration type">
                   <button
@@ -1581,9 +1730,10 @@ export function RegistrationForm({
                     Additional participants
                   </legend>
                   <p className="registration-form-help mb-3">
-                    List each attendee sharing this deposit slip. Maximum {MAX_GROUP_SIZE} people
-                    including you. Remember: each person listed must still submit their own
-                    registration individually.
+                    Add each attendee sharing one deposit slip. Maximum {MAX_GROUP_SIZE} people
+                    including you. One submission creates a registration for every participant;
+                    one payment and one receipt cover the whole group. Each person chooses Regular
+                    or Senior Citizen/PWD for their own fee.
                   </p>
                   {errors.members ? (
                     <p className="mb-3 text-xs text-red-500">{errors.members}</p>
@@ -1686,6 +1836,53 @@ export function RegistrationForm({
                             onChange={(v) => updateMember(index, "prcExpirationDate", v)}
                             error={memberErrors[index]?.prcExpirationDate}
                           />
+                          <div className="col-12">
+                            <p className="form-label registration-form-label mb-2">
+                              Registration Rate <span className="text-accent">*</span>
+                            </p>
+                            <div
+                              className="registration-mode-toggle"
+                              role="group"
+                              aria-label={`Participant ${index + 2} registration rate`}
+                            >
+                              {(
+                                [
+                                  ["regular", "Regular"],
+                                  ["seniorPwd", "Senior Citizen / PWD"],
+                                ] as const
+                              ).map(([rate, label]) => {
+                                const selected = member.registrationRate === rate;
+                                return (
+                                  <button
+                                    key={rate}
+                                    type="button"
+                                    className={`registration-mode-btn${
+                                      selected ? " is-selected" : ""
+                                    }`}
+                                    onClick={() => updateMember(index, "registrationRate", rate)}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {memberErrors[index]?.registrationRate ? (
+                              <p className="mt-1 text-xs text-red-400">
+                                {memberErrors[index]?.registrationRate}
+                              </p>
+                            ) : null}
+                          </div>
+                          {member.registrationRate === "seniorPwd" ? (
+                            <FormField
+                              label="Senior Citizen / PWD ID Number"
+                              id={`member-${index}-seniorPwdIdNumber`}
+                              required
+                              value={member.seniorPwdIdNumber}
+                              onChange={(v) => updateMember(index, "seniorPwdIdNumber", v)}
+                              error={memberErrors[index]?.seniorPwdIdNumber}
+                              className="col-12"
+                            />
+                          ) : null}
                           <SelectField
                             label="Food Preference"
                             id={`member-${index}-foodPreference`}
@@ -1779,16 +1976,17 @@ export function RegistrationForm({
                   (Certificate of Creditable Tax Withheld at Source).
                 </p>
 
-                {appliedFee ? (
+                {feeLines.length > 0 ? (
                   <div className="registration-group-total mb-4">
-                    <div className="registration-group-total-row">
-                      <span>Rate</span>
-                      <strong>{appliedFee.label}</strong>
-                    </div>
-                    <div className="registration-group-total-row">
-                      <span>Fee per person</span>
-                      <strong>{formatPeso(unitFee)}</strong>
-                    </div>
+                    {feeLines.map((line) => (
+                      <div key={line.key} className="registration-group-total-row">
+                        <span>
+                          {line.name}
+                          <span className="text-muted"> · {line.label}</span>
+                        </span>
+                        <strong>{formatPeso(line.amount)}</strong>
+                      </div>
+                    ))}
                     {formData.registrationMode === "group" ? (
                       <div className="registration-group-total-row">
                         <span>Participants</span>

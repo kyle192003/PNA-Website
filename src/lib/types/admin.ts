@@ -180,6 +180,9 @@ export interface RegistrationGroupMemberNote {
   prcExpirationDate: string;
   foodPreference: FoodPreference;
   foodAllergyNote: string;
+  /** Each group member chooses Regular or Senior/PWD for their own fee. */
+  registrationRate: RegistrationRateChoice;
+  seniorPwdIdNumber: string;
 }
 
 export interface RegistrationRecord {
@@ -278,6 +281,8 @@ export interface GroupMemberInput {
   prcExpirationDate?: string;
   foodPreference?: FoodPreference;
   foodAllergyNote?: string;
+  registrationRate: RegistrationRateChoice;
+  seniorPwdIdNumber?: string;
 }
 
 export interface RegistrationInput {

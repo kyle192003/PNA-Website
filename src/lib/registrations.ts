@@ -100,6 +100,11 @@ function normalizeGroupMembersNote(raw: unknown): RegistrationGroupMemberNote[] 
       prcExpirationDate: row.prcExpirationDate?.trim() ?? "",
       foodPreference: (row.foodPreference as FoodPreference) || "regular",
       foodAllergyNote: row.foodAllergyNote?.trim() ?? "",
+      registrationRate:
+        row.registrationRate === "seniorPwd" || row.registrationRate === "regular"
+          ? row.registrationRate
+          : "regular",
+      seniorPwdIdNumber: row.seniorPwdIdNumber?.trim() ?? "",
     };
   });
 }
@@ -261,6 +266,9 @@ function buildRegistrationRecord(
     paymentAmount: number;
     feeTier: FeeTier;
     existing: RegistrationRecord[];
+    groupId?: string | null;
+    groupRole?: RegistrationGroupRole | null;
+    groupSize?: number | null;
   }
 ): RegistrationRecord {
   const now = new Date().toISOString();
@@ -322,9 +330,9 @@ function buildRegistrationRecord(
     paymentReference: input.paymentReference.trim(),
     paymentNotes: "",
     adminNotes: "",
-    groupId: null,
-    groupRole: null,
-    groupSize: null,
+    groupId: options.groupId ?? null,
+    groupRole: options.groupRole ?? null,
+    groupSize: options.groupSize ?? null,
     checkInToken: allocateCheckInToken(options.existing),
     checkInStatus: "pending",
     checkedInAt: null,
@@ -395,8 +403,9 @@ export async function createRegistration(
 }
 
 /**
- * Group mode is now a single registration that lists other members for reference.
- * Each attendee should still submit their own form; this helper keeps API compat.
+ * Create primary + member registrations sharing one groupId and one combined payment.
+ * Each person gets their own reference number and fee (Regular/Early Bird or Senior/PWD).
+ * One receipt uploaded against the primary cascades to the whole group.
  */
 export async function createGroupRegistrations(
   input: GroupRegistrationInput
@@ -405,30 +414,108 @@ export async function createGroupRegistrations(
   if (members.length < 1) {
     throw new Error("Group registration requires at least one additional participant.");
   }
-  if (1 + members.length > MAX_GROUP_SIZE) {
+  const groupSize = 1 + members.length;
+  if (groupSize > MAX_GROUP_SIZE) {
     throw new Error(`Group registration allows up to ${MAX_GROUP_SIZE} participants.`);
   }
 
-  const primaryInput: RegistrationInput = {
-    ...input.primary,
-    registrationMode: "group",
-    groupMembersNote: members.map((member) => ({
-      lastName: member.lastName,
+  for (const member of members) {
+    if (member.registrationRate !== "regular" && member.registrationRate !== "seniorPwd") {
+      throw new Error("Each group member must choose Regular or Senior Citizen/PWD rate.");
+    }
+    if (member.registrationRate === "seniorPwd" && !member.seniorPwdIdNumber?.trim()) {
+      throw new Error(
+        `Senior Citizen/PWD ID number is required for ${member.firstName} ${member.lastName}.`
+      );
+    }
+  }
+  if (input.primary.registrationRate === "seniorPwd" && !input.primary.seniorPwdIdNumber?.trim()) {
+    throw new Error("Senior Citizen/PWD ID number is required for the primary registrant.");
+  }
+
+  const registrations = await readRegistrations();
+  const allEmails = [input.primary.email, ...members.map((m) => m.email)];
+  assertEmailsAvailable(allEmails, registrations);
+
+  const event = input.primary.eventId ? await getEventById(input.primary.eventId) : null;
+  let earlyBirdUsed = await countEarlyBirdUsed(input.primary.eventId ?? null);
+  const groupId = uuidv4();
+  const created: RegistrationRecord[] = [];
+  const working = [...registrations];
+
+  const primaryApplied = resolveAppliedFee(
+    input.primary.registrationRate,
+    earlyBirdUsed,
+    event
+  );
+  if (primaryApplied.key === "earlyBird") earlyBirdUsed += 1;
+
+  const primary = buildRegistrationRecord(
+    { ...input.primary, registrationMode: "group", groupMembersNote: [] },
+    {
+      appliedFeeKey: primaryApplied.key,
+      feeLabel: primaryApplied.label,
+      paymentAmount: primaryApplied.amount,
+      feeTier: primaryApplied.key === "earlyBird" ? "early" : "regular",
+      existing: working,
+      groupId,
+      groupRole: "primary",
+      groupSize,
+    }
+  );
+  working.push(primary);
+  created.push(primary);
+
+  for (const member of members) {
+    const memberApplied = resolveAppliedFee(member.registrationRate, earlyBirdUsed, event);
+    if (memberApplied.key === "earlyBird") earlyBirdUsed += 1;
+
+    const memberInput: RegistrationInput = {
       firstName: member.firstName,
+      lastName: member.lastName,
       middleName: member.middleName ?? member.middleInitial ?? "",
       email: member.email,
       phone: member.phone,
       dateOfBirth: member.dateOfBirth ?? "",
+      age: null,
+      gender: input.primary.gender,
+      organization: input.primary.organization,
+      institutionAddress: input.primary.institutionAddress,
+      position: input.primary.position,
+      membershipType: input.primary.membershipType,
+      pnaIdNumber: input.primary.pnaIdNumber,
+      pnaZone: input.primary.pnaZone,
+      pnaChapter: input.primary.pnaChapter,
       prcLicenseNumber: member.prcLicenseNumber ?? "",
       prcInitialRegistrationDate: member.prcInitialRegistrationDate ?? "",
       prcExpirationDate: member.prcExpirationDate ?? "",
+      registrationMode: "group",
+      registrationRate: member.registrationRate,
+      seniorPwdIdNumber: member.seniorPwdIdNumber,
       foodPreference: member.foodPreference ?? "regular",
-      foodAllergyNote: member.foodAllergyNote ?? "",
-    })),
-  };
+      foodAllergyNote: member.foodAllergyNote,
+      sponsorConsent: input.primary.sponsorConsent,
+      dataPrivacyConsent: input.primary.dataPrivacyConsent,
+      paymentReference: input.primary.paymentReference,
+      eventId: input.primary.eventId,
+    };
 
-  const registration = await createRegistration(primaryInput);
-  return [registration];
+    const record = buildRegistrationRecord(memberInput, {
+      appliedFeeKey: memberApplied.key,
+      feeLabel: memberApplied.label,
+      paymentAmount: memberApplied.amount,
+      feeTier: memberApplied.key === "earlyBird" ? "early" : "regular",
+      existing: working,
+      groupId,
+      groupRole: "member",
+      groupSize,
+    });
+    working.push(record);
+    created.push(record);
+  }
+
+  await writeRegistrations(working);
+  return created;
 }
 
 export async function getRegistrationsByGroupId(

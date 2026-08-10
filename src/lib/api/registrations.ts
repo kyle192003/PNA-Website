@@ -40,6 +40,29 @@ export interface RegistrationInput {
   eventId?: string | null;
 }
 
+export interface GroupMemberInput {
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  prcLicenseNumber: string;
+  prcInitialRegistrationDate: string;
+  prcExpirationDate: string;
+  foodPreference: FoodPreference;
+  foodAllergyNote?: string;
+  registrationRate: RegistrationRateChoice;
+  seniorPwdIdNumber?: string;
+}
+
+export interface GroupRegistrationInput {
+  mode: "group";
+  primary: RegistrationInput;
+  members: GroupMemberInput[];
+  eventId?: string | null;
+}
+
 export interface RegistrationResponse {
   referenceNumber: string;
   firstName: string;
@@ -55,6 +78,25 @@ export interface RegistrationResponse {
   groupId?: string | null;
   groupRole?: "primary" | "member" | null;
   groupSize?: number | null;
+}
+
+export interface GroupRegistrationParticipant {
+  referenceNumber: string;
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  email: string;
+  groupRole: "primary" | "member" | null;
+}
+
+export interface GroupRegistrationResult {
+  registration: RegistrationResponse;
+  group: {
+    groupId: string | null;
+    groupSize: number | null;
+    totalPaymentAmount: number;
+    participants: GroupRegistrationParticipant[];
+  };
 }
 
 export interface RegistrationLookup {
@@ -95,6 +137,31 @@ export async function submitRegistration(
   }
 
   return response.json() as Promise<RegistrationResponse>;
+}
+
+export async function submitGroupRegistration(
+  input: Omit<GroupRegistrationInput, "mode">
+): Promise<GroupRegistrationResult> {
+  const response = await fetch("/api/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: "group",
+      primary: { ...input.primary, eventId: input.eventId ?? input.primary.eventId },
+      members: input.members,
+      eventId: input.eventId,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+
+  const data = (await response.json()) as GroupRegistrationResult;
+  return {
+    registration: data.registration,
+    group: data.group,
+  };
 }
 
 export async function lookupRegistration(
