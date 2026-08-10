@@ -196,6 +196,34 @@ function isValidDateString(value: string): boolean {
   return !Number.isNaN(new Date(value).getTime());
 }
 
+/** Local calendar date as YYYY-MM-DD for date inputs. */
+function getTodayDateInput(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isFutureDateInput(value: string): boolean {
+  return Boolean(value) && value > getTodayDateInput();
+}
+
+function isExpiredDateInput(value: string): boolean {
+  return Boolean(value) && isValidDateString(value) && value < getTodayDateInput();
+}
+
+function formatDisplayName(parts: {
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+}): string {
+  return [parts.firstName, parts.middleName, parts.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 function getFieldError(field: FormFieldKey, data: FormData): string | undefined {
   switch (field) {
     case "lastName":
@@ -234,15 +262,21 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "prcInitialRegistrationDate":
       if (!data.prcInitialRegistrationDate) return "Initial registration date is required";
       if (!isValidDateString(data.prcInitialRegistrationDate)) return "Enter a valid date";
+      if (isFutureDateInput(data.prcInitialRegistrationDate)) {
+        return "Initial registration date cannot be in the future";
+      }
       return undefined;
     case "prcExpirationDate":
       if (!data.prcExpirationDate) return "Expiration date is required";
       if (!isValidDateString(data.prcExpirationDate)) return "Enter a valid date";
       if (
         isValidDateString(data.prcInitialRegistrationDate) &&
-        new Date(data.prcExpirationDate) < new Date(data.prcInitialRegistrationDate)
+        data.prcExpirationDate < data.prcInitialRegistrationDate
       ) {
         return "Expiration date must be after the initial registration date";
+      }
+      if (isExpiredDateInput(data.prcExpirationDate)) {
+        return "Your PRC license is expired. Please renew it before registering.";
       }
       return undefined;
     case "registrationMode":
@@ -335,9 +369,25 @@ function getMemberFieldError(
     case "prcLicenseNumber":
       return member.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
     case "prcInitialRegistrationDate":
-      return member.prcInitialRegistrationDate ? undefined : "Initial registration date is required";
+      if (!member.prcInitialRegistrationDate) return "Initial registration date is required";
+      if (!isValidDateString(member.prcInitialRegistrationDate)) return "Enter a valid date";
+      if (isFutureDateInput(member.prcInitialRegistrationDate)) {
+        return "Initial registration date cannot be in the future";
+      }
+      return undefined;
     case "prcExpirationDate":
-      return member.prcExpirationDate ? undefined : "Expiration date is required";
+      if (!member.prcExpirationDate) return "Expiration date is required";
+      if (!isValidDateString(member.prcExpirationDate)) return "Enter a valid date";
+      if (
+        isValidDateString(member.prcInitialRegistrationDate) &&
+        member.prcExpirationDate < member.prcInitialRegistrationDate
+      ) {
+        return "Expiration date must be after the initial registration date";
+      }
+      if (isExpiredDateInput(member.prcExpirationDate)) {
+        return "PRC license is expired. Please renew it before registering.";
+      }
+      return undefined;
     case "registrationRate":
       return member.registrationRate ? undefined : "Please choose Regular or Senior Citizen/PWD";
     case "seniorPwdIdNumber":
@@ -524,6 +574,10 @@ export function RegistrationForm({
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [draftSavedNotice, setDraftSavedNotice] = useState(false);
+  const [prcExpiredNotice, setPrcExpiredNotice] = useState<{
+    open: boolean;
+    who: string;
+  }>({ open: false, who: "" });
 
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
@@ -884,6 +938,13 @@ export function RegistrationForm({
       }
     });
 
+    const expiredMember = members.findIndex((member) =>
+      isExpiredDateInput(member.prcExpirationDate)
+    );
+    if (expiredMember >= 0) {
+      showPrcExpiredNotice(`Participant ${expiredMember + 2}`);
+    }
+
     setMemberErrors(nextMemberErrors);
     setErrors((prev) => {
       const next = { ...prev };
@@ -920,6 +981,10 @@ export function RegistrationForm({
       else delete next.prcIdFile;
       return next;
     });
+
+    if (isExpiredDateInput(formData.prcExpirationDate)) {
+      showPrcExpiredNotice("Participant 1");
+    }
 
     return Object.keys(newErrors).length === 0;
   }
@@ -1282,6 +1347,24 @@ export function RegistrationForm({
     onCompleted?.();
   }
 
+  function showPrcExpiredNotice(who: string) {
+    setPrcExpiredNotice({ open: true, who });
+  }
+
+  function handlePrimaryPrcExpirationChange(value: string) {
+    updateField("prcExpirationDate", value);
+    if (isExpiredDateInput(value)) {
+      showPrcExpiredNotice("Participant 1");
+    }
+  }
+
+  function handleMemberPrcExpirationChange(index: number, value: string) {
+    updateMember(index, "prcExpirationDate", value);
+    if (isExpiredDateInput(value)) {
+      showPrcExpiredNotice(`Participant ${index + 2}`);
+    }
+  }
+
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -1384,6 +1467,14 @@ export function RegistrationForm({
           variant="info"
           closeLabel="Continue"
           onClose={() => setShowDraftRestored(false)}
+        />
+        <MessageDialog
+          open={prcExpiredNotice.open}
+          title="PRC license expired"
+          message={`${prcExpiredNotice.who}: your PRC license expiration date has already passed. Please renew your PRC license before completing registration, then enter the updated expiration date.`}
+          variant="error"
+          closeLabel="OK"
+          onClose={() => setPrcExpiredNotice({ open: false, who: "" })}
         />
 
         <form
@@ -1599,6 +1690,7 @@ export function RegistrationForm({
                     onChange={(v) => updateField("prcInitialRegistrationDate", v)}
                     onBlur={() => markFieldTouched("prcInitialRegistrationDate")}
                     error={errors.prcInitialRegistrationDate}
+                    max={getTodayDateInput()}
                   />
                   <FormField
                     label="Expiration Date"
@@ -1606,9 +1698,15 @@ export function RegistrationForm({
                     type="date"
                     required
                     value={formData.prcExpirationDate}
-                    onChange={(v) => updateField("prcExpirationDate", v)}
-                    onBlur={() => markFieldTouched("prcExpirationDate")}
+                    onChange={handlePrimaryPrcExpirationChange}
+                    onBlur={() => {
+                      markFieldTouched("prcExpirationDate");
+                      if (isExpiredDateInput(formData.prcExpirationDate)) {
+                        showPrcExpiredNotice("Participant 1");
+                      }
+                    }}
                     error={errors.prcExpirationDate}
+                    min={formData.prcInitialRegistrationDate || undefined}
                   />
                   <FileField
                     label="Upload PRC ID"
@@ -1656,9 +1754,51 @@ export function RegistrationForm({
                     Group (one deposit slip)
                   </button>
                 </div>
+              </fieldset>
 
-                <p className="form-label registration-form-label mt-4 mb-2">
-                  Choose your registration rate <span className="text-accent">*</span>
+              <fieldset className="registration-form-section">
+                <legend className="registration-form-legend">
+                  <UserSectionIcon />
+                  Participant 1
+                </legend>
+                <div className="registration-participant-summary mb-4">
+                  <p className="registration-participant-summary-title mb-2">Your details</p>
+                  <dl className="registration-participant-summary-grid mb-0">
+                    <div>
+                      <dt>Name</dt>
+                      <dd>
+                        {formatDisplayName(formData) || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Email</dt>
+                      <dd>{formData.email.trim() || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>Mobile</dt>
+                      <dd>
+                        {formData.phone.trim()
+                          ? `+63 ${toPhMobileLocalDigits(formData.phone)}`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Date of birth</dt>
+                      <dd>{formData.dateOfBirth || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>Organization</dt>
+                      <dd>{formData.organization.trim() || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>PRC license</dt>
+                      <dd>{formData.prcLicenseNumber.trim() || "—"}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <p className="form-label registration-form-label mb-2">
+                  Registration rate <span className="text-accent">*</span>
                 </p>
                 <div className="registration-fee-choice-grid">
                   {(["regular", "seniorPwd"] as const).map((rate) => {
@@ -1721,6 +1861,40 @@ export function RegistrationForm({
                     />
                   </div>
                 ) : null}
+
+                <div className="row g-3 mt-3">
+                  <SelectField
+                    label="Food Preference"
+                    id="foodPreference"
+                    required
+                    value={formData.foodPreference}
+                    onChange={(v) => updateField("foodPreference", v as FoodPreference | "")}
+                    options={FOOD_PREFERENCE_OPTIONS}
+                    error={errors.foodPreference}
+                    placeholder="Select food preference"
+                  />
+                  {formData.foodPreference === "allergy" ? (
+                    <div className="col-12">
+                      <label htmlFor="foodAllergyNote" className="form-label registration-form-label">
+                        Food Allergy Note <span className="text-accent">*</span>
+                      </label>
+                      <textarea
+                        id="foodAllergyNote"
+                        rows={2}
+                        value={formData.foodAllergyNote}
+                        onChange={(e) => updateField("foodAllergyNote", e.target.value)}
+                        onBlur={() => markFieldTouched("foodAllergyNote")}
+                        placeholder="Please describe your food allergy"
+                        className={`input-dark resize-none ${
+                          errors.foodAllergyNote ? "input-dark-error" : ""
+                        }`}
+                      />
+                      {errors.foodAllergyNote && (
+                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </fieldset>
 
               {formData.registrationMode === "group" ? (
@@ -1731,9 +1905,9 @@ export function RegistrationForm({
                   </legend>
                   <p className="registration-form-help mb-3">
                     Add each attendee sharing one deposit slip. Maximum {MAX_GROUP_SIZE} people
-                    including you. One submission creates a registration for every participant;
-                    one payment and one receipt cover the whole group. Each person chooses Regular
-                    or Senior Citizen/PWD for their own fee.
+                    including Participant 1. One submission creates a registration for every
+                    participant; one payment and one receipt cover the whole group. Each person
+                    chooses Regular or Senior Citizen/PWD for their own fee.
                   </p>
                   {errors.members ? (
                     <p className="mb-3 text-xs text-red-500">{errors.members}</p>
@@ -1809,6 +1983,7 @@ export function RegistrationForm({
                             value={member.dateOfBirth}
                             onChange={(v) => updateMember(index, "dateOfBirth", v)}
                             error={memberErrors[index]?.dateOfBirth}
+                            max={getTodayDateInput()}
                           />
                           <FormField
                             label="PRC License Number"
@@ -1824,8 +1999,11 @@ export function RegistrationForm({
                             type="date"
                             required
                             value={member.prcInitialRegistrationDate}
-                            onChange={(v) => updateMember(index, "prcInitialRegistrationDate", v)}
+                            onChange={(v) =>
+                              updateMember(index, "prcInitialRegistrationDate", v)
+                            }
                             error={memberErrors[index]?.prcInitialRegistrationDate}
+                            max={getTodayDateInput()}
                           />
                           <FormField
                             label="PRC Expiration Date"
@@ -1833,35 +2011,51 @@ export function RegistrationForm({
                             type="date"
                             required
                             value={member.prcExpirationDate}
-                            onChange={(v) => updateMember(index, "prcExpirationDate", v)}
+                            onChange={(v) => handleMemberPrcExpirationChange(index, v)}
                             error={memberErrors[index]?.prcExpirationDate}
+                            min={member.prcInitialRegistrationDate || undefined}
                           />
                           <div className="col-12">
                             <p className="form-label registration-form-label mb-2">
-                              Registration Rate <span className="text-accent">*</span>
+                              Registration rate <span className="text-accent">*</span>
                             </p>
-                            <div
-                              className="registration-mode-toggle"
-                              role="group"
-                              aria-label={`Participant ${index + 2} registration rate`}
-                            >
-                              {(
-                                [
-                                  ["regular", "Regular"],
-                                  ["seniorPwd", "Senior Citizen / PWD"],
-                                ] as const
-                              ).map(([rate, label]) => {
+                            <div className="registration-fee-choice-grid">
+                              {(["regular", "seniorPwd"] as const).map((rate) => {
+                                const amount =
+                                  rate === "seniorPwd"
+                                    ? seniorPwdAmount
+                                    : remaining > 0
+                                      ? earlyBirdAmount
+                                      : regularAmount;
+                                const tierLabel =
+                                  rate === "seniorPwd"
+                                    ? "Senior / PWD"
+                                    : remaining > 0
+                                      ? "Early Bird"
+                                      : "Regular";
+                                const meta =
+                                  rate === "seniorPwd"
+                                    ? "Valid Senior Citizen or PWD ID required"
+                                    : "Standard registration rate";
                                 const selected = member.registrationRate === rate;
                                 return (
                                   <button
                                     key={rate}
                                     type="button"
-                                    className={`registration-mode-btn${
+                                    className={`registration-fee-choice${
                                       selected ? " is-selected" : ""
                                     }`}
-                                    onClick={() => updateMember(index, "registrationRate", rate)}
+                                    onClick={() =>
+                                      updateMember(index, "registrationRate", rate)
+                                    }
                                   >
-                                    {label}
+                                    <span className="registration-fee-choice-tier">
+                                      {tierLabel}
+                                    </span>
+                                    <span className="registration-fee-choice-amount">
+                                      {formatPeso(amount)}
+                                    </span>
+                                    <span className="registration-fee-choice-meta">{meta}</span>
                                   </button>
                                 );
                               })}
@@ -1919,46 +2113,6 @@ export function RegistrationForm({
                   )}
                 </fieldset>
               ) : null}
-
-              <fieldset className="registration-form-section">
-                <legend className="registration-form-legend">
-                  <MealSectionIcon />
-                  Meal Preference
-                </legend>
-                <div className="row g-3">
-                  <SelectField
-                    label="Food Preference"
-                    id="foodPreference"
-                    required
-                    value={formData.foodPreference}
-                    onChange={(v) => updateField("foodPreference", v as FoodPreference | "")}
-                    options={FOOD_PREFERENCE_OPTIONS}
-                    error={errors.foodPreference}
-                    placeholder="Select food preference"
-                  />
-                  {formData.foodPreference === "allergy" ? (
-                    <div className="col-12">
-                      <label htmlFor="foodAllergyNote" className="form-label registration-form-label">
-                        Food Allergy Note <span className="text-accent">*</span>
-                      </label>
-                      <textarea
-                        id="foodAllergyNote"
-                        rows={2}
-                        value={formData.foodAllergyNote}
-                        onChange={(e) => updateField("foodAllergyNote", e.target.value)}
-                        onBlur={() => markFieldTouched("foodAllergyNote")}
-                        placeholder="Please describe your food allergy"
-                        className={`input-dark resize-none ${
-                          errors.foodAllergyNote ? "input-dark-error" : ""
-                        }`}
-                      />
-                      {errors.foodAllergyNote && (
-                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              </fieldset>
 
               <fieldset className="registration-form-section">
                 <legend className="registration-form-legend">
@@ -2306,15 +2460,6 @@ function LicenseSectionIcon() {
   );
 }
 
-function MealSectionIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M7 3v7a2 2 0 0 0 4 0V3M9 10v11" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-      <path d="M16 3c-1.2 1.2-2 3-2 5s.8 3.6 2 4.6V21" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function ReceiptSectionIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2361,6 +2506,8 @@ function FormField({
   error,
   placeholder,
   maxLength,
+  min,
+  max,
   className = "col-12 col-md-6",
 }: {
   label: string;
@@ -2373,6 +2520,8 @@ function FormField({
   error?: string;
   placeholder?: string;
   maxLength?: number;
+  min?: string;
+  max?: string;
   className?: string;
 }) {
   return (
@@ -2388,6 +2537,8 @@ function FormField({
         onBlur={onBlur}
         placeholder={placeholder}
         maxLength={maxLength}
+        min={min}
+        max={max}
         className={`input-dark ${error ? "input-dark-error" : ""}`}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}

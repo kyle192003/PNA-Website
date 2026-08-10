@@ -11144,6 +11144,50 @@ a.admin-btn-primary:hover,
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
 }
 
+.registration-participant-summary {
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.85rem;
+  background: rgba(248, 253, 249, 0.85);
+}
+
+.registration-participant-summary-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #14532d;
+}
+
+.registration-participant-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .registration-participant-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.registration-participant-summary-grid dt {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.registration-participant-summary-grid dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #14532d;
+  word-break: break-word;
+}
+
 .registration-group-members {
   display: flex;
   flex-direction: column;
