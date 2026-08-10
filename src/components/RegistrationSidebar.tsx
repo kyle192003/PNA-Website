@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
-import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
+import { formatPeso, getEarlyBirdCaption, normalizeEventFees } from "@/lib/registration-fees";
 import type { EventFees } from "@/lib/types/admin";
 import { RegistrationLookup } from "@/components/RegistrationLookup";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
@@ -103,7 +103,7 @@ export function RegistrationSidebar({
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.earlyBird.label}</p>
               <p className="registration-sidebar-fee-caption mb-1">
-                {fees.earlyBird.caption ?? "First 500 registrants only"}
+                {getEarlyBirdCaption(fees, event)}
               </p>
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.earlyBird.amount)}
@@ -112,7 +112,9 @@ export function RegistrationSidebar({
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
               <p className="registration-sidebar-fee-caption mb-1">
-                {fees.regular.caption ?? "Will open after the early bird is filled"}
+                {fees.earlyBird.mode === "dates"
+                  ? "Applies after the early bird date window ends"
+                  : fees.regular.caption ?? "Will open after the early bird is filled"}
               </p>
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.regular.amount)}

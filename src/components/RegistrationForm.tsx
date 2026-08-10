@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { conference, PNA_ZONES } from "@/lib/conference";
-import { formatPeso } from "@/lib/registration-fees";
+import { formatPeso, getEarlyBirdCap } from "@/lib/registration-fees";
 import type {
   FoodPreference,
   MembershipType,
@@ -41,6 +41,7 @@ import { MessageDialog } from "@/components/ui/MessageDialog";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect, type PnaSelectOption } from "@/components/ui/PnaSelect";
+import { SingleDatePicker } from "@/components/ui/SingleDatePicker";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 import type { RegistrationPaymentBreakdown } from "@/components/RegistrationSidebar";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
@@ -222,6 +223,47 @@ function formatDisplayName(parts: {
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(" ");
+}
+
+/** Keeps children mounted through a 250ms opacity fade out. */
+function FadeReveal({
+  show,
+  children,
+  className = "",
+}: {
+  show: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [mounted, setMounted] = useState(show);
+  const [visible, setVisible] = useState(show);
+
+  useEffect(() => {
+    if (show) {
+      setMounted(true);
+      const frame = window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => setVisible(true));
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    setVisible(false);
+    const timeout = window.setTimeout(() => setMounted(false), 250);
+    return () => window.clearTimeout(timeout);
+  }, [show]);
+
+  if (!mounted) return null;
+
+  return (
+    <div
+      className={`registration-fade-reveal${visible ? " is-visible" : ""}${
+        className ? ` ${className}` : ""
+      }`}
+      aria-hidden={!visible}
+    >
+      {children}
+    </div>
+  );
 }
 
 function getFieldError(field: FormFieldKey, data: FormData): string | undefined {
@@ -563,9 +605,12 @@ export function RegistrationForm({
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
 
   const [earlyBird, setEarlyBird] = useState<{
+    mode: "slots" | "dates";
     used: number;
-    cap: number;
-    remaining: number;
+    cap: number | null;
+    remaining: number | null;
+    available: boolean;
+    caption: string;
     earlyBirdAmount: number;
     regularAmount: number;
     seniorPwdAmount: number;
@@ -597,20 +642,22 @@ export function RegistrationForm({
   const earlyBirdAmount = earlyBird?.earlyBirdAmount ?? fallbackFees.earlyBird.amount;
   const regularAmount = earlyBird?.regularAmount ?? fallbackFees.regular.amount;
   const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? fallbackFees.seniorPwd.amount;
-  const remaining = earlyBird?.remaining ?? 0;
+  const earlyBirdAvailable =
+    earlyBird?.available ??
+    (typeof earlyBird?.remaining === "number" ? earlyBird.remaining > 0 : true);
 
   const appliedFee = useMemo(() => {
     if (!formData.registrationRate) return null;
     if (formData.registrationRate === "seniorPwd") {
       return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
     }
-    if (remaining > 0) {
+    if (earlyBirdAvailable) {
       return { amount: earlyBirdAmount, label: fallbackFees.earlyBird.label };
     }
     return { amount: regularAmount, label: fallbackFees.regular.label };
   }, [
     formData.registrationRate,
-    remaining,
+    earlyBirdAvailable,
     earlyBirdAmount,
     regularAmount,
     seniorPwdAmount,
@@ -620,6 +667,8 @@ export function RegistrationForm({
   const feeLines = useMemo(() => {
     const lines: { key: string; name: string; label: string; amount: number }[] = [];
     let earlyUsed = 0;
+    const slotRemaining =
+      typeof earlyBird?.remaining === "number" ? earlyBird.remaining : getEarlyBirdCap(fallbackFees);
 
     const resolveLine = (
       rate: RegistrationRateChoice | "",
@@ -636,16 +685,24 @@ export function RegistrationForm({
         });
         return;
       }
-      if (remaining - earlyUsed > 0) {
+
+      const mode = earlyBird?.mode ?? "slots";
+      const qualifies =
+        mode === "dates"
+          ? earlyBirdAvailable
+          : slotRemaining - earlyUsed > 0;
+
+      if (qualifies) {
         lines.push({
           key,
           name,
           label: fallbackFees.earlyBird.label,
           amount: earlyBirdAmount,
         });
-        earlyUsed += 1;
+        if (mode === "slots") earlyUsed += 1;
         return;
       }
+
       lines.push({
         key,
         name,
@@ -676,7 +733,9 @@ export function RegistrationForm({
     formData.firstName,
     formData.registrationMode,
     members,
-    remaining,
+    earlyBirdAvailable,
+    earlyBird?.mode,
+    earlyBird?.remaining,
     earlyBirdAmount,
     regularAmount,
     seniorPwdAmount,
@@ -1351,17 +1410,9 @@ export function RegistrationForm({
     setPrcExpiredNotice({ open: true, who });
   }
 
-  function handlePrimaryPrcExpirationChange(value: string) {
-    updateField("prcExpirationDate", value);
+  function maybeNotifyExpiredPrc(who: string, value: string) {
     if (isExpiredDateInput(value)) {
-      showPrcExpiredNotice("Participant 1");
-    }
-  }
-
-  function handleMemberPrcExpirationChange(index: number, value: string) {
-    updateMember(index, "prcExpirationDate", value);
-    if (isExpiredDateInput(value)) {
-      showPrcExpiredNotice(`Participant ${index + 2}`);
+      showPrcExpiredNotice(who);
     }
   }
 
@@ -1541,15 +1592,15 @@ export function RegistrationForm({
                     onBlur={() => markFieldTouched("phone")}
                     error={errors.phone}
                   />
-                  <FormField
+                  <SingleDatePicker
                     label="Date of Birth"
                     id="dateOfBirth"
-                    type="date"
                     required
                     value={formData.dateOfBirth}
                     onChange={(v) => updateField("dateOfBirth", v)}
                     onBlur={() => markFieldTouched("dateOfBirth")}
                     error={errors.dateOfBirth}
+                    max={getTodayDateInput()}
                   />
                   <div className="col-12 col-md-6">
                     <label htmlFor="age" className="form-label registration-form-label">
@@ -1681,10 +1732,9 @@ export function RegistrationForm({
                     onBlur={() => markFieldTouched("prcLicenseNumber")}
                     error={errors.prcLicenseNumber}
                   />
-                  <FormField
+                  <SingleDatePicker
                     label="Initial Registration Date"
                     id="prcInitialRegistrationDate"
-                    type="date"
                     required
                     value={formData.prcInitialRegistrationDate}
                     onChange={(v) => updateField("prcInitialRegistrationDate", v)}
@@ -1692,18 +1742,15 @@ export function RegistrationForm({
                     error={errors.prcInitialRegistrationDate}
                     max={getTodayDateInput()}
                   />
-                  <FormField
+                  <SingleDatePicker
                     label="Expiration Date"
                     id="prcExpirationDate"
-                    type="date"
                     required
                     value={formData.prcExpirationDate}
-                    onChange={handlePrimaryPrcExpirationChange}
-                    onBlur={() => {
+                    onChange={(v) => updateField("prcExpirationDate", v)}
+                    onBlur={(value) => {
                       markFieldTouched("prcExpirationDate");
-                      if (isExpiredDateInput(formData.prcExpirationDate)) {
-                        showPrcExpiredNotice("Participant 1");
-                      }
+                      maybeNotifyExpiredPrc("Participant 1", value);
                     }}
                     error={errors.prcExpirationDate}
                     min={formData.prcInitialRegistrationDate || undefined}
@@ -1805,19 +1852,22 @@ export function RegistrationForm({
                     const amount =
                       rate === "seniorPwd"
                         ? seniorPwdAmount
-                        : remaining > 0
+                        : earlyBirdAvailable
                           ? earlyBirdAmount
                           : regularAmount;
                     const tierLabel =
                       rate === "seniorPwd"
                         ? "Senior / PWD"
-                        : remaining > 0
+                        : earlyBirdAvailable
                           ? "Early Bird"
                           : "Regular";
                     const meta =
                       rate === "seniorPwd"
                         ? "Valid Senior Citizen or PWD ID required"
-                        : "Standard registration rate";
+                        : earlyBird?.caption ||
+                          (earlyBirdAvailable
+                            ? "Early bird rate currently available"
+                            : "Standard registration rate");
                     const selected = formData.registrationRate === rate;
                     return (
                       <button
@@ -1837,8 +1887,8 @@ export function RegistrationForm({
                   <p className="mt-1 text-xs text-red-400">{errors.registrationRate}</p>
                 )}
 
-                {formData.registrationRate === "seniorPwd" ? (
-                  <div className="row g-3 mt-1">
+                <FadeReveal show={formData.registrationRate === "seniorPwd"}>
+                  <div className="registration-senior-fields-row">
                     <FormField
                       label="Senior Citizen / PWD ID Number"
                       id="seniorPwdIdNumber"
@@ -1847,6 +1897,7 @@ export function RegistrationForm({
                       onChange={(v) => updateField("seniorPwdIdNumber", v)}
                       onBlur={() => markFieldTouched("seniorPwdIdNumber")}
                       error={errors.seniorPwdIdNumber}
+                      className="registration-senior-field"
                     />
                     <FileField
                       label="Upload Senior Citizen / PWD ID"
@@ -1858,9 +1909,11 @@ export function RegistrationForm({
                         handleGenericFileSelected(file, "seniorPwdIdFile", setSeniorPwdIdFile)
                       }
                       error={errors.seniorPwdIdFile}
+                      className="registration-senior-field"
+                      layout="inline"
                     />
                   </div>
-                ) : null}
+                </FadeReveal>
 
                 <div className="row g-3 mt-3">
                   <SelectField
@@ -1975,10 +2028,9 @@ export function RegistrationForm({
                             onChange={(v) => updateMember(index, "phone", v)}
                             error={memberErrors[index]?.phone}
                           />
-                          <FormField
+                          <SingleDatePicker
                             label="Date of Birth"
                             id={`member-${index}-dateOfBirth`}
-                            type="date"
                             required
                             value={member.dateOfBirth}
                             onChange={(v) => updateMember(index, "dateOfBirth", v)}
@@ -1993,10 +2045,9 @@ export function RegistrationForm({
                             onChange={(v) => updateMember(index, "prcLicenseNumber", v)}
                             error={memberErrors[index]?.prcLicenseNumber}
                           />
-                          <FormField
+                          <SingleDatePicker
                             label="PRC Initial Registration Date"
                             id={`member-${index}-prcInitialRegistrationDate`}
-                            type="date"
                             required
                             value={member.prcInitialRegistrationDate}
                             onChange={(v) =>
@@ -2005,13 +2056,15 @@ export function RegistrationForm({
                             error={memberErrors[index]?.prcInitialRegistrationDate}
                             max={getTodayDateInput()}
                           />
-                          <FormField
+                          <SingleDatePicker
                             label="PRC Expiration Date"
                             id={`member-${index}-prcExpirationDate`}
-                            type="date"
                             required
                             value={member.prcExpirationDate}
-                            onChange={(v) => handleMemberPrcExpirationChange(index, v)}
+                            onChange={(v) => updateMember(index, "prcExpirationDate", v)}
+                            onBlur={(value) =>
+                              maybeNotifyExpiredPrc(`Participant ${index + 2}`, value)
+                            }
                             error={memberErrors[index]?.prcExpirationDate}
                             min={member.prcInitialRegistrationDate || undefined}
                           />
@@ -2024,19 +2077,22 @@ export function RegistrationForm({
                                 const amount =
                                   rate === "seniorPwd"
                                     ? seniorPwdAmount
-                                    : remaining > 0
+                                    : earlyBirdAvailable
                                       ? earlyBirdAmount
                                       : regularAmount;
                                 const tierLabel =
                                   rate === "seniorPwd"
                                     ? "Senior / PWD"
-                                    : remaining > 0
+                                    : earlyBirdAvailable
                                       ? "Early Bird"
                                       : "Regular";
                                 const meta =
                                   rate === "seniorPwd"
                                     ? "Valid Senior Citizen or PWD ID required"
-                                    : "Standard registration rate";
+                                    : earlyBird?.caption ||
+                                      (earlyBirdAvailable
+                                        ? "Early bird rate currently available"
+                                        : "Standard registration rate");
                                 const selected = member.registrationRate === rate;
                                 return (
                                   <button
@@ -2066,7 +2122,10 @@ export function RegistrationForm({
                               </p>
                             ) : null}
                           </div>
-                          {member.registrationRate === "seniorPwd" ? (
+                          <FadeReveal
+                            show={member.registrationRate === "seniorPwd"}
+                            className="col-12"
+                          >
                             <FormField
                               label="Senior Citizen / PWD ID Number"
                               id={`member-${index}-seniorPwdIdNumber`}
@@ -2074,9 +2133,9 @@ export function RegistrationForm({
                               value={member.seniorPwdIdNumber}
                               onChange={(v) => updateMember(index, "seniorPwdIdNumber", v)}
                               error={memberErrors[index]?.seniorPwdIdNumber}
-                              className="col-12"
+                              className="registration-senior-field"
                             />
-                          ) : null}
+                          </FadeReveal>
                           <SelectField
                             label="Food Preference"
                             id={`member-${index}-foodPreference`}
@@ -2516,7 +2575,7 @@ function FormField({
   required?: boolean;
   value: string;
   onChange: (value: string) => void;
-  onBlur?: () => void;
+  onBlur?: (value: string) => void;
   error?: string;
   placeholder?: string;
   maxLength?: number;
@@ -2534,7 +2593,7 @@ function FormField({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
+        onBlur={(e) => onBlur?.(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
         min={min}
@@ -2645,6 +2704,7 @@ function FileField({
   onChange,
   error,
   className = "col-12 col-md-6",
+  layout = "stacked",
 }: {
   label: string;
   id: string;
@@ -2655,7 +2715,32 @@ function FileField({
   onChange: (file: File | null) => void;
   error?: string;
   className?: string;
+  layout?: "stacked" | "inline";
 }) {
+  if (layout === "inline") {
+    return (
+      <div className={`${className} registration-file-field-inline`.trim()}>
+        <div className="registration-file-field-inline-row">
+          <label htmlFor={id} className="form-label registration-form-label mb-0">
+            {label} {required && <span className="text-accent">*</span>}
+            {hint ? <span className="registration-form-optional"> {hint}</span> : null}
+          </label>
+          <input
+            id={id}
+            type="file"
+            accept={accept}
+            className={`input-dark registration-file-field-inline-input ${
+              error ? "input-dark-error" : ""
+            }`}
+            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+          />
+        </div>
+        {file ? <p className="mt-2 mb-0 text-xs text-muted">Selected: {file.name}</p> : null}
+        {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className={className}>
       <label htmlFor={id} className="form-label registration-form-label">

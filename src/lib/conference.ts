@@ -89,6 +89,7 @@ export const conference = {
         label: "Early Bird Rate",
         caption: "First 500 registrants only",
         cap: 500,
+        mode: "slots",
       },
       regular: {
         amount: 1000,

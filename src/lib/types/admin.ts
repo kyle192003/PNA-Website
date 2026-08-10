@@ -20,9 +20,21 @@ export interface EventRateFee {
   amount: number;
   label: string;
   caption?: string;
-  /** Early-bird capacity; only used for earlyBird. */
+  /** Early-bird capacity; used when mode is "slots" (default). */
   cap?: number;
+  /**
+   * How early bird eligibility is determined for this event.
+   * - slots: first N registrants (cap)
+   * - dates: inclusive calendar window (windowStart–windowEnd)
+   */
+  mode?: EarlyBirdMode;
+  /** Inclusive start date YYYY-MM-DD when mode is "dates". */
+  windowStart?: string;
+  /** Inclusive end date YYYY-MM-DD when mode is "dates". */
+  windowEnd?: string;
 }
+
+export type EarlyBirdMode = "slots" | "dates";
 
 /** @deprecated Legacy nested early/regular fee shape. */
 export interface EventFee {
@@ -377,6 +389,9 @@ export function getDefaultEventFees(): EventFees {
       label: fees.earlyBird.label,
       caption: fees.earlyBird.caption,
       cap: fees.earlyBird.cap,
+      mode: fees.earlyBird.mode ?? "slots",
+      windowStart: undefined,
+      windowEnd: undefined,
     },
     regular: {
       amount: fees.regular.amount,

@@ -10247,6 +10247,47 @@ a.admin-btn-primary:hover,
   gap: 0.4rem;
 }
 
+.admin-early-bird-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+.admin-early-bird-mode-btn {
+  min-height: 2.55rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(21, 128, 61, 0.2);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-early-bird-mode-btn:hover:not(:disabled) {
+  border-color: rgba(22, 163, 74, 0.4);
+  color: #14532d;
+}
+
+.admin-early-bird-mode-btn.is-selected {
+  border-color: #16a34a;
+  background: linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%);
+  color: #14532d;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.admin-early-bird-mode-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .admin-date-control {
   display: grid;
   gap: 0.35rem;
@@ -10341,6 +10382,29 @@ a.admin-btn-primary:hover,
 .admin-range-dropdown-trigger:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.admin-range-dropdown-trigger.is-error {
+  border-color: #dc2626;
+}
+
+.admin-range-dropdown-trigger.is-error:focus-visible,
+.admin-range-dropdown-trigger.is-error.is-open {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
+.registration-date-field {
+  position: relative;
+  z-index: 1;
+}
+
+.registration-date-field .admin-range-dropdown.is-open {
+  z-index: 30;
+}
+
+.registration-date-field .admin-range-calendar--dropdown {
+  z-index: 40;
 }
 
 .admin-range-dropdown-trigger-icon {
@@ -11186,6 +11250,85 @@ a.admin-btn-primary:hover,
   font-weight: 600;
   color: #14532d;
   word-break: break-word;
+}
+
+.registration-fade-reveal {
+  margin-top: 0.85rem;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 250ms ease,
+    transform 250ms ease;
+  pointer-events: none;
+}
+
+.registration-fade-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.registration-senior-fields-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem 1rem;
+  align-items: end;
+}
+
+@media (min-width: 768px) {
+  .registration-senior-fields-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.registration-senior-field {
+  min-width: 0;
+  width: 100%;
+}
+
+.registration-file-field-inline-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.registration-file-field-inline-row .form-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.registration-file-field-inline-input {
+  flex: 0 1 11.5rem;
+  min-width: 8.5rem;
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .registration-file-field-inline-row {
+    flex-wrap: wrap;
+  }
+
+  .registration-file-field-inline-row .form-label {
+    white-space: normal;
+    flex: 1 1 100%;
+  }
+
+  .registration-file-field-inline-input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .registration-fade-reveal {
+    transition: none;
+    transform: none;
+  }
 }
 
 .registration-group-members {

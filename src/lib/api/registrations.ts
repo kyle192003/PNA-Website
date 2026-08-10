@@ -234,9 +234,14 @@ export async function submitRegistrationDocuments(options: {
 }
 
 export async function fetchEarlyBirdStatus(eventId?: string | null): Promise<{
+  mode: "slots" | "dates";
   used: number;
-  cap: number;
-  remaining: number;
+  cap: number | null;
+  remaining: number | null;
+  available: boolean;
+  windowStart: string | null;
+  windowEnd: string | null;
+  caption: string;
   earlyBirdAmount: number;
   regularAmount: number;
   seniorPwdAmount: number;
