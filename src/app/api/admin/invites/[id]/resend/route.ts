@@ -75,6 +75,8 @@ export async function POST(
   } else {
     mail = await sendSpecialInviteEmail({
       to: invite.email,
+      firstName: invite.firstName,
+      specialRole: invite.specialRole,
       eventTitle: event.title,
       inviteUrl,
       note: invite.note || undefined,

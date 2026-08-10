@@ -32,6 +32,8 @@ export function getParticipantSearchText(person: ParticipantNameFields & {
   referenceNumber?: string;
   email?: string;
   organization?: string;
+  feeLabel?: string;
+  specialRole?: string | null;
 }): string {
   return [
     person.referenceNumber,
@@ -41,6 +43,8 @@ export function getParticipantSearchText(person: ParticipantNameFields & {
     formatParticipantName(person),
     person.email,
     person.organization,
+    person.feeLabel,
+    person.specialRole,
   ]
     .filter(Boolean)
     .join(" ")

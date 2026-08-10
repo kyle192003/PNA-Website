@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type PnaSelectOption = {
   value: string;
@@ -20,7 +21,14 @@ type PnaSelectProps = {
   "aria-label"?: string;
 };
 
+type MenuPosition = {
+  top: number;
+  left: number;
+  width: number;
+};
+
 const MENU_ANIMATION_MS = 180;
+const MENU_GAP_PX = 8;
 
 export function PnaSelect({
   id,
@@ -37,14 +45,22 @@ export function PnaSelect({
   const generatedId = useId();
   const selectId = id ?? generatedId;
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const selected = useMemo(
     () => options.find((option) => option.value === value) ?? null,
     [options, value]
   );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -54,17 +70,61 @@ export function PnaSelect({
     }
 
     setVisible(false);
-    const timeout = window.setTimeout(() => setRendered(false), MENU_ANIMATION_MS);
+    const timeout = window.setTimeout(() => {
+      setRendered(false);
+      setMenuPosition(null);
+    }, MENU_ANIMATION_MS);
     return () => window.clearTimeout(timeout);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function updatePosition() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 8;
+      const preferredWidth = Math.max(rect.width, 160);
+      const maxWidth = Math.max(120, window.innerWidth - viewportPadding * 2);
+      const width = Math.min(preferredWidth, maxWidth);
+      let left = rect.left + rect.width / 2 - width / 2;
+      left = Math.min(
+        Math.max(left, viewportPadding),
+        window.innerWidth - width - viewportPadding
+      );
+
+      const menuHeight = menuRef.current?.offsetHeight ?? Math.max(options.length, 1) * 44 + 16;
+      const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP_PX;
+      const openUpward = spaceBelow < menuHeight && rect.top > spaceBelow;
+      const top = openUpward
+        ? Math.max(viewportPadding, rect.top - menuHeight - MENU_GAP_PX)
+        : rect.bottom + MENU_GAP_PX;
+
+      setMenuPosition({ top, left, width });
+    }
+
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, options.length, rendered, visible]);
 
   useEffect(() => {
     if (!open) return;
 
     function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -84,6 +144,43 @@ export function PnaSelect({
     setOpen(false);
   }
 
+  const showMenu = mounted && rendered && menuPosition;
+
+  const menu = showMenu
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className={`pna-select-menu pna-select-menu--portal${visible ? " is-visible" : ""}`}
+          role="listbox"
+          aria-labelledby={selectId}
+          style={{
+            top: menuPosition.top,
+            left: menuPosition.left,
+            width: menuPosition.width,
+          }}
+        >
+            <span className="pna-select-caret" aria-hidden="true" />
+            {options.map((option, index) => {
+              const isActive = option.value === value;
+              return (
+                <button
+                  key={`${option.value}-${option.label}`}
+                  type="button"
+                  role="option"
+                  className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
+                  aria-selected={isActive}
+                  style={{ animationDelay: `${30 + index * 28}ms` }}
+                  onClick={() => choose(option.value)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div
       ref={rootRef}
@@ -92,6 +189,7 @@ export function PnaSelect({
       {name ? <input type="hidden" name={name} value={value} required={required} /> : null}
 
       <button
+        ref={triggerRef}
         id={selectId}
         type="button"
         className="pna-select-trigger"
@@ -100,7 +198,24 @@ export function PnaSelect({
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => {
-          if (!disabled) setOpen((prev) => !prev);
+          if (disabled) return;
+          setOpen((prev) => {
+            const next = !prev;
+            if (next) {
+              setRendered(true);
+              const trigger = triggerRef.current;
+              if (trigger) {
+                const rect = trigger.getBoundingClientRect();
+                const width = Math.max(rect.width, 160);
+                setMenuPosition({
+                  top: rect.bottom + MENU_GAP_PX,
+                  left: Math.max(8, rect.left + rect.width / 2 - width / 2),
+                  width,
+                });
+              }
+            }
+            return next;
+          });
         }}
       >
         <span
@@ -108,34 +223,9 @@ export function PnaSelect({
         >
           {selected?.label ?? placeholder}
         </span>
-        <span className="pna-select-chevron" aria-hidden="true" />
       </button>
 
-      {rendered ? (
-        <div
-          className={`pna-select-menu${visible ? " is-visible" : ""}`}
-          role="listbox"
-          aria-labelledby={selectId}
-        >
-          <span className="pna-select-caret" aria-hidden="true" />
-          {options.map((option, index) => {
-            const isActive = option.value === value;
-            return (
-              <button
-                key={`${option.value}-${option.label}`}
-                type="button"
-                role="option"
-                className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
-                aria-selected={isActive}
-                style={{ animationDelay: `${30 + index * 28}ms` }}
-                onClick={() => choose(option.value)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      {menu}
     </div>
   );
 }

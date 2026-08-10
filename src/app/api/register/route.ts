@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getDateOfBirthAgeValidationError,
   getEmailValidationError,
   getNameLengthError,
   getRegistrationPhoneValidationError,
@@ -98,6 +99,10 @@ function validatePrimaryFields(
   }
   if (typeof body.dateOfBirth !== "string" || !body.dateOfBirth.trim()) {
     return { error: "Date of birth is required." };
+  }
+  const dateOfBirthError = getDateOfBirthAgeValidationError(String(body.dateOfBirth));
+  if (dateOfBirthError) {
+    return { error: dateOfBirthError };
   }
   if (typeof body.gender !== "string" || !body.gender.trim()) {
     return { error: "Gender is required." };
@@ -325,6 +330,10 @@ export async function POST(request: Request) {
             { error: `${label}: Date of birth is required.` },
             { status: 400 }
           );
+        }
+        const memberDobError = getDateOfBirthAgeValidationError(String(raw.dateOfBirth));
+        if (memberDobError) {
+          return NextResponse.json({ error: `${label}: ${memberDobError}` }, { status: 400 });
         }
         if (
           typeof raw.prcLicenseNumber !== "string" ||

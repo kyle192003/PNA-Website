@@ -6,12 +6,18 @@ import type {
   SpecialInviteInput,
   SpecialInviteRecord,
   SpecialInviteStatus,
+  SpecialRole,
 } from "@/lib/types/admin";
+import { buildSpecialInviteNote } from "@/lib/types/admin";
 
 const INVITES_FILENAME = "special-invites.json";
 
 function createInviteToken(): string {
   return randomBytes(24).toString("base64url");
+}
+
+function normalizeRole(value: unknown): SpecialRole | null {
+  return value === "committee" || value === "speaker" ? value : null;
 }
 
 function normalizeInvite(raw: SpecialInviteRecord): SpecialInviteRecord {
@@ -24,6 +30,8 @@ function normalizeInvite(raw: SpecialInviteRecord): SpecialInviteRecord {
     id: raw.id,
     token: raw.token,
     email: (raw.email ?? "").trim().toLowerCase(),
+    firstName: (raw.firstName ?? "").trim(),
+    specialRole: normalizeRole(raw.specialRole),
     eventId: raw.eventId ?? "",
     status,
     note: raw.note?.trim() ?? "",
@@ -72,9 +80,18 @@ export async function createSpecialInvite(
   input: SpecialInviteInput
 ): Promise<SpecialInviteRecord> {
   const email = input.email.trim().toLowerCase();
+  const firstName = input.firstName.trim();
   const eventId = input.eventId.trim();
+  const specialRole = input.specialRole;
+
   if (!email || !eventId) {
     throw new Error("Email and event are required.");
+  }
+  if (!firstName) {
+    throw new Error("First name is required.");
+  }
+  if (specialRole !== "committee" && specialRole !== "speaker") {
+    throw new Error("Please choose Committee or Guest Speaker.");
   }
 
   const invites = await readInvites();
@@ -98,9 +115,14 @@ export async function createSpecialInvite(
     id: uuidv4(),
     token,
     email,
+    firstName,
+    specialRole,
     eventId,
     status: "pending",
-    note: input.note?.trim() ?? "",
+    note: buildSpecialInviteNote({
+      additionalNote: input.note,
+      specialRole,
+    }),
     createdAt: now,
     sentAt: null,
     usedAt: null,

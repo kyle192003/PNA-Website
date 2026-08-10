@@ -24,6 +24,7 @@ interface SidebarEvent {
   earlyBirdDeadline: string;
   regularDeadline?: string;
   fees: EventFees;
+  earlyBirdAvailable?: boolean;
 }
 
 export function RegistrationSidebar({
@@ -48,6 +49,7 @@ export function RegistrationSidebar({
   }, [eventId]);
 
   const fees = normalizeEventFees(event?.fees ?? conference.registration.fees);
+  const earlyBirdAvailable = event?.earlyBirdAvailable ?? true;
   const datesDisplay = event?.datesDisplay ?? conference.dates.display;
   const venueName = event?.venueName ?? conference.venue.name;
   const deadline =
@@ -100,34 +102,38 @@ export function RegistrationSidebar({
           </div>
         ) : (
           <div className="registration-sidebar-fees">
-            <div className="registration-sidebar-fee-row">
-              <p className="registration-sidebar-fee-label">{fees.earlyBird.label}</p>
-              <p className="registration-sidebar-fee-caption mb-1">
-                {getEarlyBirdCaption(fees, event)}
-              </p>
-              <strong className="registration-sidebar-fee-amount">
-                {formatPeso(fees.earlyBird.amount)}
-              </strong>
-            </div>
-            <div className="registration-sidebar-fee-row">
-              <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
-              <p className="registration-sidebar-fee-caption mb-1">
-                {fees.regular.caption ??
-                  "Applies after early bird slots fill or the early bird period ends"}
-              </p>
-              <strong className="registration-sidebar-fee-amount">
-                {formatPeso(fees.regular.amount)}
-              </strong>
-            </div>
-            <div className="registration-sidebar-fee-row">
-              <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
-              <p className="registration-sidebar-fee-caption mb-1">
-                Same as early bird — available only after early bird ends
-              </p>
-              <strong className="registration-sidebar-fee-amount">
-                {formatPeso(fees.earlyBird.amount)}
-              </strong>
-            </div>
+            {earlyBirdAvailable ? (
+              <div className="registration-sidebar-fee-row">
+                <p className="registration-sidebar-fee-label">{fees.earlyBird.label}</p>
+                <p className="registration-sidebar-fee-caption mb-1">
+                  {getEarlyBirdCaption(fees, event)}
+                </p>
+                <strong className="registration-sidebar-fee-amount">
+                  {formatPeso(fees.earlyBird.amount)}
+                </strong>
+              </div>
+            ) : (
+              <>
+                <div className="registration-sidebar-fee-row">
+                  <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
+                  <p className="registration-sidebar-fee-caption mb-1">
+                    {fees.regular.caption ?? "Standard registration rate"}
+                  </p>
+                  <strong className="registration-sidebar-fee-amount">
+                    {formatPeso(fees.regular.amount)}
+                  </strong>
+                </div>
+                <div className="registration-sidebar-fee-row">
+                  <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
+                  <p className="registration-sidebar-fee-caption mb-1">
+                    Same as early bird amount — valid Senior Citizen or PWD ID required
+                  </p>
+                  <strong className="registration-sidebar-fee-amount">
+                    {formatPeso(fees.earlyBird.amount)}
+                  </strong>
+                </div>
+              </>
+            )}
             <p className="registration-sidebar-card-copy mt-3 mb-0">
               <strong>Registration Includes:</strong> {conference.registration.includes}
             </p>

@@ -25,6 +25,8 @@ interface RegistrationModalProps {
   eventId?: string | null;
   inviteToken?: string | null;
   inviteEmail?: string | null;
+  inviteFirstName?: string | null;
+  inviteSpecialRole?: "committee" | "speaker" | null;
   inviteEventTitle?: string | null;
 }
 
@@ -34,6 +36,8 @@ export function RegistrationModal({
   eventId = null,
   inviteToken = null,
   inviteEmail = null,
+  inviteFirstName = null,
+  inviteSpecialRole = null,
   inviteEventTitle = null,
 }: RegistrationModalProps) {
   const [steps, setSteps] = useState<RegistrationStepState[]>(INITIAL_STEPS);
@@ -75,7 +79,11 @@ export function RegistrationModal({
             <div>
               <h2 id="modal-title" className="registration-modal-page-title font-display">
                 {specialLane
-                  ? "Exclusive Committee / Speaker Registration"
+                  ? inviteSpecialRole === "committee"
+                    ? "Exclusive Committee Registration"
+                    : inviteSpecialRole === "speaker"
+                      ? "Exclusive Guest Speaker Registration"
+                      : "Exclusive Committee / Speaker Registration"
                   : conference.pages.register.title}
               </h2>
               <p className="registration-modal-page-subtitle mb-0">
@@ -99,6 +107,8 @@ export function RegistrationModal({
               eventId={eventId}
               inviteToken={inviteToken}
               inviteEmail={inviteEmail}
+              inviteFirstName={inviteFirstName}
+              inviteSpecialRole={inviteSpecialRole}
               inviteEventTitle={inviteEventTitle}
               onCompleted={handleClose}
               onBack={handleClose}

@@ -175,12 +175,44 @@ export const SPECIAL_ROLE_LABELS: Record<SpecialRole, string> = {
   speaker: "Speaker (Complimentary)",
 };
 
+export const SPECIAL_ROLE_SHORT_LABELS: Record<SpecialRole, string> = {
+  committee: "Committee",
+  speaker: "Guest Speaker",
+};
+
+/** Default email note for exclusive Committee / Speaker invites. */
+export function buildDefaultSpecialInviteNote(specialRole?: SpecialRole | null): string {
+  const roleLabel =
+    specialRole === "committee" || specialRole === "speaker"
+      ? SPECIAL_ROLE_SHORT_LABELS[specialRole]
+      : "a Committee member or Guest Speaker";
+  const rolePhrase =
+    specialRole === "committee" || specialRole === "speaker"
+      ? `as a ${roleLabel}`
+      : roleLabel;
+  return `This is an exclusive invitation from the Philippine Nurses Association (PNA). You are invited to register complimentary ${rolePhrase} for this event.`;
+}
+
+export const DEFAULT_SPECIAL_INVITE_NOTE = buildDefaultSpecialInviteNote();
+
+export function buildSpecialInviteNote(options?: {
+  additionalNote?: string;
+  specialRole?: SpecialRole | null;
+}): string {
+  const base = buildDefaultSpecialInviteNote(options?.specialRole);
+  const extra = options?.additionalNote?.trim() ?? "";
+  if (!extra) return base;
+  return `${base}\n\n${extra}`;
+}
+
 export type SpecialInviteStatus = "pending" | "used" | "revoked";
 
 export interface SpecialInviteRecord {
   id: string;
   token: string;
   email: string;
+  firstName: string;
+  specialRole: SpecialRole | null;
   eventId: string;
   status: SpecialInviteStatus;
   note: string;
@@ -192,8 +224,19 @@ export interface SpecialInviteRecord {
 
 export interface SpecialInviteInput {
   email: string;
+  firstName: string;
+  specialRole: SpecialRole;
   eventId: string;
   note?: string;
+}
+
+/** One row from an imported invite sheet before admin review/send. */
+export interface SpecialInviteDraftRow {
+  firstName: string;
+  email: string;
+  specialRole: SpecialRole | "";
+  sourceLine?: number;
+  parseWarning?: string;
 }
 
 export const SPECIAL_INVITE_STATUS_LABELS: Record<SpecialInviteStatus, string> = {

@@ -5744,6 +5744,55 @@ a.admin-btn-primary:hover,
   box-shadow: 0 10px 22px -8px rgba(21, 128, 61, 0.55);
 }
 
+.admin-events-finish-btn--delete {
+  background: #fff;
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  box-shadow: none;
+}
+
+.admin-events-finish-btn--delete:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.35);
+  box-shadow: 0 6px 16px -8px rgba(185, 28, 28, 0.25);
+}
+
+.admin-invites-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Keep Role/Event menus above neighboring form columns and review rows. */
+.admin-invites .admin-form .row > [class*="col-"] {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-invites .admin-form .row > [class*="col-"]:has(.pna-select--open) {
+  z-index: 30;
+}
+
+.admin-invites .admin-card:has(.pna-select--open) {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+}
+
+.admin-invites .admin-table-wrap {
+  overflow: visible;
+}
+
+.admin-invites .admin-table td {
+  overflow: visible;
+  position: relative;
+}
+
+.admin-invites .admin-table td:has(.pna-select--open) {
+  z-index: 40;
+}
+
 .admin-participants .admin-table {
   table-layout: fixed;
 }
@@ -10065,6 +10114,10 @@ a.admin-btn-primary:hover,
   max-width: 100%;
 }
 
+.pna-select--open {
+  z-index: 80;
+}
+
 .admin-participants-filter .pna-select {
   max-width: min(100%, 280px);
 }
@@ -10167,7 +10220,7 @@ a.admin-btn-primary:hover,
 
 .pna-select-menu {
   position: absolute;
-  z-index: 40;
+  z-index: 90;
   top: calc(100% + 0.5rem);
   left: 50%;
   width: calc(100% - 0.5rem);
@@ -10192,6 +10245,20 @@ a.admin-btn-primary:hover,
   visibility: visible;
   pointer-events: auto;
   transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.pna-select-menu--portal {
+  position: fixed;
+  z-index: 1400;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform: translateY(-0.4rem) scale(0.98);
+  transform-origin: top center;
+}
+
+.pna-select-menu--portal.is-visible {
+  transform: translateY(0) scale(1);
 }
 
 .pna-select-caret {
@@ -10438,6 +10505,7 @@ a.admin-btn-primary:hover,
   width: min(100%, 17rem);
   min-width: min(100%, 15.5rem);
   border-radius: 0.85rem;
+  background: #ffffff;
 }
 
 .registration-date-field .admin-range-calendar-body {
@@ -10519,7 +10587,7 @@ a.admin-btn-primary:hover,
   overflow: hidden;
   border: 1px solid rgba(22, 163, 74, 0.16);
   border-radius: 1.1rem;
-  background: var(--admin-surface);
+  background: var(--admin-surface, #ffffff);
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
     0 12px 32px -16px rgba(22, 163, 74, 0.22);
@@ -10637,6 +10705,75 @@ a.admin-btn-primary:hover,
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--admin-ink);
+}
+
+.admin-range-calendar-month-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.admin-range-calendar-month-select-wrap,
+.admin-range-calendar-year-select-wrap {
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-range-calendar-month-select,
+.admin-range-calendar-year-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  max-width: 100%;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(45deg, transparent 50%, #15803d 50%) calc(100% - 12px) calc(50% - 2px) / 5px 5px no-repeat,
+    linear-gradient(135deg, #15803d 50%, transparent 50%) calc(100% - 7px) calc(50% - 2px) / 5px 5px no-repeat,
+    #ffffff;
+  color: #14532d;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.35rem 1.55rem 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.admin-range-calendar-month-select {
+  min-width: 7.25rem;
+}
+
+.admin-range-calendar-year-select {
+  min-width: 4.5rem;
+}
+
+.admin-range-calendar-month-select:focus,
+.admin-range-calendar-year-select:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+.admin-range-calendar-month-select:disabled,
+.admin-range-calendar-year-select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.registration-date-field .admin-range-calendar-month-select,
+.registration-date-field .admin-range-calendar-year-select {
+  font-size: 0.75rem;
+  padding: 0.28rem 1.4rem 0.28rem 0.45rem;
+}
+
+.registration-date-field .admin-range-calendar-month-select {
+  min-width: 6.4rem;
+}
+
+.registration-date-field .admin-range-calendar-year-select {
+  min-width: 4.1rem;
 }
 
 .admin-range-calendar-nav-btn {

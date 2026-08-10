@@ -22,7 +22,7 @@ export function AdminEventsTable({
   const router = useRouter();
   const [rows, setRows] = useState(() => (limit ? events.slice(0, limit) : events));
   const confirmHook = useConfirmAction();
-  const { loading: finishing, requestConfirm } = confirmHook;
+  const { loading: actionLoading, requestConfirm } = confirmHook;
 
   useEffect(() => {
     setRows(limit ? events.slice(0, limit) : events);
@@ -61,9 +61,32 @@ export function AdminEventsTable({
     });
   }
 
+  function requestDeleteEvent(event: ConferenceEvent) {
+    requestConfirm({
+      title: "Delete this event?",
+      message: `Permanently delete “${event.title}”? This removes the event from admin and the public site. Registrations linked to this event will remain in the database.\n\nThis action cannot be undone.`,
+      tagline: "Use this while testing or to remove duplicate events.",
+      confirmLabel: "Delete event",
+      variant: "danger",
+      loadingMessage: "Deleting event...",
+      successTitle: "Event deleted",
+      successMessage: `"${event.title}" was removed.`,
+      action: async () => {
+        const res = await fetch(`/api/admin/events/${event.id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to delete event.");
+        }
+
+        setRows((current) => current.filter((row) => row.id !== event.id));
+        router.refresh();
+      },
+    });
+  }
+
   return (
     <>
-      <LoadingOverlay show={finishing} scope="local" variant="form" />
+      <LoadingOverlay show={actionLoading} scope="local" variant="form" />
       <ActionConfirmDialogs hook={confirmHook} />
 
       <table className="admin-table">
@@ -118,15 +141,13 @@ export function AdminEventsTable({
                 </td>
                 {showActions ? (
                   <td>
-                    {isFinished ? (
-                      <span className="admin-muted">No actions</span>
-                    ) : (
-                      <div className="admin-events-table-actions">
+                    <div className="admin-events-table-actions">
+                      {!isFinished ? (
                         <button
                           type="button"
                           className="admin-events-finish-btn"
                           onClick={() => requestFinishEvent(event)}
-                          disabled={finishing}
+                          disabled={actionLoading}
                         >
                           <svg
                             className="admin-events-finish-btn-icon"
@@ -144,8 +165,16 @@ export function AdminEventsTable({
                           </svg>
                           Finish event
                         </button>
-                      </div>
-                    )}
+                      ) : null}
+                      <button
+                        type="button"
+                        className="admin-events-finish-btn admin-events-finish-btn--delete"
+                        onClick={() => requestDeleteEvent(event)}
+                        disabled={actionLoading}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 ) : null}
               </tr>

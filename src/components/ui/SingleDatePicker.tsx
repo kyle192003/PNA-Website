@@ -18,12 +18,32 @@ function parseIso(iso: string): { y: number; m: number; d: number } | null {
   return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
 }
 
-function monthLabel(year: number, monthIndex: number): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, monthIndex, 1, 12)));
+const MONTH_OPTIONS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+function buildYearOptions(min?: string, max?: string): number[] {
+  const currentYear = new Date().getFullYear();
+  const minYear = parseIso(min ?? "")?.y ?? 1900;
+  const maxYear = parseIso(max ?? "")?.y ?? currentYear + 40;
+  const start = Math.min(minYear, maxYear);
+  const end = Math.max(minYear, maxYear);
+  const years: number[] = [];
+  for (let year = end; year >= start; year -= 1) {
+    years.push(year);
+  }
+  return years;
 }
 
 function buildMonthCells(year: number, monthIndex: number) {
@@ -130,11 +150,26 @@ export function SingleDatePicker({
   }, [open, onBlur, value]);
 
   const cells = useMemo(() => buildMonthCells(viewYear, viewMonth), [viewYear, viewMonth]);
+  const yearOptions = useMemo(() => {
+    const years = buildYearOptions(min, max);
+    if (!years.includes(viewYear)) {
+      return [...years, viewYear].sort((a, b) => b - a);
+    }
+    return years;
+  }, [min, max, viewYear]);
 
   function shiftMonth(delta: number) {
     const date = new Date(Date.UTC(viewYear, viewMonth + delta, 1, 12));
     setViewYear(date.getUTCFullYear());
     setViewMonth(date.getUTCMonth());
+  }
+
+  function handleMonthChange(nextMonth: number) {
+    setViewMonth(nextMonth);
+  }
+
+  function handleYearChange(nextYear: number) {
+    setViewYear(nextYear);
   }
 
   function openCalendar() {
@@ -238,9 +273,40 @@ export function SingleDatePicker({
                 >
                   <CalendarChevron direction="prev" />
                 </button>
-                <p className="admin-range-calendar-month mb-0">
-                  {monthLabel(viewYear, viewMonth)}
-                </p>
+                <div className="admin-range-calendar-month-controls">
+                  <label className="admin-range-calendar-month-select-wrap">
+                    <span className="visually-hidden">Month</span>
+                    <select
+                      className="admin-range-calendar-month-select"
+                      value={viewMonth}
+                      disabled={disabled}
+                      aria-label="Select month"
+                      onChange={(event) => handleMonthChange(Number(event.target.value))}
+                    >
+                      {MONTH_OPTIONS.map((monthName, index) => (
+                        <option key={monthName} value={index}>
+                          {monthName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="admin-range-calendar-year-select-wrap">
+                    <span className="visually-hidden">Year</span>
+                    <select
+                      className="admin-range-calendar-year-select"
+                      value={viewYear}
+                      disabled={disabled}
+                      aria-label="Select year"
+                      onChange={(event) => handleYearChange(Number(event.target.value))}
+                    >
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <button
                   type="button"
                   className="admin-range-calendar-nav-btn"

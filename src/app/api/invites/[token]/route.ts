@@ -25,6 +25,8 @@ export async function GET(
   return NextResponse.json({
     invite: {
       email: invite.email,
+      firstName: invite.firstName,
+      specialRole: invite.specialRole,
       eventId: invite.eventId,
       eventTitle: event?.title ?? "Conference event",
       status: invite.status,

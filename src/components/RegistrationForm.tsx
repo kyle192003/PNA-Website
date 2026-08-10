@@ -12,9 +12,12 @@ import type {
 } from "@/lib/types/admin";
 import { SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
 import {
+  getDateOfBirthAgeValidationError,
   getEmailValidationError,
+  getMaxDateOfBirthForMinAge,
   getNameLengthError,
   getRegistrationPhoneValidationError,
+  calculateAgeFromDateOfBirth,
   NAME_LIMITS,
   toPhMobileInternational,
   toPhMobileLocalDigits,
@@ -184,16 +187,7 @@ const FOOD_PREFERENCE_OPTIONS: PnaSelectOption[] = [
 ];
 
 function calculateAge(dateOfBirth: string): number | null {
-  if (!dateOfBirth) return null;
-  const dob = new Date(dateOfBirth);
-  if (Number.isNaN(dob.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const monthDiff = today.getMonth() - dob.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-    age -= 1;
-  }
-  return age >= 0 ? age : null;
+  return calculateAgeFromDateOfBirth(dateOfBirth);
 }
 
 function isValidDateString(value: string): boolean {
@@ -282,11 +276,10 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
       return getEmailValidationError(data.email) ?? undefined;
     case "phone":
       return getRegistrationPhoneValidationError(data.phone) ?? undefined;
-    case "dateOfBirth":
-      if (!data.dateOfBirth) return "Date of birth is required";
-      if (!isValidDateString(data.dateOfBirth)) return "Enter a valid date of birth";
-      if (new Date(data.dateOfBirth) > new Date()) return "Date of birth cannot be in the future";
-      return undefined;
+    case "dateOfBirth": {
+      const ageError = getDateOfBirthAgeValidationError(data.dateOfBirth);
+      return ageError ? ageError.replace(/\.$/, "") : undefined;
+    }
     case "gender":
       return data.gender.trim() ? undefined : "Please select a gender";
     case "organization":
@@ -415,8 +408,10 @@ function getMemberFieldError(
       return getEmailValidationError(member.email) ?? undefined;
     case "phone":
       return getRegistrationPhoneValidationError(member.phone) ?? undefined;
-    case "dateOfBirth":
-      return member.dateOfBirth ? undefined : "Date of birth is required";
+    case "dateOfBirth": {
+      const ageError = getDateOfBirthAgeValidationError(member.dateOfBirth);
+      return ageError ? ageError.replace(/\.$/, "") : undefined;
+    }
     case "membershipType":
       return member.membershipType ? undefined : "Please select a membership type";
     case "pnaZone":
@@ -603,6 +598,8 @@ export function RegistrationForm({
   eventId = null,
   inviteToken = null,
   inviteEmail = null,
+  inviteFirstName = null,
+  inviteSpecialRole = null,
   inviteEventTitle = null,
 }: {
   onCompleted?: () => void;
@@ -613,6 +610,8 @@ export function RegistrationForm({
   eventId?: string | null;
   inviteToken?: string | null;
   inviteEmail?: string | null;
+  inviteFirstName?: string | null;
+  inviteSpecialRole?: SpecialRole | null;
   inviteEventTitle?: string | null;
 } = {}) {
   const specialLane = Boolean(inviteToken);
@@ -899,10 +898,12 @@ export function RegistrationForm({
     setFormData((prev) => ({
       ...prev,
       email: inviteEmail,
+      firstName: inviteFirstName?.trim() || prev.firstName,
+      specialRole: inviteSpecialRole || prev.specialRole,
       registrationMode: "single",
     }));
     setMembers([]);
-  }, [specialLane, inviteEmail]);
+  }, [specialLane, inviteEmail, inviteFirstName, inviteSpecialRole]);
 
   useEffect(() => {
     if (!draftLoaded) return;
@@ -1780,7 +1781,7 @@ export function RegistrationForm({
                     onChange={(v) => updateField("dateOfBirth", v)}
                     onBlur={() => markFieldTouched("dateOfBirth")}
                     error={errors.dateOfBirth}
-                    max={getTodayDateInput()}
+                    max={getMaxDateOfBirthForMinAge()}
                   />
                   <div className="col-12 col-md-6">
                     <label htmlFor="age" className="form-label registration-form-label">
@@ -1954,27 +1955,39 @@ export function RegistrationForm({
                   Participation role
                 </legend>
                 <p className="registration-form-help mb-3">
-                  Select whether you are registering as Committee or Speaker. Both are complimentary.
+                  {inviteSpecialRole
+                    ? `This exclusive invite is assigned to you as ${
+                        inviteSpecialRole === "committee" ? "Committee" : "Guest Speaker"
+                      }. Registration is complimentary.`
+                    : "Select whether you are registering as Committee or Speaker. Both are complimentary."}
                 </p>
                 <div className="registration-mode-toggle" role="group" aria-label="Special role">
-                  <button
-                    type="button"
-                    className={`registration-mode-option${
-                      formData.specialRole === "committee" ? " is-selected" : ""
-                    }`}
-                    onClick={() => updateField("specialRole", "committee")}
-                  >
-                    Committee
-                  </button>
-                  <button
-                    type="button"
-                    className={`registration-mode-option${
-                      formData.specialRole === "speaker" ? " is-selected" : ""
-                    }`}
-                    onClick={() => updateField("specialRole", "speaker")}
-                  >
-                    Speaker
-                  </button>
+                  {inviteSpecialRole ? (
+                    <button type="button" className="registration-mode-option is-selected" disabled>
+                      {inviteSpecialRole === "committee" ? "Committee" : "Guest Speaker"}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={`registration-mode-option${
+                          formData.specialRole === "committee" ? " is-selected" : ""
+                        }`}
+                        onClick={() => updateField("specialRole", "committee")}
+                      >
+                        Committee
+                      </button>
+                      <button
+                        type="button"
+                        className={`registration-mode-option${
+                          formData.specialRole === "speaker" ? " is-selected" : ""
+                        }`}
+                        onClick={() => updateField("specialRole", "speaker")}
+                      >
+                        Speaker
+                      </button>
+                    </>
+                  )}
                 </div>
                 {errors.specialRole ? (
                   <p className="mt-1 text-xs text-red-400">{errors.specialRole}</p>
@@ -2353,7 +2366,7 @@ export function RegistrationForm({
                             value={member.dateOfBirth}
                             onChange={(v) => updateMember(index, "dateOfBirth", v)}
                             error={memberErrors[index]?.dateOfBirth}
-                            max={getTodayDateInput()}
+                            max={getMaxDateOfBirthForMinAge()}
                           />
                           <div className="col-12">
                             <label className="registration-same-affiliation d-flex align-items-start gap-2 mb-0">

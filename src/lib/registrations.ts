@@ -450,9 +450,22 @@ export async function createComplimentaryInviteRegistration(
     throw new Error("This invite does not match the selected event.");
   }
 
-  const specialRole = input.specialRole;
+  const lockedRole = invite.specialRole;
+  const specialRole =
+    lockedRole === "committee" || lockedRole === "speaker"
+      ? lockedRole
+      : input.specialRole;
   if (specialRole !== "committee" && specialRole !== "speaker") {
     throw new Error("Please choose Committee or Speaker.");
+  }
+  if (
+    lockedRole &&
+    input.specialRole &&
+    input.specialRole !== lockedRole
+  ) {
+    throw new Error(
+      `This invite is reserved for ${SPECIAL_ROLE_LABELS[lockedRole]}.`
+    );
   }
 
   if (!input.dataPrivacyConsent && !input.agreeToTerms) {
@@ -465,11 +478,13 @@ export async function createComplimentaryInviteRegistration(
   const registration = buildRegistrationRecord(
     {
       ...input,
+      firstName: input.firstName?.trim() || invite.firstName || "",
       email,
       eventId: invite.eventId,
       registrationMode: "single",
       registrationRate: "regular",
       paymentReference: "",
+      specialRole,
     },
     {
       appliedFeeKey: specialRole,

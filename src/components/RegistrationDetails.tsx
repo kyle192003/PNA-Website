@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
 import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
 import { RegistrationLookup } from "@/components/RegistrationLookup";
@@ -11,6 +14,35 @@ const inclusions = [
 export function RegistrationDetails({ variant = "default" }: { variant?: "default" | "sidebar" }) {
   const isSidebar = variant === "sidebar";
   const fees = normalizeEventFees(conference.registration.fees);
+  const [earlyBirdAvailable, setEarlyBirdAvailable] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/events/early-bird")
+      .then((res) => res.json())
+      .then((data) => setEarlyBirdAvailable(Boolean(data.available)))
+      .catch(() => setEarlyBirdAvailable(true));
+  }, []);
+
+  const visibleFees = earlyBirdAvailable
+    ? [
+        {
+          label: fees.earlyBird.label,
+          caption: fees.earlyBird.caption,
+          amount: fees.earlyBird.amount,
+        },
+      ]
+    : [
+        {
+          label: fees.regular.label,
+          caption: fees.regular.caption ?? "Standard registration rate",
+          amount: fees.regular.amount,
+        },
+        {
+          label: fees.seniorPwd.label,
+          caption: "Same as early bird amount — valid Senior Citizen or PWD ID required",
+          amount: fees.earlyBird.amount,
+        },
+      ];
 
   return (
     <div className={`d-flex flex-column ${isSidebar ? "gap-4 registration-details-sidebar" : "gap-3"}`}>
@@ -19,7 +51,7 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
           Official Registration Fees
         </h3>
         <div className="d-flex flex-column gap-3">
-          {([fees.earlyBird, fees.regular, fees.seniorPwd] as const).map((fee) => (
+          {visibleFees.map((fee) => (
             <div
               key={fee.label}
               className={`pb-3 ${isSidebar ? "registration-sidebar-fee" : "border-bottom border-green-100 last:border-0 last:pb-0"}`}

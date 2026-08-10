@@ -10,6 +10,12 @@ import {
   getAllSpecialInvites,
   markSpecialInviteSent,
 } from "@/lib/special-invites";
+import type { SpecialRole } from "@/lib/types/admin";
+import { SPECIAL_ROLE_SHORT_LABELS } from "@/lib/types/admin";
+
+function parseRole(value: unknown): SpecialRole | null {
+  return value === "committee" || value === "speaker" ? value : null;
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,7 +35,17 @@ export async function GET(request: Request) {
   }
   if (query) {
     invites = invites.filter((invite) => {
-      const haystack = [invite.email, invite.note, eventTitleById.get(invite.eventId) ?? ""]
+      const roleLabel =
+        invite.specialRole && invite.specialRole in SPECIAL_ROLE_SHORT_LABELS
+          ? SPECIAL_ROLE_SHORT_LABELS[invite.specialRole]
+          : "";
+      const haystack = [
+        invite.email,
+        invite.firstName,
+        invite.note,
+        roleLabel,
+        eventTitleById.get(invite.eventId) ?? "",
+      ]
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
@@ -79,12 +95,24 @@ export async function POST(request: Request) {
   }
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
+  const firstName = typeof body.firstName === "string" ? body.firstName.trim() : "";
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
   const note = typeof body.note === "string" ? body.note.trim() : "";
+  const specialRole = parseRole(body.specialRole);
+  const sendEmail = body.send !== false;
 
   const emailError = getEmailValidationError(email);
   if (emailError) {
     return NextResponse.json({ error: emailError }, { status: 400 });
+  }
+  if (!firstName) {
+    return NextResponse.json({ error: "First name is required." }, { status: 400 });
+  }
+  if (!specialRole) {
+    return NextResponse.json(
+      { error: "Please choose Committee or Guest Speaker." },
+      { status: 400 }
+    );
   }
   if (!eventId) {
     return NextResponse.json({ error: "Please select an event." }, { status: 400 });
@@ -94,27 +122,43 @@ export async function POST(request: Request) {
   if (!event) {
     return NextResponse.json({ error: "Event not found." }, { status: 404 });
   }
+  if (event.status === "finished") {
+    return NextResponse.json(
+      { error: "Finished events cannot receive new special invites." },
+      { status: 400 }
+    );
+  }
 
   try {
-    let invite = await createSpecialInvite({ email, eventId, note });
+    let invite = await createSpecialInvite({
+      email,
+      firstName,
+      specialRole,
+      eventId,
+      note,
+    });
     const inviteUrl = buildSpecialInviteUrl(invite.token);
 
     let mailSent = false;
     let mailError: string | undefined;
 
-    if (!isMailConfigured()) {
-      mailError = "Email is not configured. Invite was created; copy the link manually.";
-    } else {
-      const mail = await sendSpecialInviteEmail({
-        to: invite.email,
-        eventTitle: event.title,
-        inviteUrl,
-        note: invite.note || undefined,
-      });
-      mailSent = mail.ok;
-      mailError = mail.ok ? undefined : mail.error || "Failed to send invite email.";
-      if (mail.ok) {
-        invite = (await markSpecialInviteSent(invite.id)) ?? invite;
+    if (sendEmail) {
+      if (!isMailConfigured()) {
+        mailError = "Email is not configured. Invite was created; copy the link manually.";
+      } else {
+        const mail = await sendSpecialInviteEmail({
+          to: invite.email,
+          firstName: invite.firstName,
+          specialRole: invite.specialRole,
+          eventTitle: event.title,
+          inviteUrl,
+          note: invite.note || undefined,
+        });
+        mailSent = mail.ok;
+        mailError = mail.ok ? undefined : mail.error || "Failed to send invite email.";
+        if (mail.ok) {
+          invite = (await markSpecialInviteSent(invite.id)) ?? invite;
+        }
       }
     }
 

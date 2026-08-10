@@ -123,3 +123,64 @@ export function getFirstValidationError(
   const firstKey = Object.keys(errors)[0];
   return firstKey ? errors[firstKey] ?? null : null;
 }
+
+/** Minimum age allowed to register for the conference. */
+export const MIN_REGISTRATION_AGE = 17;
+
+function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Latest date of birth that still meets the minimum registration age. */
+export function getMaxDateOfBirthForMinAge(
+  minAge: number = MIN_REGISTRATION_AGE
+): string {
+  const today = new Date();
+  const maxDob = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+  return toLocalIsoDate(maxDob);
+}
+
+export function calculateAgeFromDateOfBirth(dateOfBirth: string): number | null {
+  const match = dateOfBirth.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const dob = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(dob.getTime()) ||
+    dob.getFullYear() !== year ||
+    dob.getMonth() !== month - 1 ||
+    dob.getDate() !== day
+  ) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+export function getDateOfBirthAgeValidationError(
+  dateOfBirth: string,
+  minAge: number = MIN_REGISTRATION_AGE
+): string | null {
+  const value = dateOfBirth.trim();
+  if (!value) return "Date of birth is required.";
+  const age = calculateAgeFromDateOfBirth(value);
+  if (age == null) return "Enter a valid date of birth.";
+  if (value > toLocalIsoDate(new Date())) {
+    return "Date of birth cannot be in the future.";
+  }
+  if (age < minAge) {
+    return `Participants must be at least ${minAge} years old. Please enter your correct date of birth.`;
+  }
+  return null;
+}

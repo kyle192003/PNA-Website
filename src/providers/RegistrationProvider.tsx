@@ -24,6 +24,8 @@ const RegistrationContext = createContext<RegistrationContextValue | null>(null)
 type InviteContext = {
   token: string;
   email: string;
+  firstName: string;
+  specialRole: "committee" | "speaker" | null;
   eventId: string;
   eventTitle: string;
 };
@@ -196,6 +198,11 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
           openSpecialInviteRegistration({
             token: inviteToken!,
             email: data.invite.email,
+            firstName: data.invite.firstName ?? "",
+            specialRole:
+              data.invite.specialRole === "committee" || data.invite.specialRole === "speaker"
+                ? data.invite.specialRole
+                : null,
             eventId: data.invite.eventId,
             eventTitle: data.invite.eventTitle,
           });
@@ -299,6 +306,8 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
           eventId={selectedEventId}
           inviteToken={inviteContext?.token ?? null}
           inviteEmail={inviteContext?.email ?? null}
+          inviteFirstName={inviteContext?.firstName ?? null}
+          inviteSpecialRole={inviteContext?.specialRole ?? null}
           inviteEventTitle={inviteContext?.eventTitle ?? null}
           onClose={closeRegistration}
         />

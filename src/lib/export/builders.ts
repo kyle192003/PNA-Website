@@ -201,6 +201,7 @@ export async function buildParticipantsExport(
       "Organization",
       "Position",
       "Category",
+      "Special role",
       "Amount",
       "Fee tier",
       "Payment status",
@@ -216,8 +217,17 @@ export async function buildParticipantsExport(
       registration.organization,
       registration.position,
       categoryLabel(registration.category, registration.feeLabel),
+      registration.specialRole === "committee"
+        ? "Committee"
+        : registration.specialRole === "speaker"
+          ? "Speaker"
+          : "",
       formatPeso(registration.paymentAmount ?? 0),
-      registration.feeTier === "regular" ? "Regular" : "Early bird",
+      registration.specialRole
+        ? "Complimentary"
+        : registration.feeTier === "regular"
+          ? "Regular"
+          : "Early bird",
       PAYMENT_STATUS_LABELS[registration.paymentStatus],
       registration.checkInStatus === "checked_in" ? "Checked in" : "Pending",
       formatDate(registration.checkedInAt),
