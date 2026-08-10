@@ -47,6 +47,7 @@ import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect, type PnaSelectOption } from "@/components/ui/PnaSelect";
 import { SingleDatePicker } from "@/components/ui/SingleDatePicker";
+import { PhLocationSuggest } from "@/components/PhLocationSuggest";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 import type { RegistrationPaymentBreakdown } from "@/components/RegistrationSidebar";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
@@ -1817,14 +1818,17 @@ export function RegistrationForm({
                     error={errors.organization}
                     className="col-12"
                   />
-                  <FormField
+                  <PhLocationSuggest
                     label="Institution Address"
                     id="institutionAddress"
+                    type="street"
                     required
                     value={formData.institutionAddress}
                     onChange={(v) => updateField("institutionAddress", v)}
+                    onSelect={(suggestion) => updateField("institutionAddress", suggestion.label)}
                     onBlur={() => markFieldTouched("institutionAddress")}
                     error={errors.institutionAddress}
+                    placeholder="Start typing a Philippines address"
                     className="col-12"
                   />
                   <FormField
@@ -1874,6 +1878,8 @@ export function RegistrationForm({
                     options={PNA_ZONE_OPTIONS}
                     error={errors.pnaZone}
                     placeholder="Select PNA zone/region"
+                    searchable
+                    searchPlaceholder="Search zone/region..."
                   />
                   <FormField
                     label="PNA Chapter (For Local and Foreign based)"
@@ -1932,6 +1938,7 @@ export function RegistrationForm({
                     onBlur={() => markFieldTouched("prcExpirationDate")}
                     error={errors.prcExpirationDate}
                     min={formData.prcInitialRegistrationDate || undefined}
+                    placement="top"
                   />
                   <FileField
                     label="Upload PRC ID"
@@ -2404,6 +2411,8 @@ export function RegistrationForm({
                             error={memberErrors[index]?.pnaZone}
                             placeholder="Select PNA zone/region"
                             disabled={member.sameAffiliationAsPrimary}
+                            searchable
+                            searchPlaceholder="Search zone/region..."
                           />
                           <FormField
                             label="PNA Chapter (For Local and Foreign based)"
@@ -2456,6 +2465,7 @@ export function RegistrationForm({
                             }}
                             error={memberErrors[index]?.prcExpirationDate}
                             min={member.prcInitialRegistrationDate || undefined}
+                            placement="top"
                           />
                           <div className="col-12">
                             <p className="form-label registration-form-label mb-2">
@@ -3007,6 +3017,8 @@ function SelectField({
   error,
   placeholder,
   disabled = false,
+  searchable = false,
+  searchPlaceholder,
   className = "col-12 col-md-6",
 }: {
   label: string;
@@ -3018,6 +3030,8 @@ function SelectField({
   error?: string;
   placeholder?: string;
   disabled?: boolean;
+  searchable?: boolean;
+  searchPlaceholder?: string;
   className?: string;
 }) {
   return (
@@ -3033,6 +3047,8 @@ function SelectField({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
+        searchable={searchable}
+        searchPlaceholder={searchPlaceholder}
         className={error ? "pna-select--error" : ""}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
@@ -3124,7 +3140,7 @@ function FileField({
             id={id}
             type="file"
             accept={accept}
-            className={`input-dark registration-file-field-inline-input ${
+            className={`input-dark registration-file-input registration-file-field-inline-input ${
               error ? "input-dark-error" : ""
             }`}
             onChange={(e) => onChange(e.target.files?.[0] ?? null)}
@@ -3146,7 +3162,7 @@ function FileField({
         id={id}
         type="file"
         accept={accept}
-        className={`input-dark ${error ? "input-dark-error" : ""}`}
+        className={`input-dark registration-file-input ${error ? "input-dark-error" : ""}`}
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
       />
       {file ? <p className="mt-2 mb-0 text-xs text-muted">Selected: {file.name}</p> : null}
