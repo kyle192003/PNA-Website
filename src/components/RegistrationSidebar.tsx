@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
+import { formatPeso } from "@/lib/registration-fees";
 import { RegistrationLookup } from "@/components/RegistrationLookup";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 
@@ -14,13 +15,24 @@ interface SidebarEvent {
   fees: typeof conference.registration.fees;
 }
 
+export type RegistrationPaymentBreakdown = {
+  categoryLabel: string;
+  feeTierLabel: string;
+  unitFee: number;
+  headcount: number;
+  totalFee: number;
+};
+
 export function RegistrationSidebar({
   eventId = null,
   showPaymentQr = true,
+  paymentBreakdown = null,
 }: {
   eventId?: string | null;
   /** When false, QR/bank payment card is hidden (shown in the payment form step instead). */
   showPaymentQr?: boolean;
+  /** When set (Payment / Review steps), replaces the fee schedule with this participant's total. */
+  paymentBreakdown?: RegistrationPaymentBreakdown | null;
 }) {
   const [event, setEvent] = useState<SidebarEvent | null>(null);
 
@@ -70,26 +82,53 @@ export function RegistrationSidebar({
       <div className="registration-sidebar-card">
         <div className="registration-sidebar-card-head">
           <SidebarTagIcon />
-          <h3 className="registration-sidebar-card-title">Registration Fees</h3>
+          <h3 className="registration-sidebar-card-title">
+            {paymentBreakdown ? "Your Payment" : "Registration Fees"}
+          </h3>
         </div>
-        <div className="registration-sidebar-fees">
-          {sidebarFeeKeys.map((key) => {
-            const fee = fees[key];
-            return (
-              <div key={key} className="registration-sidebar-fee-row">
-                <p className="registration-sidebar-fee-label">{fee.label}</p>
-                <div className="registration-sidebar-fee-prices">
+        {paymentBreakdown ? (
+          <div className="registration-sidebar-payment-breakdown">
+            <div className="registration-sidebar-fee-row">
+              <p className="registration-sidebar-fee-label">{paymentBreakdown.categoryLabel}</p>
+              <div className="registration-sidebar-fee-prices">
+                <span>
+                  Rate <strong>{paymentBreakdown.feeTierLabel}</strong>
+                </span>
+                <span>
+                  Fee per person <strong>{formatPeso(paymentBreakdown.unitFee)}</strong>
+                </span>
+                {paymentBreakdown.headcount > 1 ? (
                   <span>
-                    Early Bird <strong>₱{fee.early.toLocaleString()}</strong>
+                    Participants <strong>{paymentBreakdown.headcount}</strong>
                   </span>
-                  <span>
-                    Regular <strong>₱{fee.regular.toLocaleString()}</strong>
-                  </span>
-                </div>
+                ) : null}
               </div>
-            );
-          })}
-        </div>
+            </div>
+            <div className="registration-sidebar-payment-total">
+              <span>Total due</span>
+              <strong>{formatPeso(paymentBreakdown.totalFee)}</strong>
+            </div>
+          </div>
+        ) : (
+          <div className="registration-sidebar-fees">
+            {sidebarFeeKeys.map((key) => {
+              const fee = fees[key];
+              return (
+                <div key={key} className="registration-sidebar-fee-row">
+                  <p className="registration-sidebar-fee-label">{fee.label}</p>
+                  <div className="registration-sidebar-fee-prices">
+                    <span>
+                      Early Bird <strong>₱{fee.early.toLocaleString()}</strong>
+                    </span>
+                    <span>
+                      Regular <strong>₱{fee.regular.toLocaleString()}</strong>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="registration-sidebar-card">

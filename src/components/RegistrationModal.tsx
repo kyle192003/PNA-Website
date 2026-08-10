@@ -3,7 +3,10 @@
 import { useCallback, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { RegistrationForm } from "@/components/RegistrationForm";
-import { RegistrationSidebar } from "@/components/RegistrationSidebar";
+import {
+  RegistrationSidebar,
+  type RegistrationPaymentBreakdown,
+} from "@/components/RegistrationSidebar";
 import { RegistrationStepper } from "@/components/RegistrationStepper";
 import { conference } from "@/lib/conference";
 import {
@@ -24,15 +27,31 @@ interface RegistrationModalProps {
 
 export function RegistrationModal({ open, onClose, eventId = null }: RegistrationModalProps) {
   const [steps, setSteps] = useState<RegistrationStepState[]>(INITIAL_STEPS);
+  const [paymentBreakdown, setPaymentBreakdown] = useState<RegistrationPaymentBreakdown | null>(
+    null
+  );
 
   const handleStepStatesChange = useCallback((next: RegistrationStepState[]) => {
     setSteps(next);
   }, []);
 
+  const handlePaymentBreakdownChange = useCallback(
+    (next: RegistrationPaymentBreakdown | null) => {
+      setPaymentBreakdown(next);
+    },
+    []
+  );
+
+  const handleClose = useCallback(() => {
+    setSteps(INITIAL_STEPS);
+    setPaymentBreakdown(null);
+    onClose();
+  }, [onClose]);
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       size="large"
       hideHeader
       containScroll
@@ -50,7 +69,7 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="registration-modal-close registration-modal-close-light"
               aria-label="Close"
             >
@@ -63,14 +82,19 @@ export function RegistrationModal({ open, onClose, eventId = null }: Registratio
           <div className="registration-modal-form">
             <RegistrationForm
               eventId={eventId}
-              onCompleted={onClose}
-              onBack={onClose}
+              onCompleted={handleClose}
+              onBack={handleClose}
               onStepStatesChange={handleStepStatesChange}
+              onPaymentBreakdownChange={handlePaymentBreakdownChange}
             />
           </div>
         </div>
 
-        <RegistrationSidebar eventId={eventId} showPaymentQr={false} />
+        <RegistrationSidebar
+          eventId={eventId}
+          showPaymentQr={false}
+          paymentBreakdown={paymentBreakdown}
+        />
       </div>
     </Modal>
   );

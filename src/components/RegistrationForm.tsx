@@ -40,6 +40,7 @@ import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect } from "@/components/ui/PnaSelect";
 import { PhLocationSuggest } from "@/components/PhLocationSuggest";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
+import type { RegistrationPaymentBreakdown } from "@/components/RegistrationSidebar";
 import type { PhPlaceSuggestion } from "@/lib/ph-locations";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import {
@@ -206,12 +207,14 @@ export function RegistrationForm({
   onCompleted,
   onBack,
   onStepStatesChange,
+  onPaymentBreakdownChange,
   className = "",
   eventId = null,
 }: {
   onCompleted?: () => void;
   onBack?: () => void;
   onStepStatesChange?: (steps: RegistrationStepState[]) => void;
+  onPaymentBreakdownChange?: (breakdown: RegistrationPaymentBreakdown | null) => void;
   className?: string;
   eventId?: string | null;
 } = {}) {
@@ -342,6 +345,37 @@ export function RegistrationForm({
       buildStepStates(formData, touched, receiptFile, Boolean(errors.receipt), formPhase)
     );
   }, [formData, touched, receiptFile, errors.receipt, formPhase, onStepStatesChange]);
+
+  useEffect(() => {
+    if (!onPaymentBreakdownChange) return;
+
+    if (
+      formPhase !== "payment" ||
+      !formData.category ||
+      !formData.feeTier ||
+      !(formData.category in conference.registration.fees)
+    ) {
+      onPaymentBreakdownChange(null);
+      return;
+    }
+
+    const category = formData.category as RegistrationCategory;
+    onPaymentBreakdownChange({
+      categoryLabel: conference.registration.fees[category].label,
+      feeTierLabel: formData.feeTier === "regular" ? "Regular" : "Early Bird",
+      unitFee,
+      headcount,
+      totalFee,
+    });
+  }, [
+    formPhase,
+    formData.category,
+    formData.feeTier,
+    unitFee,
+    headcount,
+    totalFee,
+    onPaymentBreakdownChange,
+  ]);
 
   function getMemberFieldError(
     member: GroupMemberDraft,
@@ -1175,16 +1209,28 @@ export function RegistrationForm({
           (Certificate of Creditable Tax Withheld at Source).
         </p>
 
-        {registrationMode === "group" && formData.category && formData.feeTier ? (
+        {formData.category && formData.feeTier ? (
           <div className="registration-group-total mb-4">
+            <div className="registration-group-total-row">
+              <span>Category</span>
+              <strong>
+                {conference.registration.fees[formData.category as RegistrationCategory].label}
+              </strong>
+            </div>
+            <div className="registration-group-total-row">
+              <span>Rate</span>
+              <strong>{formData.feeTier === "regular" ? "Regular" : "Early Bird"}</strong>
+            </div>
             <div className="registration-group-total-row">
               <span>Fee per person</span>
               <strong>{formatPeso(unitFee)}</strong>
             </div>
-            <div className="registration-group-total-row">
-              <span>Participants</span>
-              <strong>{headcount}</strong>
-            </div>
+            {registrationMode === "group" ? (
+              <div className="registration-group-total-row">
+                <span>Participants</span>
+                <strong>{headcount}</strong>
+              </div>
+            ) : null}
             <div className="registration-group-total-row is-total">
               <span>Total due</span>
               <strong>{formatPeso(totalFee)}</strong>
