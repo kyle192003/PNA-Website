@@ -1,23 +1,12 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import type {
   ContactInquiry,
   ContactInquiryInput,
   InquiryStatus,
 } from "@/lib/types/admin";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "inquiries.json");
-
-async function ensureDataFile(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    await fs.access(DATA_FILE);
-  } catch {
-    await fs.writeFile(DATA_FILE, JSON.stringify([], null, 2), "utf-8");
-  }
-}
+const INQUIRIES_FILENAME = "inquiries.json";
 
 function normalizeInquiry(raw: ContactInquiry): ContactInquiry {
   const createdAt = raw.createdAt ?? new Date().toISOString();
@@ -31,15 +20,12 @@ function normalizeInquiry(raw: ContactInquiry): ContactInquiry {
 }
 
 async function readInquiries(): Promise<ContactInquiry[]> {
-  await ensureDataFile();
-  const content = await fs.readFile(DATA_FILE, "utf-8");
-  const parsed = JSON.parse(content) as ContactInquiry[];
+  const parsed = await readJsonDocument<ContactInquiry[]>(INQUIRIES_FILENAME, []);
   return parsed.map(normalizeInquiry);
 }
 
 async function writeInquiries(inquiries: ContactInquiry[]): Promise<void> {
-  await ensureDataFile();
-  await fs.writeFile(DATA_FILE, JSON.stringify(inquiries, null, 2), "utf-8");
+  await writeJsonDocument(INQUIRIES_FILENAME, inquiries);
 }
 
 export async function createInquiry(input: ContactInquiryInput): Promise<ContactInquiry> {

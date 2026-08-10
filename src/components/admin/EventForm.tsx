@@ -130,34 +130,40 @@ export function EventForm({
   function buildPayload(form: HTMLFormElement) {
     const formData = new FormData(form);
     const nextStatus = formData.get("status") as EventStatus;
-    const mode = fees.earlyBird.mode === "dates" ? "dates" : "slots";
     const windowEnd =
       fees.earlyBird.windowEnd?.trim() ||
       parseLooseDateToIso(earlyBirdDeadline) ||
       undefined;
-    const nextFees =
-      mode === "dates"
-        ? {
-            ...fees,
-            earlyBird: {
-              ...fees.earlyBird,
-              mode,
-              windowStart: fees.earlyBird.windowStart,
-              windowEnd,
-              caption:
-                fees.earlyBird.windowStart && windowEnd
-                  ? formatDateRangeDisplay(fees.earlyBird.windowStart, windowEnd)
-                  : fees.earlyBird.caption,
-            },
-          }
-        : {
-            ...fees,
-            earlyBird: {
-              ...fees.earlyBird,
-              mode: "slots" as const,
-              caption: `First ${fees.earlyBird.cap ?? 500} registrants only`,
-            },
-          };
+    const cap = fees.earlyBird.cap ?? 500;
+    const earlyAmount = fees.earlyBird.amount;
+    const nextFees = {
+      ...fees,
+      earlyBird: {
+        ...fees.earlyBird,
+        mode: "slots" as const,
+        cap,
+        windowStart: fees.earlyBird.windowStart,
+        windowEnd,
+        caption:
+          fees.earlyBird.windowStart && windowEnd
+            ? `First ${cap} registrants within ${formatDateRangeDisplay(
+                fees.earlyBird.windowStart,
+                windowEnd
+              )} (whichever ends first)`
+            : windowEnd
+              ? `First ${cap} registrants, or until ${formatLongDate(windowEnd)} (whichever comes first)`
+              : `First ${cap} registrants only`,
+      },
+      seniorPwd: {
+        ...fees.seniorPwd,
+        amount: earlyAmount,
+        caption: "Same as early bird — available after early bird ends",
+      },
+      regular: {
+        ...fees.regular,
+        caption: "Applies after early bird slots fill or the early bird period ends",
+      },
+    };
 
     return {
       title: formData.get("title"),
@@ -167,8 +173,7 @@ export function EventForm({
       venueName: formData.get("venueName"),
       venueAddress: formData.get("venueAddress"),
       venueMapsUrl: String(formData.get("venueMapsUrl") ?? "").trim() || null,
-      earlyBirdDeadline:
-        mode === "dates" && windowEnd ? formatLongDate(windowEnd) : earlyBirdDeadline,
+      earlyBirdDeadline: windowEnd ? formatLongDate(windowEnd) : earlyBirdDeadline,
       regularDeadline,
       status: nextStatus,
       featuredOnHomepage:
@@ -188,17 +193,16 @@ export function EventForm({
       return;
     }
 
-    if ((fees.earlyBird.mode ?? "slots") === "dates") {
-      const start = fees.earlyBird.windowStart?.trim() ?? "";
-      const end = fees.earlyBird.windowEnd?.trim() ?? parseLooseDateToIso(earlyBirdDeadline) ?? "";
-      if (!start || !end) {
-        setError("Please set both the early bird window start and end dates.");
-        return;
-      }
-      if (end < start) {
-        setError("Early bird window end must be on or after the start date.");
-        return;
-      }
+    const windowStart = fees.earlyBird.windowStart?.trim() ?? "";
+    const windowEnd =
+      fees.earlyBird.windowEnd?.trim() || parseLooseDateToIso(earlyBirdDeadline) || "";
+    if (!windowEnd) {
+      setError("Please set the early bird end date (and optionally a start date).");
+      return;
+    }
+    if (windowStart && windowEnd < windowStart) {
+      setError("Early bird window end must be on or after the start date.");
+      return;
     }
 
     const payload = buildPayload(form);
@@ -352,106 +356,58 @@ export function EventForm({
           </div>
 
           <div className="col-12">
-            <p className="admin-label mb-2">Early bird eligibility</p>
-            <div className="admin-early-bird-mode" role="group" aria-label="Early bird mode">
-              <button
-                type="button"
-                className={`admin-early-bird-mode-btn${
-                  (fees.earlyBird.mode ?? "slots") === "slots" ? " is-selected" : ""
-                }`}
-                onClick={() =>
-                  setFees((prev) => ({
-                    ...prev,
-                    earlyBird: { ...prev.earlyBird, mode: "slots" },
-                  }))
-                }
-                disabled={loading}
-              >
-                Slot limit (first N)
-              </button>
-              <button
-                type="button"
-                className={`admin-early-bird-mode-btn${
-                  fees.earlyBird.mode === "dates" ? " is-selected" : ""
-                }`}
-                onClick={() =>
-                  setFees((prev) => ({
-                    ...prev,
-                    earlyBird: { ...prev.earlyBird, mode: "dates" },
-                  }))
-                }
-                disabled={loading}
-              >
-                Date range
-              </button>
-            </div>
-            <p className="admin-field-help mb-0">
-              {(fees.earlyBird.mode ?? "slots") === "slots"
-                ? "Early bird applies to the first N paid/registered applicants, regardless of calendar date."
-                : "Early bird applies only while today falls within the inclusive date window below."}
+            <p className="admin-label mb-2">Early bird rules</p>
+            <p className="admin-field-help mb-3">
+              Early bird applies to the first N registrants <strong>and</strong> only while the date
+              window is open. If the window ends with unused slots, pricing still switches to
+              regular. Senior Citizen/PWD is hidden during early bird and uses the same amount as
+              early bird after it ends.
             </p>
           </div>
 
-          {(fees.earlyBird.mode ?? "slots") === "slots" ? (
-            <div className="col-md-6">
-              <AdminDateInput
-                id="earlyBirdDeadline"
-                name="earlyBirdDeadline"
-                label="Early Bird Deadline (display)"
-                value={earlyBirdDeadline}
-                onChange={setEarlyBirdDeadline}
-                disabled={loading}
-                helpText="Shown on the public site. Slot eligibility still uses the cap below."
-              />
-            </div>
-          ) : (
-            <>
-              <div className="col-md-6">
-                <AdminDateInput
-                  id="earlyBirdWindowStart"
-                  name="earlyBirdWindowStart"
-                  label="Early Bird Window Start"
-                  value={
-                    fees.earlyBird.windowStart
-                      ? formatLongDate(fees.earlyBird.windowStart)
-                      : ""
-                  }
-                  onChange={(display) => {
-                    const iso = parseLooseDateToIso(display) ?? "";
-                    setFees((prev) => ({
-                      ...prev,
-                      earlyBird: { ...prev.earlyBird, windowStart: iso || undefined },
-                    }));
-                  }}
-                  disabled={loading}
-                  required
-                />
-              </div>
-              <div className="col-md-6">
-                <AdminDateInput
-                  id="earlyBirdWindowEnd"
-                  name="earlyBirdWindowEnd"
-                  label="Early Bird Window End"
-                  value={
-                    fees.earlyBird.windowEnd
-                      ? formatLongDate(fees.earlyBird.windowEnd)
-                      : earlyBirdDeadline
-                  }
-                  onChange={(display) => {
-                    const iso = parseLooseDateToIso(display) ?? "";
-                    setFees((prev) => ({
-                      ...prev,
-                      earlyBird: { ...prev.earlyBird, windowEnd: iso || undefined },
-                    }));
-                    if (display.trim()) setEarlyBirdDeadline(display);
-                  }}
-                  disabled={loading}
-                  required
-                  min={fees.earlyBird.windowStart}
-                />
-              </div>
-            </>
-          )}
+          <div className="col-md-6">
+            <AdminDateInput
+              id="earlyBirdWindowStart"
+              name="earlyBirdWindowStart"
+              label="Early Bird Window Start"
+              value={
+                fees.earlyBird.windowStart ? formatLongDate(fees.earlyBird.windowStart) : ""
+              }
+              onChange={(display) => {
+                const iso = parseLooseDateToIso(display) ?? "";
+                setFees((prev) => ({
+                  ...prev,
+                  earlyBird: { ...prev.earlyBird, windowStart: iso || undefined },
+                }));
+              }}
+              disabled={loading}
+              helpText="Optional. Leave blank to open early bird immediately."
+            />
+          </div>
+          <div className="col-md-6">
+            <AdminDateInput
+              id="earlyBirdWindowEnd"
+              name="earlyBirdWindowEnd"
+              label="Early Bird Window End"
+              value={
+                fees.earlyBird.windowEnd
+                  ? formatLongDate(fees.earlyBird.windowEnd)
+                  : earlyBirdDeadline
+              }
+              onChange={(display) => {
+                const iso = parseLooseDateToIso(display) ?? "";
+                setFees((prev) => ({
+                  ...prev,
+                  earlyBird: { ...prev.earlyBird, windowEnd: iso || undefined },
+                }));
+                if (display.trim()) setEarlyBirdDeadline(display);
+              }}
+              disabled={loading}
+              required
+              min={fees.earlyBird.windowStart}
+              helpText="Required. Early bird closes on this date even if slots remain."
+            />
+          </div>
 
           <div className="col-md-6">
             <AdminDateInput
@@ -478,46 +434,37 @@ export function EventForm({
                   step={1}
                   className="admin-input"
                   value={fees.earlyBird.amount}
+                  onChange={(e) => {
+                    const amount = Number(e.target.value) || 0;
+                    setFees((prev) => ({
+                      ...prev,
+                      earlyBird: { ...prev.earlyBird, amount },
+                      seniorPwd: { ...prev.seniorPwd, amount },
+                    }));
+                  }}
+                  disabled={loading}
+                />
+                <label className="admin-label mt-2" htmlFor="feeEarlyBirdCap">
+                  Early Bird cap (first N)
+                </label>
+                <input
+                  id="feeEarlyBirdCap"
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="admin-input"
+                  value={fees.earlyBird.cap ?? 500}
                   onChange={(e) =>
                     setFees((prev) => ({
                       ...prev,
                       earlyBird: {
                         ...prev.earlyBird,
-                        amount: Number(e.target.value) || 0,
+                        cap: Number(e.target.value) || 500,
                       },
                     }))
                   }
                   disabled={loading}
                 />
-                {(fees.earlyBird.mode ?? "slots") === "slots" ? (
-                  <>
-                    <label className="admin-label mt-2" htmlFor="feeEarlyBirdCap">
-                      Early Bird cap (first N)
-                    </label>
-                    <input
-                      id="feeEarlyBirdCap"
-                      type="number"
-                      min={1}
-                      step={1}
-                      className="admin-input"
-                      value={fees.earlyBird.cap ?? 500}
-                      onChange={(e) =>
-                        setFees((prev) => ({
-                          ...prev,
-                          earlyBird: {
-                            ...prev.earlyBird,
-                            cap: Number(e.target.value) || 500,
-                          },
-                        }))
-                      }
-                      disabled={loading}
-                    />
-                  </>
-                ) : (
-                  <p className="admin-field-help mt-2 mb-0">
-                    Cap is not used in date-range mode. Eligibility follows the window above.
-                  </p>
-                )}
               </div>
               <div className="col-md-4">
                 <label className="admin-label" htmlFor="feeRegular">
@@ -552,18 +499,13 @@ export function EventForm({
                   min={0}
                   step={1}
                   className="admin-input"
-                  value={fees.seniorPwd.amount}
-                  onChange={(e) =>
-                    setFees((prev) => ({
-                      ...prev,
-                      seniorPwd: {
-                        ...prev.seniorPwd,
-                        amount: Number(e.target.value) || 0,
-                      },
-                    }))
-                  }
+                  value={fees.earlyBird.amount}
+                  readOnly
                   disabled={loading}
                 />
+                <p className="admin-field-help mt-2 mb-0">
+                  Matches early bird. Shown only after early bird ends.
+                </p>
               </div>
             </div>
             <p className="admin-field-help">

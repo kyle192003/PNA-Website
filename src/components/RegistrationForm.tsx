@@ -605,11 +605,12 @@ export function RegistrationForm({
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
 
   const [earlyBird, setEarlyBird] = useState<{
-    mode: "slots" | "dates";
+    mode: string;
     used: number;
     cap: number | null;
     remaining: number | null;
     available: boolean;
+    seniorPwdAvailable: boolean;
     caption: string;
     earlyBirdAmount: number;
     regularAmount: number;
@@ -641,14 +642,35 @@ export function RegistrationForm({
   const fallbackFees = conference.registration.fees;
   const earlyBirdAmount = earlyBird?.earlyBirdAmount ?? fallbackFees.earlyBird.amount;
   const regularAmount = earlyBird?.regularAmount ?? fallbackFees.regular.amount;
-  const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? fallbackFees.seniorPwd.amount;
+  /** Senior/PWD mirrors early bird amount and is only offered after early bird ends. */
+  const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? earlyBirdAmount;
   const earlyBirdAvailable =
     earlyBird?.available ??
     (typeof earlyBird?.remaining === "number" ? earlyBird.remaining > 0 : true);
+  const seniorPwdAvailable = earlyBird?.seniorPwdAvailable ?? !earlyBirdAvailable;
+  const rateOptions = (
+    seniorPwdAvailable ? (["regular", "seniorPwd"] as const) : (["regular"] as const)
+  );
+
+  useEffect(() => {
+    if (!earlyBirdAvailable) return;
+    setFormData((prev) =>
+      prev.registrationRate === "seniorPwd"
+        ? { ...prev, registrationRate: "regular", seniorPwdIdNumber: "" }
+        : prev
+    );
+    setMembers((prev) =>
+      prev.map((member) =>
+        member.registrationRate === "seniorPwd"
+          ? { ...member, registrationRate: "regular", seniorPwdIdNumber: "" }
+          : member
+      )
+    );
+  }, [earlyBirdAvailable]);
 
   const appliedFee = useMemo(() => {
     if (!formData.registrationRate) return null;
-    if (formData.registrationRate === "seniorPwd") {
+    if (formData.registrationRate === "seniorPwd" && seniorPwdAvailable) {
       return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
     }
     if (earlyBirdAvailable) {
@@ -658,6 +680,7 @@ export function RegistrationForm({
   }, [
     formData.registrationRate,
     earlyBirdAvailable,
+    seniorPwdAvailable,
     earlyBirdAmount,
     regularAmount,
     seniorPwdAmount,
@@ -668,7 +691,9 @@ export function RegistrationForm({
     const lines: { key: string; name: string; label: string; amount: number }[] = [];
     let earlyUsed = 0;
     const slotRemaining =
-      typeof earlyBird?.remaining === "number" ? earlyBird.remaining : getEarlyBirdCap(fallbackFees);
+      typeof earlyBird?.remaining === "number"
+        ? earlyBird.remaining
+        : getEarlyBirdCap(fallbackFees);
 
     const resolveLine = (
       rate: RegistrationRateChoice | "",
@@ -676,7 +701,7 @@ export function RegistrationForm({
       key: string
     ) => {
       if (!rate) return;
-      if (rate === "seniorPwd") {
+      if (rate === "seniorPwd" && seniorPwdAvailable) {
         lines.push({
           key,
           name,
@@ -686,20 +711,17 @@ export function RegistrationForm({
         return;
       }
 
-      const mode = earlyBird?.mode ?? "slots";
-      const qualifies =
-        mode === "dates"
-          ? earlyBirdAvailable
-          : slotRemaining - earlyUsed > 0;
+      const qualifiesForEarlyBird =
+        earlyBirdAvailable && slotRemaining - earlyUsed > 0;
 
-      if (qualifies) {
+      if (qualifiesForEarlyBird) {
         lines.push({
           key,
           name,
           label: fallbackFees.earlyBird.label,
           amount: earlyBirdAmount,
         });
-        if (mode === "slots") earlyUsed += 1;
+        earlyUsed += 1;
         return;
       }
 
@@ -734,7 +756,7 @@ export function RegistrationForm({
     formData.registrationMode,
     members,
     earlyBirdAvailable,
-    earlyBird?.mode,
+    seniorPwdAvailable,
     earlyBird?.remaining,
     earlyBirdAmount,
     regularAmount,
@@ -1847,8 +1869,18 @@ export function RegistrationForm({
                 <p className="form-label registration-form-label mb-2">
                   Registration rate <span className="text-accent">*</span>
                 </p>
+                {earlyBirdAvailable ? (
+                  <p className="registration-form-help mb-2">
+                    Early bird is open. Senior Citizen/PWD pricing opens after early bird ends
+                    (same amount as early bird).
+                  </p>
+                ) : (
+                  <p className="registration-form-help mb-2">
+                    Early bird has ended. Senior Citizen/PWD is available at the early bird amount.
+                  </p>
+                )}
                 <div className="registration-fee-choice-grid">
-                  {(["regular", "seniorPwd"] as const).map((rate) => {
+                  {rateOptions.map((rate) => {
                     const amount =
                       rate === "seniorPwd"
                         ? seniorPwdAmount
@@ -1863,7 +1895,7 @@ export function RegistrationForm({
                           : "Regular";
                     const meta =
                       rate === "seniorPwd"
-                        ? "Valid Senior Citizen or PWD ID required"
+                        ? "Same as early bird amount — valid Senior Citizen or PWD ID required"
                         : earlyBird?.caption ||
                           (earlyBirdAvailable
                             ? "Early bird rate currently available"
@@ -1959,8 +1991,10 @@ export function RegistrationForm({
                   <p className="registration-form-help mb-3">
                     Add each attendee sharing one deposit slip. Maximum {MAX_GROUP_SIZE} people
                     including Participant 1. One submission creates a registration for every
-                    participant; one payment and one receipt cover the whole group. Each person
-                    chooses Regular or Senior Citizen/PWD for their own fee.
+                    participant; one payment and one receipt cover the whole group.
+                    {earlyBirdAvailable
+                      ? " During early bird, Senior Citizen/PWD is not offered yet."
+                      : " Each person can choose Regular or Senior Citizen/PWD."}
                   </p>
                   {errors.members ? (
                     <p className="mb-3 text-xs text-red-500">{errors.members}</p>
@@ -2073,7 +2107,7 @@ export function RegistrationForm({
                               Registration rate <span className="text-accent">*</span>
                             </p>
                             <div className="registration-fee-choice-grid">
-                              {(["regular", "seniorPwd"] as const).map((rate) => {
+                              {rateOptions.map((rate) => {
                                 const amount =
                                   rate === "seniorPwd"
                                     ? seniorPwdAmount
@@ -2088,7 +2122,7 @@ export function RegistrationForm({
                                       : "Regular";
                                 const meta =
                                   rate === "seniorPwd"
-                                    ? "Valid Senior Citizen or PWD ID required"
+                                    ? "Same as early bird amount — valid Senior Citizen or PWD ID required"
                                     : earlyBird?.caption ||
                                       (earlyBirdAvailable
                                         ? "Early bird rate currently available"

@@ -234,11 +234,12 @@ export async function submitRegistrationDocuments(options: {
 }
 
 export async function fetchEarlyBirdStatus(eventId?: string | null): Promise<{
-  mode: "slots" | "dates";
+  mode: string;
   used: number;
   cap: number | null;
   remaining: number | null;
   available: boolean;
+  seniorPwdAvailable: boolean;
   windowStart: string | null;
   windowEnd: string | null;
   caption: string;

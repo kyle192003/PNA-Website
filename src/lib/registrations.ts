@@ -1,9 +1,8 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { randomBytes } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import type { RegistrationCategory } from "@/lib/conference";
 import { getEventById } from "@/lib/events";
+import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import {
   resolveAppliedFee,
   type FeeTier,
@@ -26,19 +25,9 @@ import type {
   SponsorConsent,
 } from "@/lib/types/admin";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "registrations.json");
+const REGISTRATIONS_FILENAME = "registrations.json";
 
 export { MAX_GROUP_SIZE };
-
-async function ensureDataFile(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    await fs.access(DATA_FILE);
-  } catch {
-    await fs.writeFile(DATA_FILE, JSON.stringify([], null, 2), "utf-8");
-  }
-}
 
 function createCheckInToken(): string {
   return randomBytes(24).toString("base64url");
@@ -194,9 +183,7 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
 }
 
 async function readRegistrations(): Promise<RegistrationRecord[]> {
-  await ensureDataFile();
-  const content = await fs.readFile(DATA_FILE, "utf-8");
-  const parsed = JSON.parse(content) as RegistrationRecord[];
+  const parsed = await readJsonDocument<RegistrationRecord[]>(REGISTRATIONS_FILENAME, []);
   const usedTokens = new Set<string>();
   let needsPersist = false;
 
@@ -225,8 +212,7 @@ async function readRegistrations(): Promise<RegistrationRecord[]> {
 }
 
 async function writeRegistrations(registrations: RegistrationRecord[]): Promise<void> {
-  await ensureDataFile();
-  await fs.writeFile(DATA_FILE, JSON.stringify(registrations, null, 2), "utf-8");
+  await writeJsonDocument(REGISTRATIONS_FILENAME, registrations);
 }
 
 function generateReferenceNumber(existing: RegistrationRecord[]): string {
@@ -787,10 +773,12 @@ export async function markPromotionSent(
 
 /** Persist any lazily backfilled check-in tokens (for legacy records). */
 export async function persistNormalizedRegistrations(): Promise<number> {
-  const before = await fs.readFile(DATA_FILE, "utf-8").catch(() => "[]");
+  const before = JSON.stringify(
+    await readJsonDocument<RegistrationRecord[]>(REGISTRATIONS_FILENAME, [])
+  );
   const registrations = await readRegistrations();
   await writeRegistrations(registrations);
-  const after = JSON.stringify(registrations, null, 2);
+  const after = JSON.stringify(registrations);
   return before === after ? 0 : registrations.length;
 }
 

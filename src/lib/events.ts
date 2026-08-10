@@ -1,8 +1,7 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { conference } from "@/lib/conference";
 import { generateAndSaveRegistrationQr } from "@/lib/registration-qr";
+import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import { normalizeEventFees } from "@/lib/registration-fees";
 import type {
   ConferenceEvent,
@@ -15,19 +14,9 @@ import type {
 } from "@/lib/types/admin";
 import { getDefaultEventFees } from "@/lib/types/admin";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const EVENTS_FILE = path.join(DATA_DIR, "events.json");
+const EVENTS_FILENAME = "events.json";
 
 const defaultFees = getDefaultEventFees();
-
-async function ensureEventsFile(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    await fs.access(EVENTS_FILE);
-  } catch {
-    await fs.writeFile(EVENTS_FILE, JSON.stringify([], null, 2), "utf-8");
-  }
-}
 
 function resolveStatus(
   event: Partial<ConferenceEvent> & { isActive?: boolean; status?: EventStatus }
@@ -112,11 +101,9 @@ function sortPublicEvents(a: PublicEvent, b: PublicEvent): number {
 }
 
 async function readEvents(): Promise<ConferenceEvent[]> {
-  await ensureEventsFile();
-  const content = await fs.readFile(EVENTS_FILE, "utf-8");
-  const parsed = JSON.parse(content) as Array<
-    ConferenceEvent & { highlightQrOnHomepage?: boolean }
-  >;
+  const parsed = await readJsonDocument<
+    Array<ConferenceEvent & { highlightQrOnHomepage?: boolean }>
+  >(EVENTS_FILENAME, []);
   const events = parsed.map(normalizeEvent);
 
   if (enforceSingleFeaturedEvent(events)) {
@@ -127,9 +114,8 @@ async function readEvents(): Promise<ConferenceEvent[]> {
 }
 
 async function writeEvents(events: ConferenceEvent[]): Promise<void> {
-  await ensureEventsFile();
   enforceSingleFeaturedEvent(events);
-  await fs.writeFile(EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
+  await writeJsonDocument(EVENTS_FILENAME, events);
 }
 
 function normalizeInputStatus(input: Partial<EventInput>): EventStatus {

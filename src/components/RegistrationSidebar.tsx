@@ -112,9 +112,8 @@ export function RegistrationSidebar({
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
               <p className="registration-sidebar-fee-caption mb-1">
-                {fees.earlyBird.mode === "dates"
-                  ? "Applies after the early bird date window ends"
-                  : fees.regular.caption ?? "Will open after the early bird is filled"}
+                {fees.regular.caption ??
+                  "Applies after early bird slots fill or the early bird period ends"}
               </p>
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.regular.amount)}
@@ -123,10 +122,10 @@ export function RegistrationSidebar({
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
               <p className="registration-sidebar-fee-caption mb-1">
-                {fees.seniorPwd.caption ?? "With valid Senior Citizen or PWD ID"}
+                Same as early bird — available only after early bird ends
               </p>
               <strong className="registration-sidebar-fee-amount">
-                {formatPeso(fees.seniorPwd.amount)}
+                {formatPeso(fees.earlyBird.amount)}
               </strong>
             </div>
             <p className="registration-sidebar-card-copy mt-3 mb-0">

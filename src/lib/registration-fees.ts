@@ -133,23 +133,27 @@ export function getEarlyBirdCaption(
   fees: EventFees,
   event?: Pick<ConferenceEvent, "earlyBirdDeadline"> | null
 ): string {
-  if (getEarlyBirdMode(fees) === "dates") {
-    const start = getEarlyBirdWindowStart(fees);
-    const end = getEarlyBirdWindowEnd(fees, event);
-    if (start && end) return formatDateRangeDisplay(start, end);
-    if (end) return `Until ${formatLongDate(end)}`;
-    if (start) return `From ${formatLongDate(start)}`;
-    return "Limited-time early bird window";
-  }
+  const cap = getEarlyBirdCap(fees);
+  const start = getEarlyBirdWindowStart(fees);
+  const end = getEarlyBirdWindowEnd(fees, event);
 
+  if (start && end) {
+    return `First ${cap} registrants within ${formatDateRangeDisplay(start, end)} (whichever ends first)`;
+  }
+  if (end) {
+    return `First ${cap} registrants, or until ${formatLongDate(end)} (whichever comes first)`;
+  }
   if (fees.earlyBird.caption?.trim()) return fees.earlyBird.caption.trim();
-  return `First ${getEarlyBirdCap(fees)} registrants only`;
+  return `First ${cap} registrants only`;
 }
 
 /**
- * Whether early bird pricing is currently available.
- * - slots: used count is under the configured cap
- * - dates: today's Asia/Manila date is within the inclusive window
+ * Early bird is available only while BOTH are true:
+ * - slots remain under the configured cap (e.g. first 500)
+ * - today is still within the early bird date window (if configured)
+ *
+ * If the date window ends with unused slots, early bird still closes.
+ * If slots fill before the window ends, early bird also closes.
  */
 export function isEarlyBirdAvailable(
   fees: EventFees,
@@ -157,23 +161,25 @@ export function isEarlyBirdAvailable(
   event?: Pick<ConferenceEvent, "earlyBirdDeadline"> | null,
   todayIso: string = todayIsoInTimeZone()
 ): boolean {
-  if (getEarlyBirdMode(fees) === "dates") {
-    const start = getEarlyBirdWindowStart(fees);
-    const end = getEarlyBirdWindowEnd(fees, event);
-    if (!end && !start) return false;
-    if (start && todayIso < start) return false;
-    if (end && todayIso > end) return false;
-    return true;
-  }
+  if (earlyBirdUsedCount >= getEarlyBirdCap(fees)) return false;
 
-  return earlyBirdUsedCount < getEarlyBirdCap(fees);
+  const start = getEarlyBirdWindowStart(fees);
+  const end = getEarlyBirdWindowEnd(fees, event);
+  if (start && todayIso < start) return false;
+  if (end && todayIso > end) return false;
+
+  return true;
+}
+
+/** Senior/PWD always mirrors the early bird amount. */
+export function getSeniorPwdAmount(fees: EventFees): number {
+  return fees.earlyBird.amount;
 }
 
 /**
  * Resolve what the participant will be charged.
- * - seniorPwd → seniorPwd amount
- * - regular + early bird available → earlyBird
- * - regular otherwise → regular
+ * - During early bird: regular choice → earlyBird (Senior/PWD is not offered)
+ * - After early bird: regular → regular; seniorPwd → early bird amount
  */
 export function resolveAppliedFee(
   rateChoice: RegistrationRateChoice,
@@ -181,16 +187,25 @@ export function resolveAppliedFee(
   event?: Pick<ConferenceEvent, "fees" | "earlyBirdDeadline"> | null
 ): { key: AppliedFeeKey; amount: number; label: string } {
   const fees = getFeesForEvent(event);
+  const earlyBirdOpen = isEarlyBirdAvailable(fees, earlyBirdUsedCount, event);
 
   if (rateChoice === "seniorPwd") {
+    // Defensive: if submitted during early bird, charge early bird as a standard registration.
+    if (earlyBirdOpen) {
+      return {
+        key: "earlyBird",
+        amount: fees.earlyBird.amount,
+        label: fees.earlyBird.label,
+      };
+    }
     return {
       key: "seniorPwd",
-      amount: fees.seniorPwd.amount,
+      amount: getSeniorPwdAmount(fees),
       label: fees.seniorPwd.label,
     };
   }
 
-  if (isEarlyBirdAvailable(fees, earlyBirdUsedCount, event)) {
+  if (earlyBirdOpen) {
     return {
       key: "earlyBird",
       amount: fees.earlyBird.amount,

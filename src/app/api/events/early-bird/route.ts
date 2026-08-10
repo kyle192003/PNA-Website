@@ -4,10 +4,10 @@ import { countEarlyBirdUsed } from "@/lib/registrations";
 import {
   getEarlyBirdCap,
   getEarlyBirdCaption,
-  getEarlyBirdMode,
   getEarlyBirdWindowEnd,
   getEarlyBirdWindowStart,
   getFeesForEvent,
+  getSeniorPwdAmount,
   isEarlyBirdAvailable,
 } from "@/lib/registration-fees";
 
@@ -17,23 +17,24 @@ export async function GET(request: Request) {
   const event = eventId ? await getEventById(eventId) : await getActiveEvent();
   const fees = getFeesForEvent(event);
   const used = await countEarlyBirdUsed(event?.id ?? null);
-  const mode = getEarlyBirdMode(fees);
   const cap = getEarlyBirdCap(fees);
   const available = isEarlyBirdAvailable(fees, used, event);
-  const remaining =
-    mode === "slots" ? Math.max(0, cap - used) : available ? Number.POSITIVE_INFINITY : 0;
+  const remaining = Math.max(0, cap - used);
 
   return NextResponse.json({
-    mode,
+    /** Combined slots + date window (legacy field kept for clients). */
+    mode: "slots_and_dates",
     used,
-    cap: mode === "slots" ? cap : null,
-    remaining: Number.isFinite(remaining) ? remaining : null,
+    cap,
+    remaining,
     available,
+    /** Senior/PWD is only offered after early bird ends. */
+    seniorPwdAvailable: !available,
     windowStart: getEarlyBirdWindowStart(fees) ?? null,
     windowEnd: getEarlyBirdWindowEnd(fees, event) ?? null,
     caption: getEarlyBirdCaption(fees, event),
     earlyBirdAmount: fees.earlyBird.amount,
     regularAmount: fees.regular.amount,
-    seniorPwdAmount: fees.seniorPwd.amount,
+    seniorPwdAmount: getSeniorPwdAmount(fees),
   });
 }

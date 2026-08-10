@@ -85,21 +85,21 @@ export const conference = {
     },
     fees: {
       earlyBird: {
-        amount: 500,
+        amount: 7300,
         label: "Early Bird Rate",
-        caption: "First 500 registrants only",
+        caption: "First 500 registrants, or until the early bird deadline (whichever comes first)",
         cap: 500,
         mode: "slots",
       },
       regular: {
-        amount: 1000,
+        amount: 7800,
         label: "Regular Rate",
-        caption: "Will open after the early bird is filled",
+        caption: "Applies after early bird slots fill or the early bird period ends",
       },
       seniorPwd: {
-        amount: 700,
+        amount: 7300,
         label: "Senior Citizen/PWD Rate",
-        caption: "With valid Senior Citizen or PWD ID",
+        caption: "Same as early bird — available after early bird ends",
       },
     },
   },
