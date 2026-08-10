@@ -599,6 +599,7 @@ export function ParticipantsTable({
               receiptUrl={selected.receiptUrl}
               receiptUploadedAt={selected.receiptUploadedAt}
               referenceNumber={selected.referenceNumber}
+              paymentReference={selected.paymentReference}
             />
 
             <label className="admin-label mt-3">Admin Notes</label>

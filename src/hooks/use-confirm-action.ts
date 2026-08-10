@@ -12,6 +12,7 @@ interface ConfirmOptions {
   successTitle?: string;
   successMessage?: string;
   showSuccess?: boolean;
+  errorTitle?: string;
   onSuccessClose?: () => void;
   /** Return a string to override the success dialog message. */
   action: () => Promise<void | string>;
@@ -28,6 +29,7 @@ const initialConfirmState = {
   successTitle: "",
   successMessage: "",
   showSuccess: true,
+  errorTitle: "Something went wrong",
   action: null as (() => Promise<void | string>) | null,
 };
 
@@ -37,14 +39,22 @@ const initialSuccessState = {
   message: "",
 };
 
+const initialErrorState = {
+  open: false,
+  title: "",
+  message: "",
+};
+
 export function useConfirmAction() {
   const [confirm, setConfirm] = useState(initialConfirmState);
   const [success, setSuccess] = useState(initialSuccessState);
+  const [error, setError] = useState(initialErrorState);
   const [loading, setLoading] = useState(false);
   const onSuccessCloseRef = useRef<(() => void) | null>(null);
 
   const requestConfirm = useCallback((options: ConfirmOptions) => {
     onSuccessCloseRef.current = options.onSuccessClose ?? null;
+    setError(initialErrorState);
     setConfirm({
       open: true,
       title: options.title,
@@ -56,6 +66,7 @@ export function useConfirmAction() {
       successTitle: options.successTitle ?? "Success",
       successMessage: options.successMessage ?? "Completed successfully.",
       showSuccess: options.showSuccess !== false,
+      errorTitle: options.errorTitle ?? "Something went wrong",
       action: options.action,
     });
   }, []);
@@ -73,10 +84,14 @@ export function useConfirmAction() {
     onSuccessClose?.();
   }, []);
 
+  const dismissError = useCallback(() => {
+    setError(initialErrorState);
+  }, []);
+
   const confirmAction = useCallback(async () => {
     if (!confirm.action || loading) return;
 
-    const { action, successTitle, successMessage, showSuccess } = confirm;
+    const { action, successTitle, successMessage, showSuccess, errorTitle } = confirm;
 
     setLoading(true);
     try {
@@ -90,8 +105,16 @@ export function useConfirmAction() {
             typeof result === "string" && result.trim() ? result.trim() : successMessage,
         });
       }
-    } catch {
-      // Leave the confirm dialog open so the caller can show an inline error and retry.
+    } catch (err) {
+      setConfirm(initialConfirmState);
+      setError({
+        open: true,
+        title: errorTitle,
+        message:
+          err instanceof Error && err.message.trim()
+            ? err.message.trim()
+            : "Please try again.",
+      });
     } finally {
       setLoading(false);
     }
@@ -100,11 +123,13 @@ export function useConfirmAction() {
   return {
     confirm,
     success,
+    error,
     loading,
     loadingMessage: confirm.loadingMessage,
     requestConfirm,
     cancelConfirm,
     dismissSuccess,
+    dismissError,
     confirmAction,
   };
 }

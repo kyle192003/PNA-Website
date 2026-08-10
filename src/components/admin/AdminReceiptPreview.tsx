@@ -12,14 +12,18 @@ export function AdminReceiptPreview({
   receiptUrl,
   receiptUploadedAt,
   referenceNumber,
+  paymentReference = "",
 }: {
   registrationId: string;
   /** Legacy field — presence means a receipt exists; file is served via admin API. */
   receiptUrl: string | null;
   receiptUploadedAt?: string | null;
   referenceNumber: string;
+  /** Transfer / transaction reference confirmed by the participant from their receipt. */
+  paymentReference?: string;
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const paymentRef = paymentReference.trim();
 
   if (!receiptUrl) {
     return (
@@ -36,7 +40,7 @@ export function AdminReceiptPreview({
     receiptUrl.includes(".pdf") ||
     receiptUrl.endsWith(".pdf");
   const uploadedLabel = receiptUploadedAt
-    ? ` · uploaded ${new Date(receiptUploadedAt).toLocaleString()}`
+    ? `Uploaded ${new Date(receiptUploadedAt).toLocaleString()}`
     : "";
 
   return (
@@ -46,8 +50,8 @@ export function AdminReceiptPreview({
           <div>
             <p className="admin-receipt-preview-title">Proof of payment</p>
             <p className="admin-receipt-preview-meta mb-0">
-              Match reference <strong>{referenceNumber}</strong>
-              {uploadedLabel}
+              Registration <strong>{referenceNumber}</strong>
+              {uploadedLabel ? ` · ${uploadedLabel}` : ""}
             </p>
           </div>
           <button
@@ -57,6 +61,13 @@ export function AdminReceiptPreview({
           >
             Expand
           </button>
+        </div>
+
+        <div className="admin-receipt-payment-ref" role="status">
+          <span className="admin-receipt-payment-ref-label">Payment reference</span>
+          <strong className="admin-receipt-payment-ref-value">
+            {paymentRef || "Not provided"}
+          </strong>
         </div>
 
         {pdf ? (
@@ -100,8 +111,8 @@ export function AdminReceiptPreview({
         contentClassName="p-3 sm:p-4"
       >
         <p className="admin-muted small mb-3">
-          Verify that the receipt shows reference <strong>{referenceNumber}</strong> (or matching
-          payment details) before marking paid.
+          Verify that the receipt shows payment reference{" "}
+          <strong>{paymentRef || "—"}</strong> before marking paid.
         </p>
         <div className="admin-receipt-lightbox">
           {pdf ? (

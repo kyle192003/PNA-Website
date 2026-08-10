@@ -1,7 +1,7 @@
 "use client";
 
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { SuccessDialog } from "@/components/ui/SuccessDialog";
+import { MessageDialog, SuccessDialog } from "@/components/ui/MessageDialog";
 import type { useConfirmAction } from "@/hooks/use-confirm-action";
 
 type ConfirmHook = ReturnType<typeof useConfirmAction>;
@@ -10,10 +10,12 @@ export function ActionConfirmDialogs({ hook }: { hook: ConfirmHook }) {
   const {
     confirm,
     success,
+    error,
     loading,
     confirmAction,
     cancelConfirm,
     dismissSuccess,
+    dismissError,
   } = hook;
 
   return (
@@ -34,6 +36,14 @@ export function ActionConfirmDialogs({ hook }: { hook: ConfirmHook }) {
         title={success.title}
         message={success.message}
         onClose={dismissSuccess}
+      />
+      <MessageDialog
+        open={error.open}
+        title={error.title}
+        message={error.message}
+        variant="error"
+        closeLabel="Close"
+        onClose={dismissError}
       />
     </>
   );

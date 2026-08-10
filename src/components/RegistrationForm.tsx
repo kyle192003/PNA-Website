@@ -35,6 +35,7 @@ import {
   type RegistrationSuccessDetails,
 } from "@/components/RegistrationSuccessModal";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
+import { MessageDialog } from "@/components/ui/MessageDialog";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect } from "@/components/ui/PnaSelect";
@@ -238,7 +239,6 @@ export function RegistrationForm({
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [submitError, setSubmitError] = useState("");
   const [draftSavedNotice, setDraftSavedNotice] = useState(false);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
@@ -301,7 +301,6 @@ export function RegistrationForm({
     setErrors({});
     setMemberErrors({});
     setTouched({});
-    setSubmitError("");
     setFormPhase("details");
     registrationMutation.reset();
     groupRegistrationMutation.reset();
@@ -513,7 +512,6 @@ export function RegistrationForm({
 
   function handleContinueToPayment() {
     if (!validateDetails()) return;
-    setSubmitError("");
     setFormPhase("payment");
     window.requestAnimationFrame(() => {
       document.getElementById("registration-form")?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -521,7 +519,6 @@ export function RegistrationForm({
   }
 
   function handleBackFromPayment() {
-    setSubmitError("");
     setFormPhase("details");
     window.requestAnimationFrame(() => {
       document.getElementById("registration-form")?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -600,8 +597,6 @@ export function RegistrationForm({
 
     if (!validate()) return;
 
-    setSubmitError("");
-
     const isGroup = registrationMode === "group";
     requestConfirm({
       title: isGroup ? "Submit group registration?" : "Submit registration?",
@@ -610,13 +605,13 @@ export function RegistrationForm({
         : "Are you sure you want to submit your official registration? Please confirm your details are correct before continuing.",
       confirmLabel: isGroup ? "Submit group registration" : "Submit registration",
       loadingMessage: "Submitting registration and uploading receipt...",
+      errorTitle: "Registration could not be submitted",
       showSuccess: false,
       action: async () => {
         try {
           const phone = toPhMobileInternational(formData.phone);
           if (!phone) {
-            setSubmitError("Enter a valid mobile number starting with 9 (e.g. 9606207919).");
-            return;
+            throw new Error("Enter a valid mobile number starting with 9 (e.g. 9606207919).");
           }
 
           let details: RegistrationSuccessDetails;
@@ -736,8 +731,9 @@ export function RegistrationForm({
           setMemberErrors({});
           setFormPhase("details");
         } catch (error) {
-          setSubmitError(error instanceof Error ? error.message : "Registration failed.");
-          throw error;
+          throw error instanceof Error
+            ? error
+            : new Error("Registration failed. Please try again.");
         }
       },
     });
@@ -834,21 +830,14 @@ export function RegistrationForm({
       <div className="registration-form-wrap">
         <LoadingOverlay show={loading} scope="local" variant="form" />
         <ActionConfirmDialogs hook={confirmHook} />
-
-        {showDraftRestored ? (
-          <div className="registration-form-draft-banner" role="status">
-            <p className="mb-0">
-              Your previous draft was restored. You can continue where you left off.
-            </p>
-            <button
-              type="button"
-              className="registration-form-draft-banner-dismiss"
-              onClick={() => setShowDraftRestored(false)}
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
+        <MessageDialog
+          open={showDraftRestored}
+          title="Draft restored"
+          message="Your previous draft was restored. You can continue where you left off."
+          variant="info"
+          closeLabel="Continue"
+          onClose={() => setShowDraftRestored(false)}
+        />
 
         <form
           id="registration-form"
@@ -856,15 +845,6 @@ export function RegistrationForm({
           className={`registration-form ${className}`.trim()}
           noValidate
         >
-        {(registrationMutation.isError ||
-          groupRegistrationMutation.isError ||
-          submitError) && (
-          <div className="registration-form-alert rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
-            {submitError ||
-              registrationMutation.error?.message ||
-              groupRegistrationMutation.error?.message}
-          </div>
-        )}
 
       {!isPaymentPhase ? (
         <>
