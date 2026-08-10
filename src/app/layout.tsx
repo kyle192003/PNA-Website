@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
   description: `${conference.siteName}: ${conference.conferenceName}. ${conference.theme}. Official online registration for the ${conference.dates.display} conference at ${conference.venue.name}.`,
   keywords: [
-    "Philippines Nursing Association",
+    "Philippine Nurses Association, Inc.",
     "PNA",
     "National Conference",
     "Philippines",

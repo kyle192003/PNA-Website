@@ -1169,7 +1169,10 @@ export function RegistrationForm({
           You may also submit proof later using your reference number.
           {registrationMode === "group"
             ? " One payment and one receipt cover the whole group."
-            : ""}
+            : ""}{" "}
+          Registration payments are subject to applicable Philippine tax documentation,
+          including BIR Form 2303 (Certificate of Registration) and BIR Form 2307
+          (Certificate of Creditable Tax Withheld at Source).
         </p>
 
         {registrationMode === "group" && formData.category && formData.feeTier ? (
@@ -1229,9 +1232,11 @@ export function RegistrationForm({
           <span className="small text-muted lh-base">
             I hereby confirm that the information provided is accurate and complete. I acknowledge the
             terms and conditions governing participation in the {conference.conferenceName}, including
-            the requirement for payment confirmation prior to the event. I consent to the processing
-            of my personal data in accordance with the Data Privacy Act of 2012 (Republic Act No.
-            10173).
+            the requirement for payment confirmation prior to the event, and compliance with applicable
+            Philippine tax documentation such as BIR Form 2303 (Certificate of Registration) and BIR
+            Form 2307 (Certificate of Creditable Tax Withheld at Source), where applicable. I consent
+            to the collection and processing of my personal data in accordance with the Data Privacy
+            Act of 2012 (Republic Act No. 10173).
           </span>
         </label>
         {errors.agreeToTerms && (

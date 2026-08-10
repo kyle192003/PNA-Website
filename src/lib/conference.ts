@@ -1,10 +1,10 @@
 export const conference = {
-  organization: "Philippines Nursing Association",
-  siteName: "Philippines Nursing Association Website",
+  organization: "Philippine Nurses Association, Inc.",
+  siteName: "Philippine Nurses Association, Inc. Website",
   shortName: "PNA",
   logo: {
     src: "/images/pna-logo.jpg",
-    alt: "Philippines Nursing Association logo",
+    alt: "Philippine Nurses Association, Inc. logo",
   },
   conferenceName: "2026 National Conference & General Assembly",
   theme:
@@ -14,7 +14,7 @@ export const conference = {
   hero: {
     headline: "Advancing Governance, Service, and National Development",
     description:
-      "The Philippines Nursing Association convenes senior government officials, institutional leaders, and sector representatives for a formal program of policy dialogue, technical exchange, and strategic collaboration at the Philippine International Convention Center.",
+      "The Philippine Nurses Association, Inc. convenes senior government officials, institutional leaders, and sector representatives for a formal program of policy dialogue, technical exchange, and strategic collaboration at the Philippine International Convention Center.",
     eventCardTitle: "National Conference & General Assembly",
     limitedSeats: "Registration Open! Limited Capacity",
     video: {
@@ -25,7 +25,7 @@ export const conference = {
   },
   about: {
     summary:
-      "The Philippines Nursing Association serves as a national forum for constructive engagement among government agencies, local government units, the private sector, and the academic community. Our annual conference provides a structured platform to address priority development concerns through evidence-based discussion and coordinated action.",
+      "The Philippine Nurses Association, Inc. serves as a national forum for constructive engagement among government agencies, local government units, the private sector, and the academic community. Our annual conference provides a structured platform to address priority development concerns through evidence-based discussion and coordinated action.",
     mission:
       "Established to promote unity, professional excellence, and accountable governance, the Association facilitates meaningful partnerships that support the nation’s development agenda and strengthen public institutions.",
   },
@@ -75,7 +75,7 @@ export const conference = {
     earlyBirdDeadline: "August 31, 2026",
     regularDeadline: "September 30, 2026",
     bankTransfer: {
-      accountName: "Philippines Nursing Association",
+      accountName: "Philippine Nurses Association, Inc.",
       accountNumber: "0012-3456-7890",
       bankName: "BDO Unibank",
     },

@@ -112,6 +112,13 @@ export function RegistrationPaymentQr({
           </button>
         </div>
       </div>
+
+      <p className="registration-payment-compliance">
+        Payments are handled in line with Philippine BIR requirements, including{" "}
+        <strong>BIR Form 2303</strong> (Certificate of Registration) and{" "}
+        <strong>BIR Form 2307</strong> (Certificate of Creditable Tax Withheld at Source),
+        where applicable.
+      </p>
     </div>
   );
 }

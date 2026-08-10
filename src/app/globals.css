@@ -1905,6 +1905,13 @@ body.pna-mobile-nav-open {
   color: #14532d;
 }
 
+.registration-payment-compliance {
+  margin: 0.85rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
 .registration-payment-toggle {
   margin-top: 0.75rem;
 }

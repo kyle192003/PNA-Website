@@ -33,7 +33,7 @@ export function Footer() {
             target="_blank"
             rel="noopener noreferrer"
             className="pna-footer-social"
-            aria-label="Philippines Nursing Association on Facebook"
+            aria-label="Philippine Nurses Association, Inc. on Facebook"
           >
             <FacebookIcon />
           </a>

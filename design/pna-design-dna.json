@@ -1,6 +1,6 @@
 {
   "meta": {
-    "brand": "Philippines Nursing Association",
+    "brand": "Philippine Nurses Association, Inc.",
     "surface": "public marketing folio",
     "source": "Existing PNA Website homepage + globals.css tokens",
     "updated": "2026-07-21"
@@ -68,7 +68,7 @@
     "composition": "brand-first hero, one job per section",
     "imagery": "real conference atmosphere photography",
     "interaction_feel": "deliberate, restrained, professional",
-    "brand_voice": "formal Philippine nursing association",
+    "brand_voice": "formal Philippine Nurses Association, Inc.",
     "ornamentation": "low",
     "whitespace": "generous but structured"
   },

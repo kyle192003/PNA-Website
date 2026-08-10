@@ -40,7 +40,7 @@ export default function AboutPage() {
               <div className="about-editorial-media-frame">
                 <Image
                   src={conference.hero.video.poster}
-                  alt="Delegates at the Philippines Nursing Association national conference"
+                  alt="Delegates at the Philippine Nurses Association, Inc. national conference"
                   fill
                   sizes="(min-width: 992px) 46vw, 100vw"
                   className="about-editorial-media-image"
