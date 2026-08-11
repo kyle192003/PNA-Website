@@ -9,6 +9,16 @@ function hasBlobToken(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
 }
 
+/** Must match the Vercel Blob store access mode (public vs private). */
+function getBlobAccess(): "public" | "private" {
+  const configured = process.env.BLOB_STORE_ACCESS?.trim().toLowerCase();
+  if (configured === "private" || configured === "public") {
+    return configured;
+  }
+  // Default public — matches typical Vercel Blob stores and uploads.ts.
+  return "public";
+}
+
 function isVercelRuntime(): boolean {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }
@@ -43,13 +53,15 @@ async function readBlobJson(filename: string): Promise<string | null> {
 
   const pathname = blobPathname(filename);
 
+  const access = getBlobAccess();
+
   try {
-    const privateBlob = await get(pathname, { access: "private" });
-    if (privateBlob?.stream) {
-      return new Response(privateBlob.stream).text();
+    const blob = await get(pathname, { access });
+    if (blob?.stream) {
+      return new Response(blob.stream).text();
     }
   } catch {
-    // Fall through to public list/fetch for legacy public blobs.
+    // Fall through to list/fetch (legacy blobs or access mismatch).
   }
 
   const result = await list({ prefix: pathname, limit: 20 });
@@ -69,7 +81,7 @@ async function writeBlobJson(filename: string, contents: string): Promise<void> 
   }
 
   await put(blobPathname(filename), contents, {
-    access: "private",
+    access: getBlobAccess(),
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
