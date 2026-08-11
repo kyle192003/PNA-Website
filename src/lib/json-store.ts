@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { get, list, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const TMP_DATA_DIR = path.join("/tmp", "pna-data");
@@ -54,6 +54,7 @@ async function readBlobJson(filename: string): Promise<string | null> {
   const pathname = blobPathname(filename);
 
   const access = getBlobAccess();
+  const fallbackAccess = access === "public" ? "private" : "public";
 
   try {
     const blob = await get(pathname, { access });
@@ -61,16 +62,19 @@ async function readBlobJson(filename: string): Promise<string | null> {
       return new Response(blob.stream).text();
     }
   } catch {
-    // Fall through to list/fetch (legacy blobs or access mismatch).
+    // Try the opposite access mode for resilience to config drift.
   }
 
-  const result = await list({ prefix: pathname, limit: 20 });
-  const match = result.blobs.find((blob) => blob.pathname === pathname);
-  if (!match) return null;
+  try {
+    const blob = await get(pathname, { access: fallbackAccess });
+    if (blob?.stream) {
+      return new Response(blob.stream).text();
+    }
+  } catch {
+    // Not found or inaccessible in both modes.
+  }
 
-  const response = await fetch(match.url, { cache: "no-store" });
-  if (!response.ok) return null;
-  return response.text();
+  return null;
 }
 
 async function writeBlobJson(filename: string, contents: string): Promise<void> {
