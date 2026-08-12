@@ -1,6 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { conference } from "@/lib/conference";
+import { getHomepageEvents } from "@/lib/events";
+import {
+  resolveEventVenueDisplay,
+  resolveRegistrationDeadlineDisplay,
+} from "@/lib/event-utils";
 
 const footerBottomLinks = [
   { href: "/events", label: "Events" },
@@ -8,8 +13,11 @@ const footerBottomLinks = [
   { href: "/contact", label: "Contact" },
 ] as const;
 
-export function Footer() {
+export async function Footer() {
   const currentYear = new Date().getFullYear();
+  const { featured } = await getHomepageEvents();
+  const venue = resolveEventVenueDisplay(featured);
+  const registrationCloses = resolveRegistrationDeadlineDisplay(featured);
 
   return (
     <footer className="pna-footer">
@@ -45,11 +53,15 @@ export function Footer() {
           <div className="pna-footer-column">
             <h3 className="pna-footer-heading">Secretariat</h3>
             <address className="pna-footer-address">
-              {conference.venue.name}
+              {venue.name}
               <br />
-              {conference.venue.address}
-              <br />
-              {conference.venue.city}
+              {venue.address}
+              {venue.city ? (
+                <>
+                  <br />
+                  {venue.city}
+                </>
+              ) : null}
             </address>
             <a href={`mailto:${conference.contact.email}`} className="pna-footer-inline-link">
               {conference.contact.email}
@@ -81,7 +93,7 @@ export function Footer() {
                 ))}
               </ul>
               <p className="pna-footer-meta mb-0">
-                Registration closes {conference.registration.registrationClosesAt}
+                Registration closes {registrationCloses}
               </p>
             </div>
           </div>

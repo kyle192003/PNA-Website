@@ -3,12 +3,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { RegisterButton } from "@/components/RegisterButton";
 import { conference, objectives, attendees } from "@/lib/conference";
+import { getHomepageEvents } from "@/lib/events";
+import { resolveEventVenueDisplay } from "@/lib/event-utils";
 
 export const metadata: Metadata = {
   title: "About",
 };
 
-export default function AboutPage() {
+export const dynamic = "force-dynamic";
+
+export default async function AboutPage() {
+  const { featured } = await getHomepageEvents();
+  const venue = resolveEventVenueDisplay(featured);
+  const datesDisplay = featured?.datesDisplay || conference.dates.display;
+
   return (
     <div className="about-editorial-page">
       <section className="about-editorial-hero pna-reveal">
@@ -130,13 +138,13 @@ export default function AboutPage() {
           <div className="about-editorial-details-grid">
             <article className="about-editorial-detail-card">
               <p className="folio-eyebrow folio-eyebrow--caps">Venue &amp; Schedule</p>
-              <h2 className="about-editorial-detail-title font-display">{conference.venue.name}</h2>
-              <p className="about-editorial-text">{conference.venue.address}</p>
-              <p className="about-editorial-text">{conference.venue.city}</p>
+              <h2 className="about-editorial-detail-title font-display">{venue.name}</h2>
+              <p className="about-editorial-text">{venue.address}</p>
+              {venue.city ? <p className="about-editorial-text">{venue.city}</p> : null}
               <dl className="about-editorial-detail-meta">
                 <div>
                   <dt>Official Dates</dt>
-                  <dd>{conference.dates.display}</dd>
+                  <dd>{datesDisplay}</dd>
                 </div>
                 <div>
                   <dt>Registration Hours</dt>

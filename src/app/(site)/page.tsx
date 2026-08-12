@@ -23,6 +23,9 @@ export default async function HomePage() {
     featured?.earlyBirdDeadline || conference.registration.earlyBirdDeadline;
   const heroConferenceName = featured?.title || conference.conferenceName;
 
+  const heroRegularDeadline =
+    featured?.regularDeadline?.trim() || conference.registration.regularDeadline;
+
   return (
     <div className="folio-page folio-page--editorial">
         <section className="folio-hero-cinematic">
@@ -156,8 +159,8 @@ export default async function HomePage() {
               <h2 className="folio-editorial-title font-display mb-3">{conference.cta.title}</h2>
               <p className="folio-editorial-lead mb-0">
                 {conference.cta.description.replace(
-                  "{earlyBirdDeadline}",
-                  heroEarlyBird
+                  "{regularDeadline}",
+                  heroRegularDeadline
                 )}
               </p>
             </div>

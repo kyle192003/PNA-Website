@@ -2,10 +2,14 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { ContactInquiryForm } from "@/components/ContactInquiryForm";
 import { conference } from "@/lib/conference";
+import { getHomepageEvents } from "@/lib/events";
+import { resolveEventVenueDisplay } from "@/lib/event-utils";
 
 export const metadata: Metadata = {
   title: "Contact",
 };
+
+export const dynamic = "force-dynamic";
 
 const socialLinks = [
   {
@@ -37,7 +41,10 @@ const socialLinks = [
   },
 ];
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const { featured } = await getHomepageEvents();
+  const venue = resolveEventVenueDisplay(featured);
+
   return (
     <div className="contact-page">
       <section className="about-editorial-hero about-editorial-hero--compact pna-reveal">
@@ -74,8 +81,9 @@ export default function ContactPage() {
               </p>
 
               <div className="contact-panel-details">
-                <p>{conference.venue.address}</p>
-                <p>{conference.venue.city}</p>
+                <p>{venue.name}</p>
+                <p>{venue.address}</p>
+                {venue.city ? <p>{venue.city}</p> : null}
                 <a href={`mailto:${conference.contact.email}`} className="contact-panel-email">
                   {conference.contact.email}
                 </a>
