@@ -1,22 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Source_Serif_4, Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { BootstrapClient } from "@/components/BootstrapClient";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { conference } from "@/lib/conference";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 
-const sourceSerif = Source_Serif_4({
-  subsets: ["latin"],
+const sourceSerif = localFont({
+  src: "../fonts/SourceSerif4-Variable.woff2",
   variable: "--font-source-serif",
-  weight: ["400", "500", "600", "700"],
+  weight: "400 700",
   display: "swap",
+  fallback: ["Times New Roman", "Georgia", "serif"],
 });
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "../fonts/Inter-Variable.woff2",
   variable: "--font-inter",
+  weight: "100 900",
   display: "swap",
+  fallback: ["system-ui", "Segoe UI", "sans-serif"],
 });
 
 export const metadata: Metadata = {
