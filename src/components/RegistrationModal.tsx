@@ -76,32 +76,34 @@ export function RegistrationModal({
     >
       <div className="registration-modal-layout">
         <div className="registration-modal-main">
-          <div className="registration-modal-main-header">
-            <div>
-              <h2 id="registration-modal-title" className="registration-modal-page-title font-display">
-                {specialLane
-                  ? inviteSpecialRole === "committee"
-                    ? "Exclusive Committee Registration"
-                    : inviteSpecialRole === "speaker"
-                      ? "Exclusive Guest Speaker Registration"
-                      : "Exclusive Committee / Speaker Registration"
-                  : conference.pages.register.title}
-              </h2>
-              <p className="registration-modal-page-subtitle mb-0">
-                {inviteEventTitle || conference.conferenceName}
-              </p>
+          <div className="registration-modal-chrome">
+            <div className="registration-modal-main-header">
+              <div>
+                <h2 id="registration-modal-title" className="registration-modal-page-title font-display">
+                  {specialLane
+                    ? inviteSpecialRole === "committee"
+                      ? "Exclusive Committee Registration"
+                      : inviteSpecialRole === "speaker"
+                        ? "Exclusive Guest Speaker Registration"
+                        : "Exclusive Committee / Speaker Registration"
+                    : conference.pages.register.title}
+                </h2>
+                <p className="registration-modal-page-subtitle mb-0">
+                  {inviteEventTitle || conference.conferenceName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="registration-modal-close registration-modal-close-light"
+                aria-label="Close"
+              >
+                <CloseIcon />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="registration-modal-close registration-modal-close-light"
-              aria-label="Close"
-            >
-              <CloseIcon />
-            </button>
-          </div>
 
-          <RegistrationStepper steps={steps} />
+            <RegistrationStepper steps={steps} />
+          </div>
 
           <div className="registration-modal-form">
             <RegistrationForm
@@ -121,7 +123,6 @@ export function RegistrationModal({
 
         <RegistrationSidebar
           eventId={eventId}
-          showPaymentQr={!specialLane}
           paymentBreakdown={paymentBreakdown}
         />
       </div>
