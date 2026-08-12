@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type PnaSelectOption = {
   value: string;
   label: string;
+  /** Optional group header (e.g. NCR Zone 1). */
+  group?: string;
 };
 
 type PnaSelectProps = {
@@ -65,6 +67,12 @@ export function PnaSelect({
     [options, value]
   );
 
+  const selectedLabel = selected
+    ? selected.group
+      ? `${selected.label} (${selected.group})`
+      : selected.label
+    : null;
+
   const filteredOptions = useMemo(() => {
     if (!searchable) return options;
     const query = searchQuery.trim().toLowerCase();
@@ -72,7 +80,8 @@ export function PnaSelect({
     return options.filter(
       (option) =>
         option.label.toLowerCase().includes(query) ||
-        option.value.toLowerCase().includes(query)
+        option.value.toLowerCase().includes(query) ||
+        (option.group?.toLowerCase().includes(query) ?? false)
     );
   }, [options, searchable, searchQuery]);
 
@@ -111,10 +120,12 @@ export function PnaSelect({
 
       const rect = trigger.getBoundingClientRect();
       const viewportPadding = 8;
-      const preferredWidth = Math.max(rect.width, 160);
-      const maxWidth = Math.max(120, window.innerWidth - viewportPadding * 2);
-      const width = Math.min(preferredWidth, maxWidth);
-      let left = rect.left + rect.width / 2 - width / 2;
+      // Keep menu width locked to the trigger (strict field width).
+      const width = Math.min(
+        Math.max(rect.width, 1),
+        Math.max(120, window.innerWidth - viewportPadding * 2)
+      );
+      let left = rect.left;
       left = Math.min(
         Math.max(left, viewportPadding),
         window.innerWidth - width - viewportPadding
@@ -214,18 +225,27 @@ export function PnaSelect({
             ) : (
               filteredOptions.map((option, index) => {
                 const isActive = option.value === value;
+                const prevGroup = filteredOptions[index - 1]?.group;
+                const showGroup =
+                  Boolean(option.group) && option.group !== prevGroup && option.value !== "";
                 return (
-                  <button
-                    key={`${option.value}-${option.label}`}
-                    type="button"
-                    role="option"
-                    className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
-                    aria-selected={isActive}
-                    style={{ animationDelay: `${30 + index * 28}ms` }}
-                    onClick={() => choose(option.value)}
-                  >
-                    {option.label}
-                  </button>
+                  <Fragment key={`${option.value}-${option.label}-${option.group ?? ""}`}>
+                    {showGroup ? (
+                      <div className="pna-select-group" role="presentation">
+                        {option.group}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="option"
+                      className={`pna-select-option${isActive ? " pna-select-option--active" : ""}`}
+                      aria-selected={isActive}
+                      style={{ animationDelay: `${30 + index * 28}ms` }}
+                      onClick={() => choose(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  </Fragment>
                 );
               })
             )}
@@ -260,10 +280,10 @@ export function PnaSelect({
               const trigger = triggerRef.current;
               if (trigger) {
                 const rect = trigger.getBoundingClientRect();
-                const width = Math.max(rect.width, 160);
+                const width = Math.max(rect.width, 1);
                 setMenuPosition({
                   top: rect.bottom + MENU_GAP_PX,
-                  left: Math.max(8, rect.left + rect.width / 2 - width / 2),
+                  left: Math.max(8, rect.left),
                   width,
                 });
               }
@@ -275,7 +295,7 @@ export function PnaSelect({
         <span
           className={`pna-select-trigger-label${!selected ? " pna-select-trigger-label--placeholder" : ""}`}
         >
-          {selected?.label ?? placeholder}
+          {selectedLabel ?? placeholder}
         </span>
       </button>
 

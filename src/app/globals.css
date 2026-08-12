@@ -10758,6 +10758,21 @@ a.admin-btn-primary:hover,
   padding-bottom: 0.2rem;
 }
 
+.pna-select-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.45rem 0.85rem;
+  background: #c6e0b4;
+  color: #14532d;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  border-top: 1px solid rgba(21, 128, 61, 0.18);
+  border-bottom: 1px solid rgba(21, 128, 61, 0.18);
+}
+
 .pna-select-empty {
   padding: 0.75rem 0.85rem;
   color: #64748b;

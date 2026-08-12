@@ -177,6 +177,185 @@ export const PNA_ZONES = [
 
 export type PnaZone = (typeof PNA_ZONES)[number];
 
+/** NCR chapters are cities grouped under Zone 1–6 (each place is its own chapter). */
+export const PNA_NCR_CHAPTER_GROUPS = [
+  { group: "NCR Zone 1", chapters: ["Manila"] },
+  {
+    group: "NCR Zone 2",
+    chapters: ["Caloocan", "Malabon", "Navotas", "Valenzuela"],
+  },
+  { group: "NCR Zone 3", chapters: ["Quezon City", "Marikina"] },
+  { group: "NCR Zone 4", chapters: ["San Juan", "Pasig", "Mandaluyong"] },
+  { group: "NCR Zone 5", chapters: ["Makati", "Taguig", "Pateros"] },
+  {
+    group: "NCR Zone 6",
+    chapters: ["Pasay", "Paranaque", "Muntinlupa", "Las Piñas"],
+  },
+] as const;
+
+export type PnaChapterOption = {
+  value: string;
+  label: string;
+  group?: string;
+};
+
+function ncrChapterValue(zoneLabel: string, chapter: string): string {
+  return `${zoneLabel} — ${chapter}`;
+}
+
+const NCR_CHAPTER_OPTIONS: readonly PnaChapterOption[] = PNA_NCR_CHAPTER_GROUPS.flatMap(
+  ({ group, chapters }) =>
+    chapters.map((chapter) => ({
+      value: ncrChapterValue(group, chapter),
+      label: chapter,
+      group,
+    }))
+);
+
+/** Chapters available per PNA zone/region. */
+export const PNA_CHAPTERS_BY_ZONE: Record<PnaZone, readonly string[]> = {
+  NCR: NCR_CHAPTER_OPTIONS.map((option) => option.value),
+  CAR: [
+    "Baguio City",
+    "Mountain Province",
+    "Benguet",
+    "Ifugao",
+    "Abra",
+    "Kalinga",
+    "Apayao",
+  ],
+  "Region 1": ["Pangasinan", "La Union", "Ilocos Norte", "Ilocos Sur"],
+  "Region 2": [
+    "Batanes",
+    "Cagayan North",
+    "Cagayan South",
+    "Isabela",
+    "Quirino",
+    "Nueva Vizcaya",
+  ],
+  "Region 3": [
+    "Aurora",
+    "Bataan",
+    "Bulacan",
+    "Nueva Ecija",
+    "Pampanga",
+    "Tarlac",
+    "Zambales-Olongapo City",
+  ],
+  "Region 4": [
+    "Batangas",
+    "Cavite",
+    "Laguna",
+    "Quezon",
+    "Rizal",
+    "Marinduque",
+    "Occidental Mindoro",
+    "Oriental Mindoro",
+    "Palawan",
+    "Romblon",
+  ],
+  "Region 5": [
+    "Albay",
+    "Camarines Norte",
+    "Naga City",
+    "Iriga City-Rinconada",
+    "Catanduanes",
+    "Masbate",
+    "Sorsogon",
+    "Camarines Sur",
+  ],
+  "Region 6": [
+    "Antique",
+    "Capiz",
+    "Iloilo",
+    "Negros Occidental",
+    "Aklan",
+    "Guimaras",
+    "San Carlos City",
+  ],
+  "Region 7": ["Cebu", "Negros Oriental", "Siquijor", "Bohol"],
+  "Region 8": [
+    "North Leyte",
+    "Southern Leyte",
+    "Northwestern Leyte",
+    "Eastern Samar",
+    "Northern Samar",
+    "Northwest Samar",
+    "Samar",
+    "Biliran",
+  ],
+  "Region 9": [
+    "Zamboanga City",
+    "Zamboanga del Norte",
+    "Zamboanga del Sur",
+    "Zamboanga Sibugay",
+    "Isabela City",
+    "Sulu",
+  ],
+  "Region 10": [
+    "Bukidnon",
+    "Camiguin",
+    "Misamis Occidental",
+    "Misamis Oriental",
+    "Iligan City/ Lanao del Norte",
+  ],
+  "Region 11": ["Davao del Norte", "Davao City", "Davao del Sur", "Davao Oriental"],
+  "Region 12": [
+    "North Cotabato (Kidapawan)",
+    "South Cotabato",
+    "General Santos City",
+    "Sultan Kudarat",
+    "Midsayap",
+    "Sarangani",
+  ],
+  BARMM: [
+    "Basilan",
+    "Cotabato City Maguindanao",
+    "Marawi City & Lanao del Sur",
+    "Tawi-tawi",
+  ],
+  CARAGA: [
+    "Agusan del Sur",
+    "Surigao del Norte",
+    "Surigao del Sur I",
+    "Surigao del Sur District II Bislig",
+    "Agusan del Norte Butuan City",
+    "Dinagat Island",
+  ],
+  "Foreign-based": [
+    "Filipino Nurses Association of Emirates (FNAE)",
+    "Filipino Nurses of Saudi Arabia (FILNASA)",
+    "PNA Bahrain",
+    "PNA Brunei",
+    "PNA Ireland",
+    "PNA Jeddah",
+    "PNA Qatar",
+    "PNA United Arab Emirates (PNA UAE)",
+    "PNA Germany",
+    "PNA Hail Region, KSA",
+    "PNA Italy",
+    "PNA Norway",
+    "PNA Switzerland",
+    "PNA United Kingdom",
+    "PNA Oman",
+  ],
+};
+
+export function getPnaChaptersForZone(zone: string): readonly string[] {
+  if (!zone) return [];
+  return PNA_CHAPTERS_BY_ZONE[zone as PnaZone] ?? [];
+}
+
+/** Chapter select options (NCR includes zone group headers). */
+export function getPnaChapterSelectOptions(zone: string): readonly PnaChapterOption[] {
+  if (!zone) return [];
+  if (zone === "NCR") return NCR_CHAPTER_OPTIONS;
+  return getPnaChaptersForZone(zone).map((chapter) => ({
+    value: chapter,
+    label: chapter,
+  }));
+}
+
 export const objectives = [
   {
     title: "Promote Collaborative Governance",

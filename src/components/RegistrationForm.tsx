@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { conference, PNA_ZONES } from "@/lib/conference";
+import { conference, getPnaChapterSelectOptions, getPnaChaptersForZone, PNA_ZONES } from "@/lib/conference";
 import { formatPeso, getEarlyBirdCap } from "@/lib/registration-fees";
 import type {
   FoodPreference,
@@ -204,6 +204,13 @@ const PNA_ZONE_OPTIONS: PnaSelectOption[] = [
   ...PNA_ZONES.map((zone) => ({ value: zone, label: zone })),
 ];
 
+function getPnaChapterOptions(zone: string): PnaSelectOption[] {
+  return [
+    { value: "", label: zone ? "Select PNA chapter" : "Select zone/region first" },
+    ...getPnaChapterSelectOptions(zone),
+  ];
+}
+
 const FOOD_PREFERENCE_OPTIONS: PnaSelectOption[] = [
   { value: "", label: "Select food preference" },
   { value: "regular", label: "Regular" },
@@ -299,7 +306,14 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
       return data.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaChapter":
       if (isNonMemberType(data.membershipType)) return undefined;
-      return data.pnaChapter.trim() ? undefined : "PNA chapter is required";
+      if (!data.pnaChapter.trim()) return "PNA chapter is required";
+      if (
+        data.pnaZone &&
+        !getPnaChaptersForZone(data.pnaZone).includes(data.pnaChapter)
+      ) {
+        return "Please select a chapter for the chosen zone/region";
+      }
+      return undefined;
     case "prcLicenseNumber":
       return data.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
     case "prcInitialRegistrationDate":
@@ -569,7 +583,14 @@ function getMemberFieldError(
       return member.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaChapter":
       if (isNonMemberType(member.membershipType)) return undefined;
-      return member.pnaChapter.trim() ? undefined : "PNA chapter is required";
+      if (!member.pnaChapter.trim()) return "PNA chapter is required";
+      if (
+        member.pnaZone &&
+        !getPnaChaptersForZone(member.pnaZone).includes(member.pnaChapter)
+      ) {
+        return "Please select a chapter for the chosen zone/region";
+      }
+      return undefined;
     case "prcLicenseNumber":
       return member.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
     case "prcInitialRegistrationDate":
@@ -2078,6 +2099,15 @@ export function RegistrationForm({
           receiptNamedUnder: prev.bir2303InstitutionName.trim(),
         };
       }
+      if (field === "pnaZone") {
+        const pnaZone = String(value);
+        const chapters = getPnaChaptersForZone(pnaZone);
+        return {
+          ...prev,
+          pnaZone,
+          pnaChapter: chapters.includes(prev.pnaChapter) ? prev.pnaChapter : "",
+        };
+      }
       if (field === "bir2303InstitutionName") {
         const bir2303InstitutionName = String(value);
         return {
@@ -2189,8 +2219,18 @@ export function RegistrationForm({
               : {}),
           };
         }
-        if (field === "pnaZone" || field === "pnaChapter") {
-          return { ...member, [field]: value, sameAffiliationAsPrimary: false };
+        if (field === "pnaZone") {
+          const pnaZone = value;
+          const chapters = getPnaChaptersForZone(pnaZone);
+          return {
+            ...member,
+            pnaZone,
+            pnaChapter: chapters.includes(member.pnaChapter) ? member.pnaChapter : "",
+            sameAffiliationAsPrimary: false,
+          };
+        }
+        if (field === "pnaChapter") {
+          return { ...member, pnaChapter: value, sameAffiliationAsPrimary: false };
         }
         if (field === "registrationRate") {
           const registrationRate =
@@ -2503,14 +2543,22 @@ export function RegistrationForm({
                     }
                     className="registration-membership-cell registration-fade-reveal--flush"
                   >
-                    <FormField
+                    <SelectField
                       label="PNA Chapter (For Local and Foreign based)"
                       id="pnaChapter"
                       required
                       value={formData.pnaChapter}
                       onChange={(v) => updateField("pnaChapter", v)}
-                      onBlur={() => markFieldTouched("pnaChapter")}
+                      options={getPnaChapterOptions(formData.pnaZone)}
                       error={errors.pnaChapter}
+                      placeholder={
+                        formData.pnaZone
+                          ? "Select PNA chapter"
+                          : "Select zone/region first"
+                      }
+                      disabled={!formData.pnaZone}
+                      searchable
+                      searchPlaceholder="Search chapter..."
                       className=""
                     />
                   </FadeReveal>
@@ -3098,14 +3146,24 @@ export function RegistrationForm({
                                 }
                                 className="registration-membership-cell registration-fade-reveal--flush"
                               >
-                                <FormField
+                                <SelectField
                                   label="PNA Chapter (For Local and Foreign based)"
                                   id={`member-${index}-pnaChapter`}
                                   required
                                   value={member.pnaChapter}
                                   onChange={(v) => updateMember(index, "pnaChapter", v)}
+                                  options={getPnaChapterOptions(member.pnaZone)}
                                   error={memberErrors[index]?.pnaChapter}
-                                  disabled={member.sameAffiliationAsPrimary}
+                                  placeholder={
+                                    member.pnaZone
+                                      ? "Select PNA chapter"
+                                      : "Select zone/region first"
+                                  }
+                                  disabled={
+                                    member.sameAffiliationAsPrimary || !member.pnaZone
+                                  }
+                                  searchable
+                                  searchPlaceholder="Search chapter..."
                                   className=""
                                 />
                               </FadeReveal>
