@@ -3,6 +3,8 @@
  * Used to suggest a payment / transfer reference from an uploaded proof image.
  */
 
+import { recognizeImageCached, type OcrScanResult } from "@/lib/ocr-cache";
+
 const REFERENCE_LABEL =
   /(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn(?:\s*(?:no\.?|id))?|transaction(?:\s*(?:no\.?|id|ref))?|trace\s*(?:no\.?|number)?|control\s*(?:no\.?)?|confirmation(?:\s*(?:no\.?|code))?)\s*[:#.\-]?\s*([A-Z0-9][A-Z0-9\- ]{5,28})/gi;
 
@@ -55,24 +57,6 @@ export function extractPaymentReference(ocrText: string): {
   return { best: candidates[0] ?? "", candidates };
 }
 
-export async function scanReceiptImage(file: File): Promise<{
-  text: string;
-  best: string;
-  candidates: string[];
-}> {
-  if (!file.type.startsWith("image/")) {
-    return { text: "", best: "", candidates: [] };
-  }
-
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng");
-  try {
-    const {
-      data: { text },
-    } = await worker.recognize(file);
-    const extracted = extractPaymentReference(text);
-    return { text, ...extracted };
-  } finally {
-    await worker.terminate();
-  }
+export async function scanReceiptImage(file: File): Promise<OcrScanResult> {
+  return recognizeImageCached("receipt", file, extractPaymentReference);
 }

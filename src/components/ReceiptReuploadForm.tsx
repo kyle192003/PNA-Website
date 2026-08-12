@@ -127,7 +127,9 @@ export function ReceiptReuploadForm() {
       if (result.best) {
         setPaymentReference(result.best);
         setOcrMessage(
-          "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
+          result.fromCache
+            ? "Using a saved scan of this receipt. Please confirm the payment reference."
+            : "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
         );
       } else {
         setOcrMessage(
