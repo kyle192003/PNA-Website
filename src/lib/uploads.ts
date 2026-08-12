@@ -3,8 +3,17 @@ import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
 import { put } from "@vercel/blob";
-import { getBlobReadWriteToken } from "@/lib/security/server-env";
+import { getBlobReadWriteToken, isServerlessRuntime } from "@/lib/security/server-env";
 import { requireStorageId } from "@/lib/security/storage-id";
+import {
+  PRIVATE_UPLOADS_BUCKET,
+  PUBLIC_UPLOADS_BUCKET,
+  deleteStorageObject,
+  downloadPrivateFile,
+  uploadPrivateFile,
+  uploadPublicFile,
+  usesSupabaseStorage,
+} from "@/lib/supabase/storage";
 
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 const PRIVATE_STORAGE_ROOT = path.join(process.cwd(), "storage");
@@ -16,6 +25,41 @@ const CERTIFICATE_DIR = path.join(UPLOADS_ROOT, "certificates");
 
 function hasBlobToken(): boolean {
   return Boolean(getBlobReadWriteToken());
+}
+
+const RECEIPT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"] as const;
+
+function missingDurableStorageError(kind: string): Error {
+  return new Error(
+    `Cannot save ${kind} on Vercel without Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`
+  );
+}
+
+async function savePublicUpload(
+  objectPath: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<string> {
+  if (usesSupabaseStorage()) {
+    return uploadPublicFile(objectPath, buffer, contentType);
+  }
+
+  if (hasBlobToken()) {
+    const blob = await put(`uploads/${objectPath}`, buffer, {
+      access: "public",
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 60 * 60 * 24 * 30,
+    });
+    return blob.url;
+  }
+
+  if (isServerlessRuntime()) {
+    throw missingDurableStorageError("files");
+  }
+
+  return "";
 }
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -161,7 +205,6 @@ function assertInsideRoot(root: string, candidate: string): string {
 }
 
 export async function saveQrCode(eventId: string, file: File): Promise<string> {
-  await ensureUploadDirs();
   const safeEventId = requireStorageId(eventId, "event id");
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.error);
@@ -172,19 +215,10 @@ export async function saveQrCode(eventId: string, file: File): Promise<string> {
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
   const filename = `${safeEventId}${ext}`;
+  const remoteUrl = await savePublicUpload(`qrcodes/${filename}`, buffer, mimeCheck.mimeType);
+  if (remoteUrl) return remoteUrl;
 
-  // Durable public URL on Vercel; local filesystem for development.
-  if (hasBlobToken()) {
-    const blob = await put(`uploads/qrcodes/${filename}`, buffer, {
-      access: "public",
-      contentType: mimeCheck.mimeType,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 60 * 60 * 24 * 30,
-    });
-    return blob.url;
-  }
-
+  await ensureUploadDirs();
   const filepath = assertInsideRoot(QR_DIR, path.join(QR_DIR, filename));
   await fs.writeFile(filepath, buffer);
 
@@ -196,7 +230,6 @@ export async function saveSpeakerPhoto(
   speakerId: string,
   file: File
 ): Promise<string> {
-  await ensureUploadDirs();
   const safeEventId = requireStorageId(eventId, "event id");
   const safeSpeakerId = requireStorageId(speakerId, "speaker id");
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
@@ -208,18 +241,10 @@ export async function saveSpeakerPhoto(
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
   const filename = `${safeEventId}-${safeSpeakerId}${ext}`;
+  const remoteUrl = await savePublicUpload(`speakers/${filename}`, buffer, mimeCheck.mimeType);
+  if (remoteUrl) return remoteUrl;
 
-  if (hasBlobToken()) {
-    const blob = await put(`uploads/speakers/${filename}`, buffer, {
-      access: "public",
-      contentType: mimeCheck.mimeType,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 60 * 60 * 24 * 30,
-    });
-    return blob.url;
-  }
-
+  await ensureUploadDirs();
   const filepath = assertInsideRoot(SPEAKER_DIR, path.join(SPEAKER_DIR, filename));
   await fs.writeFile(filepath, buffer);
 
@@ -239,7 +264,6 @@ export async function saveReceipt(
   registrationId: string,
   file: File
 ): Promise<string> {
-  await ensureUploadDirs();
   const safeRegistrationId = requireStorageId(registrationId, "registration id");
   const validation = validateFile(file, ALLOWED_RECEIPT_TYPES, MAX_REGISTRATION_DOC_SIZE);
   if (!validation.ok) throw new Error(validation.error);
@@ -249,12 +273,20 @@ export async function saveReceipt(
   if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
-  const filename = `${safeRegistrationId}${ext}`;
-  const filepath = assertInsideRoot(RECEIPT_DIR, path.join(RECEIPT_DIR, filename));
-
-  // Remove any previous extension variants (private + legacy public).
   await removeReceiptFiles(safeRegistrationId);
 
+  if (usesSupabaseStorage()) {
+    await uploadPrivateFile(`receipts/${safeRegistrationId}${ext}`, buffer, mimeCheck.mimeType);
+    return buildReceiptStorageRef(safeRegistrationId, ext);
+  }
+
+  if (isServerlessRuntime() && !hasBlobToken()) {
+    throw missingDurableStorageError("receipts");
+  }
+
+  await ensureUploadDirs();
+  const filename = `${safeRegistrationId}${ext}`;
+  const filepath = assertInsideRoot(RECEIPT_DIR, path.join(RECEIPT_DIR, filename));
   await fs.writeFile(filepath, buffer);
   return buildReceiptStorageRef(safeRegistrationId, ext);
 }
@@ -280,7 +312,6 @@ export async function saveRegistrationDocument(
   file: File,
   options?: { imagesOnly?: boolean }
 ): Promise<string> {
-  await ensureUploadDirs();
   const allowed = options?.imagesOnly ? ALLOWED_IMAGE_TYPES : ALLOWED_RECEIPT_TYPES;
   const validation = validateFile(file, allowed, MAX_REGISTRATION_DOC_SIZE);
   if (!validation.ok) throw new Error(validation.error);
@@ -291,22 +322,27 @@ export async function saveRegistrationDocument(
 
   const safeRegistrationId = requireStorageId(registrationId, "registration id");
   const ext = getExtension(file.name, mimeCheck.mimeType);
+  await removeRegistrationDocFiles(safeRegistrationId, kind);
+
+  if (usesSupabaseStorage()) {
+    await uploadPrivateFile(
+      `registration-docs/${safeRegistrationId}-${kind}${ext}`,
+      buffer,
+      mimeCheck.mimeType
+    );
+    return buildRegistrationDocRef(safeRegistrationId, kind, ext);
+  }
+
+  if (isServerlessRuntime() && !hasBlobToken()) {
+    throw missingDurableStorageError("registration documents");
+  }
+
+  await ensureUploadDirs();
   const filename = `${safeRegistrationId}-${kind}${ext}`;
   const filepath = assertInsideRoot(
     REGISTRATION_DOCS_DIR,
     path.join(REGISTRATION_DOCS_DIR, filename)
   );
-
-  // Clear prior variants for this kind.
-  for (const candidateExt of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
-    const prior = path.join(REGISTRATION_DOCS_DIR, `${safeRegistrationId}-${kind}${candidateExt}`);
-    try {
-      await fs.unlink(prior);
-    } catch {
-      // ignore
-    }
-  }
-
   await fs.writeFile(filepath, buffer);
   return buildRegistrationDocRef(safeRegistrationId, kind, ext);
 }
@@ -316,13 +352,26 @@ export async function resolveRegistrationDocument(
   kind: RegistrationDocKind,
   storedRef?: string | null
 ): Promise<ResolvedReceiptFile | null> {
+  const safeRegistrationId = requireStorageId(registrationId, "registration id");
+
+  if (usesSupabaseStorage()) {
+    const objectPaths: string[] = [];
+    if (storedRef?.startsWith("private:registration-docs/")) {
+      objectPaths.push(storedRef.replace(/^private:/, ""));
+    }
+    for (const ext of RECEIPT_EXTENSIONS) {
+      objectPaths.push(`registration-docs/${safeRegistrationId}-${kind}${ext}`);
+    }
+    return downloadFirstPrivateFile(objectPaths);
+  }
+
   await ensureUploadDirs();
   const candidates: string[] = [];
   if (storedRef?.startsWith("private:registration-docs/")) {
     candidates.push(path.join(PRIVATE_STORAGE_ROOT, storedRef.replace(/^private:/, "")));
   }
-  for (const ext of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
-    candidates.push(path.join(REGISTRATION_DOCS_DIR, `${registrationId}-${kind}${ext}`));
+  for (const ext of RECEIPT_EXTENSIONS) {
+    candidates.push(path.join(REGISTRATION_DOCS_DIR, `${safeRegistrationId}-${kind}${ext}`));
   }
 
   const seen = new Set<string>();
@@ -348,15 +397,54 @@ export async function resolveRegistrationDocument(
 }
 
 export type ResolvedReceiptFile = {
-  absolutePath: string;
   mimeType: string;
   filename: string;
+  absolutePath?: string;
+  bytes?: Buffer;
 };
+
+export async function readResolvedFile(file: ResolvedReceiptFile): Promise<Buffer> {
+  if (file.bytes) return file.bytes;
+  if (file.absolutePath) return fs.readFile(file.absolutePath);
+  throw new Error("File not found.");
+}
+
+async function downloadFirstPrivateFile(objectPaths: string[]): Promise<ResolvedReceiptFile | null> {
+  const seen = new Set<string>();
+  for (const objectPath of objectPaths) {
+    const normalized = objectPath.replace(/^\/+/, "");
+    if (!normalized || seen.has(normalized) || normalized.includes("..")) continue;
+    seen.add(normalized);
+    const bytes = await downloadPrivateFile(normalized);
+    if (!bytes) continue;
+    const filename = path.posix.basename(normalized);
+    const ext = path.posix.extname(filename).toLowerCase();
+    return {
+      filename,
+      mimeType: EXTENSION_MIME_MAP[ext] ?? "application/octet-stream",
+      bytes,
+    };
+  }
+  return null;
+}
 
 export async function resolveReceiptFile(
   registrationId: string,
   storedRef?: string | null
 ): Promise<ResolvedReceiptFile | null> {
+  const safeRegistrationId = requireStorageId(registrationId, "registration id");
+
+  if (usesSupabaseStorage()) {
+    const objectPaths: string[] = [];
+    if (storedRef?.startsWith("private:receipts/")) {
+      objectPaths.push(storedRef.replace(/^private:/, ""));
+    }
+    for (const ext of RECEIPT_EXTENSIONS) {
+      objectPaths.push(`receipts/${safeRegistrationId}${ext}`);
+    }
+    return downloadFirstPrivateFile(objectPaths);
+  }
+
   await ensureUploadDirs();
 
   const candidates: string[] = [];
@@ -367,9 +455,9 @@ export async function resolveReceiptFile(
   }
 
   // Also probe common extensions in private then legacy public dirs.
-  for (const ext of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
-    candidates.push(path.join(RECEIPT_DIR, `${registrationId}${ext}`));
-    candidates.push(path.join(LEGACY_RECEIPT_DIR, `${registrationId}${ext}`));
+  for (const ext of RECEIPT_EXTENSIONS) {
+    candidates.push(path.join(RECEIPT_DIR, `${safeRegistrationId}${ext}`));
+    candidates.push(path.join(LEGACY_RECEIPT_DIR, `${safeRegistrationId}${ext}`));
   }
 
   const seen = new Set<string>();
@@ -403,6 +491,14 @@ export async function resolveReceiptFile(
 }
 
 async function removeReceiptFiles(registrationId: string): Promise<void> {
+  if (usesSupabaseStorage()) {
+    await Promise.all(
+      RECEIPT_EXTENSIONS.map((ext) =>
+        deleteStorageObject(PRIVATE_UPLOADS_BUCKET, `receipts/${registrationId}${ext}`)
+      )
+    );
+  }
+
   for (const dir of [RECEIPT_DIR, LEGACY_RECEIPT_DIR]) {
     try {
       const entries = await fs.readdir(dir);
@@ -417,6 +513,35 @@ async function removeReceiptFiles(registrationId: string): Promise<void> {
   }
 }
 
+async function removeRegistrationDocFiles(
+  registrationId: string,
+  kind: RegistrationDocKind
+): Promise<void> {
+  if (usesSupabaseStorage()) {
+    await Promise.all(
+      RECEIPT_EXTENSIONS.map((ext) =>
+        deleteStorageObject(
+          PRIVATE_UPLOADS_BUCKET,
+          `registration-docs/${registrationId}-${kind}${ext}`
+        )
+      )
+    );
+  }
+
+  try {
+    await fs.mkdir(REGISTRATION_DOCS_DIR, { recursive: true });
+    await Promise.all(
+      RECEIPT_EXTENSIONS.map((ext) =>
+        fs.unlink(path.join(REGISTRATION_DOCS_DIR, `${registrationId}-${kind}${ext}`)).catch(
+          () => undefined
+        )
+      )
+    );
+  } catch {
+    // directory may not exist yet
+  }
+}
+
 export type CertificateTemplateFileType = "image" | "pdf";
 
 export type SavedCertificateTemplateFile = {
@@ -425,21 +550,32 @@ export type SavedCertificateTemplateFile = {
 };
 
 async function removeExistingCertificateTemplates(eventId?: string | null): Promise<void> {
-  await ensureUploadDirs();
-  const entries = await fs.readdir(CERTIFICATE_DIR);
   const prefix = eventId ? `certificate-${eventId}` : "certificate-template";
-  await Promise.all(
-    entries
-      .filter((name) => name.startsWith(prefix))
-      .map((name) => fs.unlink(path.join(CERTIFICATE_DIR, name)).catch(() => undefined))
-  );
+  if (usesSupabaseStorage()) {
+    await Promise.all(
+      [...RECEIPT_EXTENSIONS, ".bin"].map((ext) =>
+        deleteStorageObject(PUBLIC_UPLOADS_BUCKET, `certificates/${prefix}${ext}`)
+      )
+    );
+  }
+
+  try {
+    await ensureUploadDirs();
+    const entries = await fs.readdir(CERTIFICATE_DIR);
+    await Promise.all(
+      entries
+        .filter((name) => name.startsWith(prefix))
+        .map((name) => fs.unlink(path.join(CERTIFICATE_DIR, name)).catch(() => undefined))
+    );
+  } catch {
+    // local cert folder may not exist
+  }
 }
 
 export async function saveCertificateTemplateFile(
   file: File,
   eventId?: string | null
 ): Promise<SavedCertificateTemplateFile> {
-  await ensureUploadDirs();
   const validation = validateFile(file, ALLOWED_CERTIFICATE_TYPES, MAX_CERTIFICATE_FILE_SIZE);
   if (!validation.ok) throw new Error(validation.error);
 
@@ -458,9 +594,16 @@ export async function saveCertificateTemplateFile(
   const filename = safeEventId
     ? `certificate-${safeEventId}${ext}`
     : `certificate-template${ext}`;
-  const filepath = assertInsideRoot(CERTIFICATE_DIR, path.join(CERTIFICATE_DIR, filename));
 
   await removeExistingCertificateTemplates(safeEventId);
+
+  const remoteUrl = await savePublicUpload(`certificates/${filename}`, buffer, mimeCheck.mimeType);
+  if (remoteUrl) {
+    return { fileUrl: remoteUrl, fileType };
+  }
+
+  await ensureUploadDirs();
+  const filepath = assertInsideRoot(CERTIFICATE_DIR, path.join(CERTIFICATE_DIR, filename));
 
   try {
     await fs.writeFile(filepath, buffer);
@@ -484,17 +627,27 @@ export async function saveCertificateTemplateImage(file: File): Promise<string> 
 export async function deleteUploadedFile(publicUrl: string | null): Promise<void> {
   if (!publicUrl) return;
 
-  if (publicUrl.startsWith("private:receipts/")) {
-    const relative = publicUrl.replace(/^private:/, "");
-    const filepath = assertInsideRoot(
-      PRIVATE_STORAGE_ROOT,
-      path.join(PRIVATE_STORAGE_ROOT, relative)
-    );
+  if (publicUrl.startsWith("private:")) {
+    const relative = publicUrl.replace(/^private:/, "").replace(/\\/g, "/");
+    if (!relative || relative.includes("..")) return;
+    if (usesSupabaseStorage()) {
+      await deleteStorageObject(PRIVATE_UPLOADS_BUCKET, relative);
+    }
     try {
+      const filepath = assertInsideRoot(
+        PRIVATE_STORAGE_ROOT,
+        path.join(PRIVATE_STORAGE_ROOT, relative)
+      );
       await fs.unlink(filepath);
     } catch {
       // File may already be removed.
     }
+    return;
+  }
+
+  const supabaseObject = parseSupabasePublicObjectPath(publicUrl);
+  if (supabaseObject) {
+    await deleteStorageObject(PUBLIC_UPLOADS_BUCKET, supabaseObject);
     return;
   }
 
@@ -510,6 +663,15 @@ export async function deleteUploadedFile(publicUrl: string | null): Promise<void
   } catch {
     // File may already be removed.
   }
+}
+
+function parseSupabasePublicObjectPath(url: string): string | null {
+  const marker = `/storage/v1/object/public/${PUBLIC_UPLOADS_BUCKET}/`;
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  const objectPath = decodeURIComponent(url.slice(index + marker.length).split("?")[0]);
+  if (!objectPath || objectPath.includes("..")) return null;
+  return objectPath;
 }
 
 export function getPrivateStorageRoot(): string {

@@ -4,11 +4,18 @@ import { promises as fs } from "fs";
 import path from "path";
 import { get, put } from "@vercel/blob";
 import { toPlainData } from "@/lib/security/safe-input";
-import { getBlobReadWriteToken, getBlobStoreAccess } from "@/lib/security/server-env";
+import {
+  getBlobReadWriteToken,
+  getBlobStoreAccess,
+  isServerlessRuntime,
+  isSupabaseConfigured,
+} from "@/lib/security/server-env";
+import { getSupabaseAdmin, requireSupabaseAdmin } from "@/lib/supabase/admin";
 
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const TMP_DATA_DIR = path.join("/tmp", "pna-data");
 const SAFE_JSON_DOCUMENT = /^[a-z0-9][a-z0-9._-]*\.json$/i;
+const APP_DOCUMENTS_TABLE = "app_documents";
 
 function parseJsonDocument<T>(raw: string): T {
   return toPlainData(JSON.parse(raw)) as T;
@@ -29,13 +36,8 @@ function hasBlobToken(): boolean {
   return Boolean(getBlobReadWriteToken());
 }
 
-/** Must match the Vercel Blob store access mode (public vs private). */
 function getBlobAccess(): "public" | "private" {
   return getBlobStoreAccess();
-}
-
-function isVercelRuntime(): boolean {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }
 
 function localPath(filename: string): string {
@@ -63,11 +65,41 @@ async function writeLocalJsonFile(filePath: string, contents: string): Promise<v
   await fs.writeFile(filePath, contents, "utf-8");
 }
 
+async function readSupabaseJson(filename: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from(APP_DOCUMENTS_TABLE)
+    .select("payload")
+    .eq("name", filename)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`[json-store] supabase read ${filename}:`, error.message);
+    return null;
+  }
+  if (data?.payload == null) return null;
+  return JSON.stringify(data.payload);
+}
+
+async function writeSupabaseJson(filename: string, value: unknown): Promise<void> {
+  const supabase = requireSupabaseAdmin();
+  const payload = JSON.parse(JSON.stringify(toPlainData(value)));
+  const { error } = await supabase.from(APP_DOCUMENTS_TABLE).upsert({
+    name: filename,
+    payload,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) {
+    throw new Error(`Could not save ${filename}: ${error.message}`);
+  }
+}
+
 async function readBlobJson(filename: string): Promise<string | null> {
   if (!hasBlobToken()) return null;
 
   const pathname = blobPathname(filename);
-
   const access = getBlobAccess();
   const fallbackAccess = access === "public" ? "private" : "public";
 
@@ -94,9 +126,7 @@ async function readBlobJson(filename: string): Promise<string | null> {
 
 async function writeBlobJson(filename: string, contents: string): Promise<void> {
   if (!hasBlobToken()) {
-    throw new Error(
-      "BLOB_READ_WRITE_TOKEN is not configured. Add a Vercel Blob store so event data can be saved in production."
-    );
+    throw new Error("BLOB_READ_WRITE_TOKEN is not configured.");
   }
 
   await put(blobPathname(filename), contents, {
@@ -108,25 +138,42 @@ async function writeBlobJson(filename: string, contents: string): Promise<void> 
   });
 }
 
+async function readSeedJson(filename: string): Promise<string | null> {
+  return (
+    (await readLocalJsonFile(localPath(filename))) ??
+    (isServerlessRuntime() ? await readLocalJsonFile(tmpPath(filename)) : null)
+  );
+}
+
 /**
  * Read JSON from durable storage.
- * Priority: Vercel Blob → writable tmp (Vercel) → local data/ (dev / bundled seed).
- * When Blob is configured but empty, seed it from the bundled local file once.
+ * Priority: Supabase → Vercel Blob → local data/ (dev / bundled seed).
+ * When a remote store is empty, seed it from the bundled local file once.
  */
-export async function readJsonDocument<T>(
-  filename: string,
-  fallback: T
-): Promise<T> {
+export async function readJsonDocument<T>(filename: string, fallback: T): Promise<T> {
   assertSafeDocumentName(filename);
   try {
+    if (isSupabaseConfigured()) {
+      const fromSupabase = await readSupabaseJson(filename);
+      if (fromSupabase) return parseJsonDocument<T>(fromSupabase);
+
+      const seed = await readSeedJson(filename);
+      if (seed) {
+        try {
+          await writeSupabaseJson(filename, parseJsonDocument(seed));
+        } catch (error) {
+          console.error(`[json-store] failed seeding supabase for ${filename}:`, error);
+        }
+        return parseJsonDocument<T>(seed);
+      }
+      return fallback;
+    }
+
     if (hasBlobToken()) {
       const fromBlob = await readBlobJson(filename);
       if (fromBlob) return parseJsonDocument<T>(fromBlob);
 
-      const seed =
-        (await readLocalJsonFile(localPath(filename))) ??
-        (isVercelRuntime() ? await readLocalJsonFile(tmpPath(filename)) : null);
-
+      const seed = await readSeedJson(filename);
       if (seed) {
         try {
           await writeBlobJson(filename, seed);
@@ -137,7 +184,7 @@ export async function readJsonDocument<T>(
       }
     }
 
-    if (isVercelRuntime()) {
+    if (isServerlessRuntime()) {
       const fromTmp = await readLocalJsonFile(tmpPath(filename));
       if (fromTmp) return parseJsonDocument<T>(fromTmp);
     }
@@ -153,17 +200,21 @@ export async function readJsonDocument<T>(
 
 /**
  * Persist JSON so admin updates survive on Vercel.
- * Uses Blob when configured; otherwise local disk in development,
- * or /tmp on Vercel (ephemeral — configure Blob for durable production writes).
+ * Uses Supabase when configured, then Blob, then local disk in development.
  */
 export async function writeJsonDocument<T>(filename: string, value: T): Promise<void> {
   assertSafeDocumentName(filename);
-  const contents = `${JSON.stringify(value, null, 2)}\n`;
+  const plain = toPlainData(value);
+  const contents = `${JSON.stringify(plain, null, 2)}\n`;
+
+  if (isSupabaseConfigured()) {
+    await writeSupabaseJson(filename, plain);
+    return;
+  }
 
   if (hasBlobToken()) {
     await writeBlobJson(filename, contents);
-    // Keep a warm tmp copy for faster subsequent reads in this instance.
-    if (isVercelRuntime()) {
+    if (isServerlessRuntime()) {
       try {
         await writeLocalJsonFile(tmpPath(filename), contents);
       } catch {
@@ -173,27 +224,16 @@ export async function writeJsonDocument<T>(filename: string, value: T): Promise<
     return;
   }
 
-  if (isVercelRuntime()) {
-    try {
-      await writeLocalJsonFile(tmpPath(filename), contents);
-      console.warn(
-        `[json-store] Wrote ${filename} to /tmp only. Configure BLOB_READ_WRITE_TOKEN for durable storage.`
-      );
-      return;
-    } catch (error) {
-      throw new Error(
-        `Cannot save ${filename} on this serverless host (read-only filesystem). Configure a Vercel Blob store (BLOB_READ_WRITE_TOKEN).`
-      );
-    }
+  if (isServerlessRuntime()) {
+    throw new Error(
+      `Cannot save ${filename} on Vercel without Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`
+    );
   }
 
   await writeLocalJsonFile(localPath(filename), contents);
 }
 
-export async function ensureJsonDocument<T>(
-  filename: string,
-  fallback: T
-): Promise<T> {
+export async function ensureJsonDocument<T>(filename: string, fallback: T): Promise<T> {
   const existing = await readJsonDocument<T | null>(filename, null);
   if (existing !== null) return existing;
   await writeJsonDocument(filename, fallback);

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getPublicSupabaseUrl } from "@/lib/security/public-env";
+
 /**
  * Admin / write credentials. Importing this file from a Client Component fails the build.
  */
@@ -35,4 +37,24 @@ export function cronSecretMatches(authorizationHeader: string | null): boolean {
   const secret = getCronSecret();
   if (!secret) return false;
   return authorizationHeader === `Bearer ${secret}`;
+}
+
+export function getSupabaseUrl(): string | null {
+  const fromPublic = getPublicSupabaseUrl();
+  if (fromPublic) return fromPublic;
+  const fromServer = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
+  return fromServer || null;
+}
+
+/** Admin/service key — server only. Never expose to the browser. */
+export function getSupabaseServiceRoleKey(): string | null {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+}
+
+export function isSupabaseConfigured(): boolean {
+  return Boolean(getSupabaseUrl() && getSupabaseServiceRoleKey());
+}
+
+export function isServerlessRuntime(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }

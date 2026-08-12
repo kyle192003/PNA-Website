@@ -1,13 +1,18 @@
+import "server-only";
+
 import { promises as fs } from "fs";
 import path from "path";
 import { conference } from "@/lib/conference";
+import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import { sanitizeStorageId } from "@/lib/security/storage-id";
 import { formatParticipantName } from "@/lib/participant-name";
 import type { CertificateTemplate, ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const GLOBAL_DATA_FILE = path.join(DATA_DIR, "certificate-template.json");
-const EVENT_TEMPLATES_DIR = path.join(DATA_DIR, "certificate-templates");
+const GLOBAL_FILENAME = "certificate-template.json";
+const EVENT_MAP_FILENAME = "certificate-templates.json";
+const LOCAL_EVENT_TEMPLATES_DIR = path.join(process.cwd(), "data", "certificate-templates");
+
+type EventTemplateMap = Record<string, CertificateTemplate>;
 
 export const CERTIFICATE_PLACEHOLDERS = [
   "{{name}}",
@@ -31,30 +36,6 @@ export const DEFAULT_CERTIFICATE_TEMPLATE: CertificateTemplate = {
   nameFontWeight: 700,
   updatedAt: new Date(0).toISOString(),
 };
-
-function eventTemplatePath(eventId: string): string | null {
-  const safeEventId = sanitizeStorageId(eventId);
-  if (!safeEventId) return null;
-  const candidate = path.join(EVENT_TEMPLATES_DIR, `${safeEventId}.json`);
-  const root = path.resolve(EVENT_TEMPLATES_DIR);
-  const resolved = path.resolve(candidate);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
-  return resolved;
-}
-
-async function ensureDirs(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.mkdir(EVENT_TEMPLATES_DIR, { recursive: true });
-  try {
-    await fs.access(GLOBAL_DATA_FILE);
-  } catch {
-    await fs.writeFile(
-      GLOBAL_DATA_FILE,
-      JSON.stringify(DEFAULT_CERTIFICATE_TEMPLATE, null, 2),
-      "utf-8"
-    );
-  }
-}
 
 function normalizeTemplate(
   parsed: Partial<CertificateTemplate> & {
@@ -95,24 +76,49 @@ function normalizeTemplate(
   };
 }
 
-async function readTemplateFile(filePath: string): Promise<CertificateTemplate | null> {
+async function seedEventTemplateMapFromLocal(): Promise<EventTemplateMap> {
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return normalizeTemplate(JSON.parse(content));
+    const entries = await fs.readdir(LOCAL_EVENT_TEMPLATES_DIR);
+    const map: EventTemplateMap = {};
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      const eventId = sanitizeStorageId(entry.replace(/\.json$/i, ""));
+      if (!eventId) continue;
+      try {
+        const content = await fs.readFile(path.join(LOCAL_EVENT_TEMPLATES_DIR, entry), "utf-8");
+        map[eventId] = normalizeTemplate(JSON.parse(content));
+      } catch {
+        // skip unreadable template
+      }
+    }
+    return map;
   } catch {
-    return null;
+    return {};
   }
+}
+
+async function readEventTemplateMap(): Promise<EventTemplateMap> {
+  const existing = await readJsonDocument<EventTemplateMap>(EVENT_MAP_FILENAME, {});
+  if (Object.keys(existing).length > 0) return existing;
+
+  const seeded = await seedEventTemplateMapFromLocal();
+  if (Object.keys(seeded).length === 0) return existing;
+
+  try {
+    await writeJsonDocument(EVENT_MAP_FILENAME, seeded);
+  } catch (error) {
+    console.error("[certificate-template] failed seeding event templates:", error);
+  }
+  return seeded;
 }
 
 /** Global fallback / default template. */
 export async function getGlobalCertificateTemplate(): Promise<CertificateTemplate> {
-  await ensureDirs();
-  return (
-    (await readTemplateFile(GLOBAL_DATA_FILE)) ?? {
-      ...DEFAULT_CERTIFICATE_TEMPLATE,
-      updatedAt: new Date().toISOString(),
-    }
+  const parsed = await readJsonDocument<Partial<CertificateTemplate>>(
+    GLOBAL_FILENAME,
+    DEFAULT_CERTIFICATE_TEMPLATE
   );
+  return normalizeTemplate(parsed);
 }
 
 /**
@@ -122,11 +128,10 @@ export async function getGlobalCertificateTemplate(): Promise<CertificateTemplat
 export async function getCertificateTemplate(
   eventId?: string | null
 ): Promise<CertificateTemplate> {
-  await ensureDirs();
-
-  const templatePath = eventId ? eventTemplatePath(eventId) : null;
-  if (templatePath) {
-    const eventTemplate = await readTemplateFile(templatePath);
+  const safeEventId = eventId ? sanitizeStorageId(eventId) : null;
+  if (safeEventId) {
+    const map = await readEventTemplateMap();
+    const eventTemplate = map[safeEventId] ? normalizeTemplate(map[safeEventId]) : null;
     if (eventTemplate?.imageUrl) {
       return eventTemplate;
     }
@@ -148,7 +153,6 @@ export async function saveCertificateTemplate(
   input: Omit<CertificateTemplate, "updatedAt">,
   eventId?: string | null
 ): Promise<CertificateTemplate> {
-  await ensureDirs();
   if (!input.subject.trim()) {
     throw new Error("Certificate subject is required.");
   }
@@ -169,11 +173,18 @@ export async function saveCertificateTemplate(
     updatedAt: new Date().toISOString(),
   };
 
-  const target = eventId ? eventTemplatePath(eventId) : GLOBAL_DATA_FILE;
-  if (!target) {
-    throw new Error("Invalid event id.");
+  if (eventId) {
+    const safeEventId = sanitizeStorageId(eventId);
+    if (!safeEventId) {
+      throw new Error("Invalid event id.");
+    }
+    const map = await readEventTemplateMap();
+    map[safeEventId] = template;
+    await writeJsonDocument(EVENT_MAP_FILENAME, map);
+    return template;
   }
-  await fs.writeFile(target, JSON.stringify(template, null, 2), "utf-8");
+
+  await writeJsonDocument(GLOBAL_FILENAME, template);
   return template;
 }
 

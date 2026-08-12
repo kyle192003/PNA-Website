@@ -7,7 +7,7 @@ Official conference website for the **Philippine National Association (PNA) 2026
 - Professional government-style design with Philippine national colors
 - Conference information pages (About, Program, Speakers, Contact)
 - **Online registration** with form validation and reference number generation
-- Registration data persisted locally in `data/registrations.json`
+- Events, registrations, QR codes, and uploads stored in Supabase (works on Vercel)
 - Registration lookup API by reference number
 - Fully responsive layout for mobile and desktop
 
@@ -30,6 +30,17 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Supabase (required on Vercel)
+
+Local files disappear on Vercel. Use Supabase so events, QR codes, receipts, and uploads stay saved.
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. In the SQL Editor, run `supabase/schema.sql`.
+3. Copy the project URL, anon key, and **service role** key into `.env.local` (see `.env.example`).
+4. Add the same values in Vercel → Project → Settings → Environment Variables, then redeploy.
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Never prefix it with `NEXT_PUBLIC_`.
 
 ### Production Build
 
@@ -90,6 +101,7 @@ React Query Devtools are available in development (bottom-left corner).
 - [TanStack Query](https://tanstack.com/query) (server state & API mutations)
 - [Tailwind CSS 4](https://tailwindcss.com/)
 - [TypeScript](https://www.typescriptlang.org/)
+- [Supabase](https://supabase.com/) (database + file storage)
 
 ## Contributing
 

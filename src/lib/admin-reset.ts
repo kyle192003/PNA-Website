@@ -2,6 +2,13 @@ import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_CERTIFICATE_TEMPLATE } from "@/lib/certificate-template";
 import { DEFAULT_EVALUATION_FORM } from "@/lib/evaluation-config";
+import { writeJsonDocument } from "@/lib/json-store";
+import { isSupabaseConfigured } from "@/lib/security/server-env";
+import {
+  PRIVATE_UPLOADS_BUCKET,
+  PUBLIC_UPLOADS_BUCKET,
+  clearStoragePrefix,
+} from "@/lib/supabase/storage";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
@@ -12,6 +19,7 @@ const JSON_RESET_TARGETS: Array<{ file: string; value: unknown }> = [
   { file: "inquiries.json", value: [] },
   { file: "special-invites.json", value: [] },
   { file: "certificate-template.json", value: DEFAULT_CERTIFICATE_TEMPLATE },
+  { file: "certificate-templates.json", value: {} },
   {
     file: "evaluation-form.json",
     value: {
@@ -49,19 +57,31 @@ export type AdminResetResult = {
  * Wipes demo/presentation data while keeping admin login credentials.
  */
 export async function resetAdminDashboardData(): Promise<AdminResetResult> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-
   const clearedFiles: string[] = [];
 
   for (const target of JSON_RESET_TARGETS) {
-    const filePath = path.join(DATA_DIR, target.file);
-    await fs.writeFile(filePath, `${JSON.stringify(target.value, null, 2)}\n`, "utf-8");
+    await writeJsonDocument(target.file, target.value);
     clearedFiles.push(target.file);
   }
 
-  const eventTemplatesDir = path.join(DATA_DIR, "certificate-templates");
-  await clearDirectoryContents(eventTemplatesDir);
-  clearedFiles.push("certificate-templates/");
+  let clearedUploadFolders = 0;
+  if (isSupabaseConfigured()) {
+    for (const prefix of ["qrcodes", "speakers", "certificates", "registration-qrcodes"]) {
+      clearedUploadFolders += await clearStoragePrefix(PUBLIC_UPLOADS_BUCKET, prefix);
+    }
+    for (const prefix of ["receipts", "registration-docs"]) {
+      clearedUploadFolders += await clearStoragePrefix(PRIVATE_UPLOADS_BUCKET, prefix);
+    }
+  }
+
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    clearedUploadFolders += await clearDirectoryContents(
+      path.join(DATA_DIR, "certificate-templates")
+    );
+  } catch {
+    // local data dir may be read-only on Vercel
+  }
 
   const uploadFolders = [
     "receipts",
@@ -71,14 +91,15 @@ export async function resetAdminDashboardData(): Promise<AdminResetResult> {
     "registration-qrcodes",
   ];
 
-  let clearedUploadFolders = 0;
   for (const folder of uploadFolders) {
     clearedUploadFolders += await clearDirectoryContents(path.join(UPLOADS_ROOT, folder));
   }
 
-  // Private receipt store (outside public/)
   clearedUploadFolders += await clearDirectoryContents(
     path.join(process.cwd(), "storage", "receipts")
+  );
+  clearedUploadFolders += await clearDirectoryContents(
+    path.join(process.cwd(), "storage", "registration-docs")
   );
 
   return { clearedFiles, clearedUploadFolders };

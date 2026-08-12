@@ -15,3 +15,12 @@ export function getPublicMapsApiKey(): string {
 export function isPublicRqDevtoolsEnabled(): boolean {
   return process.env.NEXT_PUBLIC_RQ_DEVTOOLS === "true";
 }
+
+export function getPublicSupabaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+}
+
+/** Limited public anon key. Never put the service role key here. */
+export function getPublicSupabaseAnonKey(): string {
+  return (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
+}

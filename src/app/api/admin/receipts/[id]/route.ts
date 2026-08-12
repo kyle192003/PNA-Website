@@ -1,8 +1,7 @@
-import { promises as fs } from "fs";
 import { NextResponse } from "next/server";
 import { getRegistrationById } from "@/lib/registrations";
 import { requireAdminSession } from "@/lib/security/require-admin";
-import { resolveReceiptFile } from "@/lib/uploads";
+import { readResolvedFile, resolveReceiptFile } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +26,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Receipt file not found." }, { status: 404 });
   }
 
-  const data = await fs.readFile(file.absolutePath);
-  return new NextResponse(data, {
+  const data = await readResolvedFile(file);
+  return new NextResponse(new Uint8Array(data), {
     status: 200,
     headers: {
       "Content-Type": file.mimeType,

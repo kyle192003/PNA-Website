@@ -38,8 +38,7 @@ async function renderCertificateFromImageTemplate(
     throw new Error("Upload a certificate template first.");
   }
 
-  const imagePath = resolvePublicPath(template.imageUrl);
-  const imageBuffer = await fs.readFile(imagePath);
+  const imageBuffer = await readTemplateBytes(template.imageUrl);
   const metadata = await sharp(imageBuffer).metadata();
   const width = metadata.width ?? 1;
   const height = metadata.height ?? 1;
@@ -69,8 +68,7 @@ async function renderCertificateFromPdfTemplate(
     throw new Error("Upload a certificate template first.");
   }
 
-  const pdfPath = resolvePublicPath(template.imageUrl);
-  const existingPdfBytes = await fs.readFile(pdfPath);
+  const existingPdfBytes = await readTemplateBytes(template.imageUrl);
   const pdfDoc = await PDFDocument.load(existingPdfBytes);
   const page = pdfDoc.getPages()[0];
 
@@ -136,8 +134,7 @@ async function renderNameOntoImage(
     throw new Error("Upload a certificate template first.");
   }
 
-  const imagePath = resolvePublicPath(template.imageUrl);
-  const imageBuffer = await fs.readFile(imagePath);
+  const imageBuffer = await readTemplateBytes(template.imageUrl);
   const metadata = await sharp(imageBuffer).metadata();
   const width = metadata.width ?? 1;
   const height = metadata.height ?? 1;
@@ -204,10 +201,18 @@ function fitNameFontSizeWithFont(
   return best;
 }
 
-function resolvePublicPath(publicUrl: string): string {
+async function readTemplateBytes(publicUrl: string): Promise<Buffer> {
+  if (/^https?:\/\//i.test(publicUrl)) {
+    const response = await fetch(publicUrl);
+    if (!response.ok) {
+      throw new Error("Could not load certificate template file.");
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   const cleanUrl = publicUrl.split("?")[0];
   const relative = cleanUrl.replace(/^\//, "");
-  return path.join(process.cwd(), "public", relative);
+  return fs.readFile(path.join(process.cwd(), "public", relative));
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
