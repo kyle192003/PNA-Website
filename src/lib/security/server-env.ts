@@ -1,6 +1,9 @@
 import "server-only";
 
-import { getPublicSupabaseUrl } from "@/lib/security/public-env";
+import {
+  getPublicSupabaseUrl,
+  normalizeSupabaseProjectUrl,
+} from "@/lib/security/public-env";
 
 /**
  * Admin / write credentials. Importing this file from a Client Component fails the build.
@@ -42,7 +45,7 @@ export function cronSecretMatches(authorizationHeader: string | null): boolean {
 export function getSupabaseUrl(): string | null {
   const fromPublic = getPublicSupabaseUrl();
   if (fromPublic) return fromPublic;
-  const fromServer = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
+  const fromServer = normalizeSupabaseProjectUrl(process.env.SUPABASE_URL);
   return fromServer || null;
 }
 

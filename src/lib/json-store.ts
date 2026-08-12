@@ -86,13 +86,20 @@ async function readSupabaseJson(filename: string): Promise<string | null> {
 async function writeSupabaseJson(filename: string, value: unknown): Promise<void> {
   const supabase = requireSupabaseAdmin();
   const payload = JSON.parse(JSON.stringify(toPlainData(value)));
-  const { error } = await supabase.from(APP_DOCUMENTS_TABLE).upsert({
-    name: filename,
-    payload,
-    updated_at: new Date().toISOString(),
-  });
+  const { error } = await supabase.from(APP_DOCUMENTS_TABLE).upsert(
+    {
+      name: filename,
+      payload,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "name" }
+  );
   if (error) {
-    throw new Error(`Could not save ${filename}: ${error.message}`);
+    const hint =
+      /invalid path/i.test(error.message)
+        ? " Check NEXT_PUBLIC_SUPABASE_URL — use only https://YOUR-PROJECT.supabase.co (no /rest/v1)."
+        : "";
+    throw new Error(`Could not save ${filename}: ${error.message}.${hint}`);
   }
 }
 
