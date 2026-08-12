@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { findByField } from "@/lib/json-query";
 import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import type {
   ContactInquiry,
@@ -58,7 +59,7 @@ export async function getAllInquiries(): Promise<ContactInquiry[]> {
 
 export async function getInquiryById(id: string): Promise<ContactInquiry | null> {
   const inquiries = await readInquiries();
-  return inquiries.find((inquiry) => inquiry.id === id) ?? null;
+  return findByField(inquiries, "id", id) ?? null;
 }
 
 export async function updateInquiryStatus(

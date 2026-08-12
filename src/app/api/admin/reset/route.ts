@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
 import { verifyAdminPassword } from "@/lib/admin-auth";
 import { resetAdminDashboardData } from "@/lib/admin-reset";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
-    const password = typeof body.password === "string" ? body.password : "";
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const password = typeof parsed.data.password === "string" ? parsed.data.password : "";
     const confirmation =
-      typeof body.confirmation === "string" ? body.confirmation.trim().toUpperCase() : "";
+      typeof parsed.data.confirmation === "string"
+        ? parsed.data.confirmation.trim().toUpperCase()
+        : "";
 
     if (!password) {
       return NextResponse.json({ error: "Admin password is required." }, { status: 400 });

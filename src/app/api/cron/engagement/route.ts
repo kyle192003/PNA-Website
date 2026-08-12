@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { runParticipantEngagementJob } from "@/lib/engagement";
+import { cronSecretMatches } from "@/lib/security/server-env";
 
 function authorizeCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-
-  const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
+  return cronSecretMatches(request.headers.get("authorization"));
 }
 
 async function handle(request: Request) {

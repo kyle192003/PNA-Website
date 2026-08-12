@@ -1,3 +1,5 @@
+import "server-only";
+
 import { promises as fs } from "fs";
 import path from "path";
 import { conference } from "@/lib/conference";
@@ -12,6 +14,7 @@ import { formatLongDate, type ReminderWindow } from "@/lib/event-date";
 import { buildVenueMapsUrl } from "@/lib/event-utils";
 import { formatParticipantName } from "@/lib/participant-name";
 import { sendMail, type MailAttachment } from "@/lib/mail";
+import { getAdminNotifyEmail } from "@/lib/security/server-env";
 import { createReceiptReuploadToken } from "@/lib/receipt-reupload-token";
 import { getSiteBaseUrl } from "@/lib/site-url";
 import type { ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
@@ -677,7 +680,7 @@ export type AdminInquiryEmailPayload = {
 export async function sendAdminInquiryNotification(
   payload: AdminInquiryEmailPayload
 ): Promise<{ ok: boolean; error?: string }> {
-  const to = process.env.ADMIN_NOTIFY_EMAIL?.trim() || conference.contact.email;
+  const to = getAdminNotifyEmail() || conference.contact.email;
   const subject = `New PNA website inquiry from ${payload.name}`;
   const adminUrl = `${getSiteBaseUrl()}/admin/inquiries`;
 
@@ -761,7 +764,7 @@ export type AdminReceiptSubmittedPayload = {
 export async function sendAdminReceiptSubmittedNotification(
   payload: AdminReceiptSubmittedPayload
 ): Promise<{ ok: boolean; error?: string }> {
-  const to = process.env.ADMIN_NOTIFY_EMAIL?.trim() || conference.contact.email;
+  const to = getAdminNotifyEmail() || conference.contact.email;
   const name = participantDisplayName(payload.registration);
   const adminUrl = `${getSiteBaseUrl()}/admin/participants`;
   const kindLabel = payload.isReupload ? "re-uploaded" : "uploaded";

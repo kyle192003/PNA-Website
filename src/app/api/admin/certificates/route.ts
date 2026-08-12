@@ -12,6 +12,8 @@ import { getEventById } from "@/lib/events";
 import { sendMail } from "@/lib/mail";
 import { conference } from "@/lib/conference";
 import type { CertificateTemplate } from "@/lib/types/admin";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 function escapeHtml(value: string): string {
   return value
@@ -68,6 +70,9 @@ function resolveEventId(source: URL | { eventId?: unknown }): string | null {
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const eventId = resolveEventId(new URL(request.url));
   const template = await getCertificateTemplate(eventId);
   return NextResponse.json({
@@ -79,8 +84,15 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const body = parsed.data;
     const eventId = resolveEventId(body);
     const current = await getCertificateTemplate(eventId);
     const next: Omit<CertificateTemplate, "updatedAt"> = {
@@ -120,8 +132,15 @@ export async function PUT(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const body = parsed.data;
     const action = body.action;
     const eventId = resolveEventId(body);
     const event = eventId ? await getEventById(eventId) : null;

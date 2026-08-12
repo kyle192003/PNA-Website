@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCertificateTemplate, saveCertificateTemplate } from "@/lib/certificate-template";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { saveCertificateTemplateFile } from "@/lib/uploads";
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");

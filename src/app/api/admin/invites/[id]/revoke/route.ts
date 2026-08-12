@@ -4,11 +4,15 @@ import {
   buildSpecialInviteUrl,
   revokeSpecialInvite,
 } from "@/lib/special-invites";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await context.params;
 
   try {

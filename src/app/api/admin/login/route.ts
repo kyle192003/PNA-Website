@@ -10,6 +10,7 @@ import {
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function POST(request: Request) {
   try {
@@ -22,8 +23,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
-    const password = body.password?.trim();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const password =
+      typeof parsed.data.password === "string" ? parsed.data.password.trim() : "";
 
     if (!password || !(await verifyAdminPassword(password))) {
       return NextResponse.json({ error: "Invalid password." }, { status: 401 });

@@ -7,13 +7,24 @@ import {
 } from "@/lib/admin-auth";
 import { updateAdminPassword } from "@/lib/admin-credentials";
 import { validateAdminPassword } from "@/lib/admin-password";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
-    const currentPassword = body.currentPassword?.trim() ?? "";
-    const newPassword = body.newPassword ?? "";
-    const confirmPassword = body.confirmPassword ?? "";
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const currentPassword =
+      typeof parsed.data.currentPassword === "string" ? parsed.data.currentPassword.trim() : "";
+    const newPassword =
+      typeof parsed.data.newPassword === "string" ? parsed.data.newPassword : "";
+    const confirmPassword =
+      typeof parsed.data.confirmPassword === "string" ? parsed.data.confirmPassword : "";
 
     if (!currentPassword) {
       return NextResponse.json({ error: "Current password is required." }, { status: 400 });

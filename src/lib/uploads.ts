@@ -1,6 +1,10 @@
+import "server-only";
+
 import { promises as fs } from "fs";
 import path from "path";
 import { put } from "@vercel/blob";
+import { getBlobReadWriteToken } from "@/lib/security/server-env";
+import { requireStorageId } from "@/lib/security/storage-id";
 
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 const PRIVATE_STORAGE_ROOT = path.join(process.cwd(), "storage");
@@ -11,7 +15,7 @@ const SPEAKER_DIR = path.join(UPLOADS_ROOT, "speakers");
 const CERTIFICATE_DIR = path.join(UPLOADS_ROOT, "certificates");
 
 function hasBlobToken(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+  return Boolean(getBlobReadWriteToken());
 }
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -158,6 +162,7 @@ function assertInsideRoot(root: string, candidate: string): string {
 
 export async function saveQrCode(eventId: string, file: File): Promise<string> {
   await ensureUploadDirs();
+  const safeEventId = requireStorageId(eventId, "event id");
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.error);
 
@@ -166,7 +171,7 @@ export async function saveQrCode(eventId: string, file: File): Promise<string> {
   if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
-  const filename = `${eventId}${ext}`;
+  const filename = `${safeEventId}${ext}`;
 
   // Durable public URL on Vercel; local filesystem for development.
   if (hasBlobToken()) {
@@ -192,6 +197,8 @@ export async function saveSpeakerPhoto(
   file: File
 ): Promise<string> {
   await ensureUploadDirs();
+  const safeEventId = requireStorageId(eventId, "event id");
+  const safeSpeakerId = requireStorageId(speakerId, "speaker id");
   const validation = validateFile(file, ALLOWED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.error);
 
@@ -200,7 +207,7 @@ export async function saveSpeakerPhoto(
   if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
-  const filename = `${eventId}-${speakerId}${ext}`;
+  const filename = `${safeEventId}-${safeSpeakerId}${ext}`;
 
   if (hasBlobToken()) {
     const blob = await put(`uploads/speakers/${filename}`, buffer, {
@@ -233,6 +240,7 @@ export async function saveReceipt(
   file: File
 ): Promise<string> {
   await ensureUploadDirs();
+  const safeRegistrationId = requireStorageId(registrationId, "registration id");
   const validation = validateFile(file, ALLOWED_RECEIPT_TYPES, MAX_REGISTRATION_DOC_SIZE);
   if (!validation.ok) throw new Error(validation.error);
 
@@ -241,14 +249,14 @@ export async function saveReceipt(
   if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
   const ext = getExtension(file.name, mimeCheck.mimeType);
-  const filename = `${registrationId}${ext}`;
+  const filename = `${safeRegistrationId}${ext}`;
   const filepath = assertInsideRoot(RECEIPT_DIR, path.join(RECEIPT_DIR, filename));
 
   // Remove any previous extension variants (private + legacy public).
-  await removeReceiptFiles(registrationId);
+  await removeReceiptFiles(safeRegistrationId);
 
   await fs.writeFile(filepath, buffer);
-  return buildReceiptStorageRef(registrationId, ext);
+  return buildReceiptStorageRef(safeRegistrationId, ext);
 }
 
 export type RegistrationDocKind =
@@ -281,8 +289,9 @@ export async function saveRegistrationDocument(
   const mimeCheck = await validateBufferMime(buffer, validation.mimeType, allowed);
   if (!mimeCheck.ok) throw new Error(mimeCheck.error);
 
+  const safeRegistrationId = requireStorageId(registrationId, "registration id");
   const ext = getExtension(file.name, mimeCheck.mimeType);
-  const filename = `${registrationId}-${kind}${ext}`;
+  const filename = `${safeRegistrationId}-${kind}${ext}`;
   const filepath = assertInsideRoot(
     REGISTRATION_DOCS_DIR,
     path.join(REGISTRATION_DOCS_DIR, filename)
@@ -290,7 +299,7 @@ export async function saveRegistrationDocument(
 
   // Clear prior variants for this kind.
   for (const candidateExt of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]) {
-    const prior = path.join(REGISTRATION_DOCS_DIR, `${registrationId}-${kind}${candidateExt}`);
+    const prior = path.join(REGISTRATION_DOCS_DIR, `${safeRegistrationId}-${kind}${candidateExt}`);
     try {
       await fs.unlink(prior);
     } catch {
@@ -299,7 +308,7 @@ export async function saveRegistrationDocument(
   }
 
   await fs.writeFile(filepath, buffer);
-  return buildRegistrationDocRef(registrationId, kind, ext);
+  return buildRegistrationDocRef(safeRegistrationId, kind, ext);
 }
 
 export async function resolveRegistrationDocument(
@@ -445,12 +454,13 @@ export async function saveCertificateTemplateFile(
   const ext = getExtension(file.name, mimeCheck.mimeType);
   const fileType: CertificateTemplateFileType =
     mimeCheck.mimeType === "application/pdf" ? "pdf" : "image";
-  const filename = eventId
-    ? `certificate-${eventId}${ext}`
+  const safeEventId = eventId ? requireStorageId(eventId, "event id") : null;
+  const filename = safeEventId
+    ? `certificate-${safeEventId}${ext}`
     : `certificate-template${ext}`;
   const filepath = assertInsideRoot(CERTIFICATE_DIR, path.join(CERTIFICATE_DIR, filename));
 
-  await removeExistingCertificateTemplates(eventId);
+  await removeExistingCertificateTemplates(safeEventId);
 
   try {
     await fs.writeFile(filepath, buffer);

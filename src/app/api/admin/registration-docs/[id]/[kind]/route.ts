@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { NextResponse } from "next/server";
 import { getRegistrationById } from "@/lib/registrations";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import {
   resolveRegistrationDocument,
   type RegistrationDocKind,
@@ -13,6 +14,9 @@ const KINDS: RegistrationDocKind[] = ["pnaId", "prcId", "bir2303", "bir2307", "s
 type RouteParams = { params: Promise<{ id: string; kind: string }> };
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id, kind } = await params;
   if (!id?.trim() || !KINDS.includes(kind as RegistrationDocKind)) {
     return NextResponse.json({ error: "Invalid document request." }, { status: 400 });

@@ -33,6 +33,7 @@ import {
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 const membershipTypes: MembershipType[] = ["lifetime", "regular", "non_member"];
 const rates: RegistrationRateChoice[] = ["regular", "seniorPwd"];
@@ -262,7 +263,11 @@ export async function POST(request: Request) {
       return rateLimitResponse(limited.retryAfterSeconds);
     }
 
-    const body = await request.json();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const body = parsed.data;
     const inviteToken =
       typeof body.inviteToken === "string" ? body.inviteToken.trim() : "";
     const mode = body.mode === "group" ? "group" : "individual";
@@ -473,10 +478,10 @@ export async function POST(request: Request) {
     }
 
     const contact = validatePersonContact({
-      firstName: body.firstName,
-      lastName: body.lastName,
-      email: body.email,
-      phone: body.phone,
+      firstName: typeof body.firstName === "string" ? body.firstName : "",
+      lastName: typeof body.lastName === "string" ? body.lastName : "",
+      email: typeof body.email === "string" ? body.email : "",
+      phone: typeof body.phone === "string" ? body.phone : "",
     });
     if (contact.error || !contact.phone) {
       return NextResponse.json({ error: contact.error }, { status: 400 });
@@ -535,14 +540,16 @@ export async function POST(request: Request) {
       return NextResponse.json(toRegistrationResponse(registration), { status: 201 });
     }
 
-    if (!modes.includes(body.registrationMode)) {
+    const registrationMode =
+      typeof body.registrationMode === "string" ? body.registrationMode : "";
+    if (!modes.includes(registrationMode as RegistrationModeChoice)) {
       return NextResponse.json(
         { error: "Please select single or group registration." },
         { status: 400 }
       );
     }
 
-    if (body.registrationMode === "group") {
+    if (registrationMode === "group") {
       return NextResponse.json(
         {
           error:

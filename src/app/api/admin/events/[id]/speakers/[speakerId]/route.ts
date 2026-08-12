@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteEventSpeaker, getEventById, updateEventSpeaker } from "@/lib/events";
 import { parseSpeakerRequest } from "@/lib/speaker-request";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { deleteUploadedFile, saveSpeakerPhoto } from "@/lib/uploads";
 
 interface RouteParams {
@@ -8,6 +9,9 @@ interface RouteParams {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id, speakerId } = await params;
     const { input, file } = await parseSpeakerRequest(request);
@@ -37,6 +41,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id, speakerId } = await params;
   const event = await deleteEventSpeaker(id, speakerId);
 

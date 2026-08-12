@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { getQueryClient } from "@/lib/query-client";
+import { isPublicRqDevtoolsEnabled } from "@/lib/security/public-env";
 
 const ReactQueryDevtools = dynamic(
   () =>
@@ -14,8 +15,7 @@ const ReactQueryDevtools = dynamic(
 );
 
 const showDevtools =
-  process.env.NODE_ENV === "development" &&
-  process.env.NEXT_PUBLIC_RQ_DEVTOOLS === "true";
+  process.env.NODE_ENV === "development" && isPublicRqDevtoolsEnabled();
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => getQueryClient());

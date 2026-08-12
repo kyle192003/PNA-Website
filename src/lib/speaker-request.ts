@@ -1,4 +1,5 @@
 import type { EventSpeakerInput } from "@/lib/types/admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function parseSpeakerRequest(
   request: Request
@@ -21,6 +22,17 @@ export async function parseSpeakerRequest(
     };
   }
 
-  const body = (await request.json()) as EventSpeakerInput;
-  return { input: body, file: null };
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+
+  return {
+    input: {
+      name: typeof parsed.data.name === "string" ? parsed.data.name : "",
+      title: typeof parsed.data.title === "string" ? parsed.data.title : "",
+      organization: typeof parsed.data.organization === "string" ? parsed.data.organization : "",
+    },
+    file: null,
+  };
 }

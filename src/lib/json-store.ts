@@ -1,22 +1,37 @@
+import "server-only";
+
 import { promises as fs } from "fs";
 import path from "path";
 import { get, put } from "@vercel/blob";
+import { toPlainData } from "@/lib/security/safe-input";
+import { getBlobReadWriteToken, getBlobStoreAccess } from "@/lib/security/server-env";
 
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const TMP_DATA_DIR = path.join("/tmp", "pna-data");
+const SAFE_JSON_DOCUMENT = /^[a-z0-9][a-z0-9._-]*\.json$/i;
+
+function parseJsonDocument<T>(raw: string): T {
+  return toPlainData(JSON.parse(raw)) as T;
+}
+
+function assertSafeDocumentName(filename: string): void {
+  if (
+    !SAFE_JSON_DOCUMENT.test(filename) ||
+    filename.includes("..") ||
+    filename.includes("/") ||
+    filename.includes("\\")
+  ) {
+    throw new Error("Invalid JSON document name.");
+  }
+}
 
 function hasBlobToken(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+  return Boolean(getBlobReadWriteToken());
 }
 
 /** Must match the Vercel Blob store access mode (public vs private). */
 function getBlobAccess(): "public" | "private" {
-  const configured = process.env.BLOB_STORE_ACCESS?.trim().toLowerCase();
-  if (configured === "private" || configured === "public") {
-    return configured;
-  }
-  // Default public — matches typical Vercel Blob stores and uploads.ts.
-  return "public";
+  return getBlobStoreAccess();
 }
 
 function isVercelRuntime(): boolean {
@@ -102,10 +117,11 @@ export async function readJsonDocument<T>(
   filename: string,
   fallback: T
 ): Promise<T> {
+  assertSafeDocumentName(filename);
   try {
     if (hasBlobToken()) {
       const fromBlob = await readBlobJson(filename);
-      if (fromBlob) return JSON.parse(fromBlob) as T;
+      if (fromBlob) return parseJsonDocument<T>(fromBlob);
 
       const seed =
         (await readLocalJsonFile(localPath(filename))) ??
@@ -117,17 +133,17 @@ export async function readJsonDocument<T>(
         } catch (error) {
           console.error(`[json-store] failed seeding blob for ${filename}:`, error);
         }
-        return JSON.parse(seed) as T;
+        return parseJsonDocument<T>(seed);
       }
     }
 
     if (isVercelRuntime()) {
       const fromTmp = await readLocalJsonFile(tmpPath(filename));
-      if (fromTmp) return JSON.parse(fromTmp) as T;
+      if (fromTmp) return parseJsonDocument<T>(fromTmp);
     }
 
     const fromLocal = await readLocalJsonFile(localPath(filename));
-    if (fromLocal) return JSON.parse(fromLocal) as T;
+    if (fromLocal) return parseJsonDocument<T>(fromLocal);
   } catch (error) {
     console.error(`[json-store] failed reading ${filename}:`, error);
   }
@@ -141,6 +157,7 @@ export async function readJsonDocument<T>(
  * or /tmp on Vercel (ephemeral — configure Blob for durable production writes).
  */
 export async function writeJsonDocument<T>(filename: string, value: T): Promise<void> {
+  assertSafeDocumentName(filename);
   const contents = `${JSON.stringify(value, null, 2)}\n`;
 
   if (hasBlobToken()) {

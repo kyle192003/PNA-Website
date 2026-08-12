@@ -7,6 +7,7 @@ import {
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function POST(request: Request) {
   try {
@@ -16,8 +17,14 @@ export async function POST(request: Request) {
       return rateLimitResponse(limited.retryAfterSeconds);
     }
 
-    const body = await request.json();
-    const { name, email, mobile, message } = body;
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const name = typeof parsed.data.name === "string" ? parsed.data.name : "";
+    const email = typeof parsed.data.email === "string" ? parsed.data.email : "";
+    const mobile = typeof parsed.data.mobile === "string" ? parsed.data.mobile : "";
+    const message = typeof parsed.data.message === "string" ? parsed.data.message : "";
 
     const fieldErrors = validateContactInquiry({
       name: name ?? "",

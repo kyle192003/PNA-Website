@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getEventById } from "@/lib/events";
 import { ensureEventRegistrationQr } from "@/lib/registration-qr";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
 interface RouteParams {
@@ -8,6 +9,9 @@ interface RouteParams {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const event = await getEventById(id);
 
@@ -40,6 +44,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function POST(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const event = await getEventById(id);
 

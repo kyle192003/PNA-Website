@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createHmac, timingSafeEqual } from "crypto";
 import { getSigningSecret } from "@/lib/security/secrets";
 

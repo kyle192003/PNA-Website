@@ -5,10 +5,14 @@ import {
   parseExportEventId,
   parseExportFormat,
 } from "@/lib/export/response";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const format = parseExportFormat(request);
     if (!format) {

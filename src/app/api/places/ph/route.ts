@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { filterPhProvinces, type PhPlaceSuggestion, type PhPlaceType } from "@/lib/ph-locations";
+// Address suggest stays server-side. If GOOGLE_MAPS_SERVER_API_KEY is added later,
+// use it here — never NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in the browser.
 import {
   clientIpFromRequest,
   rateLimit,

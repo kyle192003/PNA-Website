@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEventById, setEventQrCode, updateEvent } from "@/lib/events";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { saveQrCode } from "@/lib/uploads";
 
 interface RouteParams {
@@ -7,6 +8,9 @@ interface RouteParams {
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
     const event = await getEventById(id);

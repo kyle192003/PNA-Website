@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addEventSpeaker, updateEventSpeaker } from "@/lib/events";
 import { parseSpeakerRequest } from "@/lib/speaker-request";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { saveSpeakerPhoto } from "@/lib/uploads";
 
 interface RouteParams {
@@ -8,6 +9,9 @@ interface RouteParams {
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
     const { input, file } = await parseSpeakerRequest(request);

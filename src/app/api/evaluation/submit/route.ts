@@ -8,6 +8,7 @@ import {
   markCertificateSent,
   submitRegistrationEvaluation,
 } from "@/lib/registrations";
+import { plainStringNumberMap, readJsonBody } from "@/lib/security/safe-input";
 
 function validateAnswers(
   answers: Record<string, string | number>,
@@ -38,15 +39,19 @@ function validateAnswers(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const token = extractCheckInTokenFromScan(typeof body.token === "string" ? body.token : "");
-    const rawAnswers =
-      body.answers && typeof body.answers === "object"
-        ? (body.answers as Record<string, string | number>)
-        : {
-            "overall-rating": body.rating,
-            feedback: body.feedback,
-          };
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const token = extractCheckInTokenFromScan(
+      typeof parsed.data.token === "string" ? parsed.data.token : ""
+    );
+    const rawAnswers = parsed.data.answers
+      ? plainStringNumberMap(parsed.data.answers)
+      : plainStringNumberMap({
+          "overall-rating": parsed.data.rating,
+          feedback: parsed.data.feedback,
+        });
 
     if (!token) {
       return NextResponse.json({ error: "Invalid evaluation token." }, { status: 400 });

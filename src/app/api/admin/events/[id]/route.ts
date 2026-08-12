@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { finishEventAndSendEvaluations } from "@/lib/engagement";
-import { deleteEvent, getEventById, updateEvent } from "@/lib/events";
+import { deleteEvent, getEventById, parseEventMutationInput, updateEvent } from "@/lib/events";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const event = await getEventById(id);
   if (!event) {
@@ -16,15 +21,22 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
-    const body = await request.json();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const input = parseEventMutationInput(parsed.data);
     const previous = await getEventById(id);
 
     // Saving status as Finished should also send evaluation invites immediately.
-    if (body.status === "finished" && previous?.status !== "finished") {
+    if (input.status === "finished" && previous?.status !== "finished") {
       const result = await finishEventAndSendEvaluations(id);
-      const rest = { ...body };
+      const rest = { ...input };
       delete rest.status;
       const hasOtherFields = Object.keys(rest).length > 0;
       const event = hasOtherFields
@@ -41,7 +53,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       });
     }
 
-    const event = await updateEvent(id, body);
+    const event = await updateEvent(id, input);
 
     if (!event) {
       return NextResponse.json({ error: "Event not found." }, { status: 404 });
@@ -55,6 +67,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const deleted = await deleteEvent(id);
   if (!deleted) {

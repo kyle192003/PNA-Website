@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createHmac, timingSafeEqual } from "crypto";
 import { ADMIN_COOKIE } from "@/lib/admin-auth-constants";
 import { verifyAdminPassword as verifyStoredAdminPassword } from "@/lib/admin-credentials";

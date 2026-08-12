@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { NextResponse } from "next/server";
 import { getRegistrationById } from "@/lib/registrations";
+import { requireAdminSession } from "@/lib/security/require-admin";
 import { resolveReceiptFile } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,9 @@ export const dynamic = "force-dynamic";
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   if (!id?.trim()) {
     return NextResponse.json({ error: "Registration id is required." }, { status: 400 });

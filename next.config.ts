@@ -1,5 +1,35 @@
 import type { NextConfig } from "next";
 
+/** Fail the build if an admin/write secret is accidentally prefixed with NEXT_PUBLIC_. */
+function assertNoSecretPublicEnv() {
+  const leaked = Object.keys(process.env).filter((key) => {
+    if (!key.startsWith("NEXT_PUBLIC_")) return false;
+    const upper = key.toUpperCase();
+    return (
+      upper.includes("SECRET") ||
+      upper.includes("PASSWORD") ||
+      upper.includes("SMTP") ||
+      upper.includes("BLOB") ||
+      upper.includes("CRON") ||
+      upper.includes("WEB3") ||
+      upper.includes("ADMIN") ||
+      upper.includes("PRIVATE") ||
+      upper.includes("SERVICE_ROLE") ||
+      upper.includes("SERVER_KEY") ||
+      upper.includes("WRITE_TOKEN") ||
+      upper.endsWith("_TOKEN")
+    );
+  });
+
+  if (leaked.length > 0) {
+    throw new Error(
+      `Refusing to expose server secrets to the browser via ${leaked.join(", ")}. Keep admin keys unprefixed and server-only.`
+    );
+  }
+}
+
+assertNoSecretPublicEnv();
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },

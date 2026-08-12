@@ -12,12 +12,17 @@ import {
 } from "@/lib/special-invites";
 import type { SpecialRole } from "@/lib/types/admin";
 import { SPECIAL_ROLE_SHORT_LABELS } from "@/lib/types/admin";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 function parseRole(value: unknown): SpecialRole | null {
   return value === "committee" || value === "speaker" ? value : null;
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status")?.trim();
   const eventId = searchParams.get("eventId")?.trim();
@@ -87,12 +92,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
+  const body = parsed.data;
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const firstName = typeof body.firstName === "string" ? body.firstName.trim() : "";

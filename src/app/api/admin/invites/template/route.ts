@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export async function GET() {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Special Invites");
   sheet.columns = [

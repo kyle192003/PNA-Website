@@ -1,6 +1,9 @@
+import "server-only";
+
 import { conference } from "@/lib/conference";
 import { isMailConfigured } from "@/lib/mail";
 import { sendAdminInquiryNotification } from "@/lib/mail-templates";
+import { getWeb3FormsAccessKey } from "@/lib/security/server-env";
 
 export type InquiryNotifyPayload = {
   name: string;
@@ -14,7 +17,7 @@ export type InquiryNotifyPayload = {
 async function notifyAdminViaWeb3Forms(
   payload: InquiryNotifyPayload
 ): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
-  const accessKey = process.env.WEB3FORMS_ACCESS_KEY?.trim();
+  const accessKey = getWeb3FormsAccessKey();
   if (!accessKey) {
     return { ok: false, skipped: true, error: "WEB3FORMS_ACCESS_KEY is not set." };
   }

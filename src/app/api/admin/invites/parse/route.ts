@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { parseSpecialInviteFile } from "@/lib/special-invite-import";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");

@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { getEventById, updateEvent } from "@/lib/events";
+import { requireStorageId } from "@/lib/security/storage-id";
 import {
   buildEventRegistrationUrl,
   buildQuickChartQrUrl,
@@ -43,8 +44,14 @@ export async function generateAndSaveRegistrationQr(
   const buffer = Buffer.from(await response.arrayBuffer());
   await fs.mkdir(REGISTRATION_QR_DIR, { recursive: true });
 
-  const filename = `${eventId}.png`;
-  await fs.writeFile(path.join(REGISTRATION_QR_DIR, filename), buffer);
+  const safeEventId = requireStorageId(eventId, "event id");
+  const filename = `${safeEventId}.png`;
+  const filepath = path.resolve(REGISTRATION_QR_DIR, filename);
+  const root = path.resolve(REGISTRATION_QR_DIR);
+  if (filepath !== root && !filepath.startsWith(root + path.sep)) {
+    throw new Error("Invalid event id.");
+  }
+  await fs.writeFile(filepath, buffer);
 
   return `/uploads/registration-qrcodes/${filename}`;
 }

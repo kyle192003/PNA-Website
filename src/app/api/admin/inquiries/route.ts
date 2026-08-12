@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAllInquiries } from "@/lib/inquiries";
 import type { InquiryStatus } from "@/lib/types/admin";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export async function GET(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") as InquiryStatus | null;
   const query = searchParams.get("q")?.toLowerCase().trim();

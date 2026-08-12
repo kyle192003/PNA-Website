@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { conference } from "@/lib/conference";
+import { sanitizeStorageId } from "@/lib/security/storage-id";
 import { formatParticipantName } from "@/lib/participant-name";
 import type { CertificateTemplate, ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
 
@@ -31,8 +32,14 @@ export const DEFAULT_CERTIFICATE_TEMPLATE: CertificateTemplate = {
   updatedAt: new Date(0).toISOString(),
 };
 
-function eventTemplatePath(eventId: string): string {
-  return path.join(EVENT_TEMPLATES_DIR, `${eventId}.json`);
+function eventTemplatePath(eventId: string): string | null {
+  const safeEventId = sanitizeStorageId(eventId);
+  if (!safeEventId) return null;
+  const candidate = path.join(EVENT_TEMPLATES_DIR, `${safeEventId}.json`);
+  const root = path.resolve(EVENT_TEMPLATES_DIR);
+  const resolved = path.resolve(candidate);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+  return resolved;
 }
 
 async function ensureDirs(): Promise<void> {
@@ -117,8 +124,9 @@ export async function getCertificateTemplate(
 ): Promise<CertificateTemplate> {
   await ensureDirs();
 
-  if (eventId) {
-    const eventTemplate = await readTemplateFile(eventTemplatePath(eventId));
+  const templatePath = eventId ? eventTemplatePath(eventId) : null;
+  if (templatePath) {
+    const eventTemplate = await readTemplateFile(templatePath);
     if (eventTemplate?.imageUrl) {
       return eventTemplate;
     }
@@ -162,6 +170,9 @@ export async function saveCertificateTemplate(
   };
 
   const target = eventId ? eventTemplatePath(eventId) : GLOBAL_DATA_FILE;
+  if (!target) {
+    throw new Error("Invalid event id.");
+  }
   await fs.writeFile(target, JSON.stringify(template, null, 2), "utf-8");
   return template;
 }

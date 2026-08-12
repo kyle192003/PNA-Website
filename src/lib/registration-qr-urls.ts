@@ -1,3 +1,5 @@
+import { getPublicSiteUrl } from "@/lib/security/public-env";
+
 const QUICKCHART_QR_BASE = "https://quickchart.io/qr";
 
 export function getClientSiteBaseUrl(): string {
@@ -5,7 +7,7 @@ export function getClientSiteBaseUrl(): string {
     return window.location.origin;
   }
 
-  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+  return getPublicSiteUrl() || "http://localhost:3000";
 }
 
 export function buildEventRegistrationUrl(eventId: string, baseUrl?: string): string {

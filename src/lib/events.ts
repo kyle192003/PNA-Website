@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { findByField } from "@/lib/json-query";
 import { conference } from "@/lib/conference";
 import { generateAndSaveRegistrationQr } from "@/lib/registration-qr";
 import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
@@ -196,7 +197,7 @@ export async function getHomepageEvents(): Promise<{
 
 export async function getEventById(id: string): Promise<ConferenceEvent | null> {
   const events = await readEvents();
-  return events.find((event) => event.id === id) ?? null;
+  return findByField(events, "id", id) ?? null;
 }
 
 export async function getPublicEventById(id: string): Promise<PublicEvent | null> {
@@ -290,6 +291,52 @@ export async function createEvent(input: EventInput): Promise<ConferenceEvent> {
   } catch {
     return event;
   }
+}
+
+/** Bind only known event fields so request JSON cannot invent columns. */
+export function parseEventMutationInput(body: Record<string, unknown>): Partial<EventInput> & {
+  qrCodeUrl?: string | null;
+  registrationQrCodeUrl?: string | null;
+} {
+  const input: Partial<EventInput> & {
+    qrCodeUrl?: string | null;
+    registrationQrCodeUrl?: string | null;
+  } = {};
+
+  if (typeof body.title === "string") input.title = body.title;
+  if (typeof body.theme === "string") input.theme = body.theme;
+  if (typeof body.description === "string") input.description = body.description;
+  if (typeof body.datesDisplay === "string") input.datesDisplay = body.datesDisplay;
+  if (typeof body.venueName === "string") input.venueName = body.venueName;
+  if (typeof body.venueAddress === "string") input.venueAddress = body.venueAddress;
+  if (body.venueMapsUrl === null) input.venueMapsUrl = null;
+  else if (typeof body.venueMapsUrl === "string") input.venueMapsUrl = body.venueMapsUrl;
+  if (typeof body.earlyBirdDeadline === "string") input.earlyBirdDeadline = body.earlyBirdDeadline;
+  if (typeof body.regularDeadline === "string") input.regularDeadline = body.regularDeadline;
+  if (body.fees && typeof body.fees === "object") input.fees = body.fees as EventFees;
+  if (typeof body.showQrInRegistration === "boolean") {
+    input.showQrInRegistration = body.showQrInRegistration;
+  }
+  if (typeof body.featuredOnHomepage === "boolean") {
+    input.featuredOnHomepage = body.featuredOnHomepage;
+  }
+  if (typeof body.isActive === "boolean") input.isActive = body.isActive;
+  if (
+    body.status === "draft" ||
+    body.status === "upcoming" ||
+    body.status === "open" ||
+    body.status === "finished"
+  ) {
+    input.status = body.status;
+  }
+  if (typeof body.qrCodeUrl === "string" || body.qrCodeUrl === null) {
+    input.qrCodeUrl = body.qrCodeUrl;
+  }
+  if (typeof body.registrationQrCodeUrl === "string" || body.registrationQrCodeUrl === null) {
+    input.registrationQrCodeUrl = body.registrationQrCodeUrl;
+  }
+
+  return input;
 }
 
 export async function updateEvent(

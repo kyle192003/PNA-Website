@@ -13,6 +13,8 @@ import {
   updateRegistrationPaymentCascading,
   deleteRegistration,
 } from "@/lib/registrations";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -27,22 +29,37 @@ const validStatuses: PaymentStatus[] = [
 ];
 
 export async function PATCH(request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
-    const body = await request.json();
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const body = parsed.data;
 
     const existing = await getRegistrationById(id);
     if (!existing) {
       return NextResponse.json({ error: "Participant not found." }, { status: 404 });
     }
 
-    if (body.paymentStatus && !validStatuses.includes(body.paymentStatus)) {
+    const paymentStatus =
+      typeof body.paymentStatus === "string" &&
+      validStatuses.includes(body.paymentStatus as PaymentStatus)
+        ? (body.paymentStatus as PaymentStatus)
+        : undefined;
+
+    if (body.paymentStatus !== undefined && paymentStatus === undefined) {
       return NextResponse.json({ error: "Invalid payment status." }, { status: 400 });
     }
 
-    const nextStatus = (body.paymentStatus as PaymentStatus | undefined) ?? existing.paymentStatus;
+    const nextStatus = paymentStatus ?? existing.paymentStatus;
     const paymentNotes =
       typeof body.paymentNotes === "string" ? body.paymentNotes.trim() : existing.paymentNotes;
+    const adminNotes =
+      typeof body.adminNotes === "string" ? body.adminNotes.trim() : undefined;
 
     if ((nextStatus === "rejected" || nextStatus === "receipt_issue") && !paymentNotes) {
       return NextResponse.json(
@@ -64,8 +81,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
 
     const updatedList = await updateRegistrationPaymentCascading(id, {
-      paymentStatus: body.paymentStatus,
-      adminNotes: body.adminNotes?.trim(),
+      paymentStatus,
+      adminNotes,
       paymentNotes,
     });
 
@@ -128,6 +145,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
     const existing = await getRegistrationById(id);

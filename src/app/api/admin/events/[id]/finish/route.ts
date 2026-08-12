@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { finishEventAndSendEvaluations } from "@/lib/engagement";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(_request: Request, context: RouteContext) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await context.params;
     const result = await finishEventAndSendEvaluations(id);

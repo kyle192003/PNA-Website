@@ -9,6 +9,8 @@ import {
   markSpecialInviteSent,
 } from "@/lib/special-invites";
 import type { SpecialRole } from "@/lib/types/admin";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 type BulkInviteInput = {
   firstName?: unknown;
@@ -22,12 +24,14 @@ function parseRole(value: unknown): SpecialRole | null {
 }
 
 export async function POST(request: Request) {
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
+  const body = parsed.data;
 
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
   const invites = Array.isArray(body.invites) ? (body.invites as BulkInviteInput[]) : [];

@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { findByField, findByNormalizedString } from "@/lib/json-query";
 import { v4 as uuidv4 } from "uuid";
 import type { RegistrationCategory } from "@/lib/conference";
 import { getEventById } from "@/lib/events";
@@ -640,8 +641,11 @@ export async function getRegistrationByReference(
 ): Promise<RegistrationRecord | null> {
   const registrations = await readRegistrations();
   return (
-    registrations.find(
-      (r) => r.referenceNumber.toUpperCase() === referenceNumber.toUpperCase()
+    findByNormalizedString(
+      registrations,
+      "referenceNumber",
+      referenceNumber,
+      (value) => value.toUpperCase()
     ) ?? null
   );
 }
@@ -650,7 +654,7 @@ export async function getRegistrationById(
   id: string
 ): Promise<RegistrationRecord | null> {
   const registrations = await readRegistrations();
-  return registrations.find((r) => r.id === id) ?? null;
+  return findByField(registrations, "id", id) ?? null;
 }
 
 export async function getRegistrationByCheckInToken(
@@ -658,7 +662,7 @@ export async function getRegistrationByCheckInToken(
 ): Promise<RegistrationRecord | null> {
   if (!token.trim()) return null;
   const registrations = await readRegistrations();
-  return registrations.find((r) => r.checkInToken === token.trim()) ?? null;
+  return findByField(registrations, "checkInToken", token.trim()) ?? null;
 }
 
 export async function getAllRegistrations(): Promise<RegistrationRecord[]> {
@@ -690,7 +694,21 @@ export async function updateRegistrationPayment(
 
   registrations[index] = {
     ...registrations[index],
-    ...updates,
+    ...(updates.paymentStatus !== undefined ? { paymentStatus: updates.paymentStatus } : {}),
+    ...(updates.adminNotes !== undefined ? { adminNotes: updates.adminNotes } : {}),
+    ...(updates.paymentNotes !== undefined ? { paymentNotes: updates.paymentNotes } : {}),
+    ...(updates.paymentReference !== undefined
+      ? { paymentReference: updates.paymentReference }
+      : {}),
+    ...(updates.receiptUrl !== undefined ? { receiptUrl: updates.receiptUrl } : {}),
+    ...(updates.receiptUploadedAt !== undefined
+      ? { receiptUploadedAt: updates.receiptUploadedAt }
+      : {}),
+    ...(updates.pnaIdUrl !== undefined ? { pnaIdUrl: updates.pnaIdUrl } : {}),
+    ...(updates.prcIdUrl !== undefined ? { prcIdUrl: updates.prcIdUrl } : {}),
+    ...(updates.bir2303Url !== undefined ? { bir2303Url: updates.bir2303Url } : {}),
+    ...(updates.bir2307Url !== undefined ? { bir2307Url: updates.bir2307Url } : {}),
+    ...(updates.seniorPwdIdUrl !== undefined ? { seniorPwdIdUrl: updates.seniorPwdIdUrl } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -739,7 +757,21 @@ export async function updateRegistrationPaymentCascading(
     if (!idsToUpdate.has(registrations[i].id)) continue;
     registrations[i] = {
       ...registrations[i],
-      ...updates,
+      ...(updates.paymentStatus !== undefined ? { paymentStatus: updates.paymentStatus } : {}),
+      ...(updates.adminNotes !== undefined ? { adminNotes: updates.adminNotes } : {}),
+      ...(updates.paymentNotes !== undefined ? { paymentNotes: updates.paymentNotes } : {}),
+      ...(updates.paymentReference !== undefined
+        ? { paymentReference: updates.paymentReference }
+        : {}),
+      ...(updates.receiptUrl !== undefined ? { receiptUrl: updates.receiptUrl } : {}),
+      ...(updates.receiptUploadedAt !== undefined
+        ? { receiptUploadedAt: updates.receiptUploadedAt }
+        : {}),
+      ...(updates.pnaIdUrl !== undefined ? { pnaIdUrl: updates.pnaIdUrl } : {}),
+      ...(updates.prcIdUrl !== undefined ? { prcIdUrl: updates.prcIdUrl } : {}),
+      ...(updates.bir2303Url !== undefined ? { bir2303Url: updates.bir2303Url } : {}),
+      ...(updates.bir2307Url !== undefined ? { bir2307Url: updates.bir2307Url } : {}),
+      ...(updates.seniorPwdIdUrl !== undefined ? { seniorPwdIdUrl: updates.seniorPwdIdUrl } : {}),
       updatedAt: now,
     };
     updated.push(registrations[i]);

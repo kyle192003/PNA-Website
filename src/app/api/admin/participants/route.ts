@@ -4,8 +4,12 @@ import {
   compareParticipantsByName,
   getParticipantSearchText,
 } from "@/lib/participant-name";
+import { requireAdminSession } from "@/lib/security/require-admin";
 
 export async function GET(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const eventId = searchParams.get("eventId");

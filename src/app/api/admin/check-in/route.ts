@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { extractCheckInTokenFromScan } from "@/lib/check-in-qr";
 import { processCheckInScan } from "@/lib/check-in";
+import { requireAdminSession } from "@/lib/security/require-admin";
+import { readJsonBody } from "@/lib/security/safe-input";
 
 export async function POST(request: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
-    const raw = typeof body.token === "string" ? body.token : "";
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const raw = typeof parsed.data.token === "string" ? parsed.data.token : "";
     const token = extractCheckInTokenFromScan(raw);
 
     if (!token) {
@@ -19,8 +27,8 @@ export async function POST(request: Request) {
     }
 
     const scannedBy =
-      typeof body.scannedBy === "string" && body.scannedBy.trim()
-        ? body.scannedBy.trim()
+      typeof parsed.data.scannedBy === "string" && parsed.data.scannedBy.trim()
+        ? parsed.data.scannedBy.trim()
         : "admin";
 
     const outcome = await processCheckInScan(token, scannedBy);

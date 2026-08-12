@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { findByField } from "@/lib/json-query";
 import { v4 as uuidv4 } from "uuid";
 import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import { getSiteBaseUrl } from "@/lib/site-url";
@@ -64,7 +65,7 @@ export async function getAllSpecialInvites(): Promise<SpecialInviteRecord[]> {
 
 export async function getSpecialInviteById(id: string): Promise<SpecialInviteRecord | null> {
   const invites = await readInvites();
-  return invites.find((invite) => invite.id === id) ?? null;
+  return findByField(invites, "id", id) ?? null;
 }
 
 export async function getSpecialInviteByToken(
@@ -73,7 +74,7 @@ export async function getSpecialInviteByToken(
   const normalized = token.trim();
   if (!normalized) return null;
   const invites = await readInvites();
-  return invites.find((invite) => invite.token === normalized) ?? null;
+  return findByField(invites, "token", normalized) ?? null;
 }
 
 export async function createSpecialInvite(

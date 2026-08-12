@@ -26,6 +26,7 @@
     "pdfjs-dist": "^6.1.200",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "server-only": "^0.0.1",
     "sharp": "0.34.5",
     "tesseract.js": "^5.1.1",
     "three": "^0.184.0",
