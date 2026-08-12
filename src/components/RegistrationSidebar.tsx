@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
-import { formatPeso, getEarlyBirdCaption, normalizeEventFees } from "@/lib/registration-fees";
+import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
 import type { EventFees } from "@/lib/types/admin";
 // Re-export for RegistrationModal compatibility
 export type RegistrationPaymentBreakdown = {
@@ -103,9 +103,6 @@ export function RegistrationSidebar({
             {earlyBirdAvailable ? (
               <div className="registration-sidebar-fee-row">
                 <p className="registration-sidebar-fee-label">{fees.earlyBird.label}</p>
-                <p className="registration-sidebar-fee-caption mb-1">
-                  {getEarlyBirdCaption(fees, event)}
-                </p>
                 <strong className="registration-sidebar-fee-amount">
                   {formatPeso(fees.earlyBird.amount)}
                 </strong>
@@ -114,18 +111,12 @@ export function RegistrationSidebar({
               <>
                 <div className="registration-sidebar-fee-row">
                   <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
-                  {fees.regular.caption ? (
-                    <p className="registration-sidebar-fee-caption mb-1">{fees.regular.caption}</p>
-                  ) : null}
                   <strong className="registration-sidebar-fee-amount">
                     {formatPeso(fees.regular.amount)}
                   </strong>
                 </div>
                 <div className="registration-sidebar-fee-row">
                   <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
-                  {fees.seniorPwd.caption ? (
-                    <p className="registration-sidebar-fee-caption mb-1">{fees.seniorPwd.caption}</p>
-                  ) : null}
                   <strong className="registration-sidebar-fee-amount">
                     {formatPeso(fees.earlyBird.amount)}
                   </strong>
@@ -134,9 +125,6 @@ export function RegistrationSidebar({
             )}
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.nonMember.label}</p>
-              {fees.nonMember.caption ? (
-                <p className="registration-sidebar-fee-caption mb-1">{fees.nonMember.caption}</p>
-              ) : null}
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.nonMember.amount)}
               </strong>

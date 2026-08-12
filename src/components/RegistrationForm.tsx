@@ -2830,54 +2830,36 @@ export function RegistrationForm({
                     </div>
                   </div>
                 ) : (
-                  <>
-                    {earlyBirdAvailable ? (
-                      <p className="registration-form-help mb-2">
-                        Early bird is open. Senior Citizen/PWD pricing opens after early bird ends.
-                      </p>
-                    ) : (
-                      <p className="registration-form-help mb-2">
-                        Early bird has ended. Senior Citizen/PWD rate is now available.
-                      </p>
-                    )}
-                    <div id="registrationRate" className="registration-fee-choice-grid">
-                      {rateOptions.map((rate) => {
-                        const amount =
-                          rate === "seniorPwd"
-                            ? seniorPwdAmount
-                            : earlyBirdAvailable
-                              ? earlyBirdAmount
-                              : regularAmount;
-                        const tierLabel =
-                          rate === "seniorPwd"
-                            ? fallbackFees.seniorPwd.label
-                            : earlyBirdAvailable
-                              ? fallbackFees.earlyBird.label
-                              : fallbackFees.regular.label;
-                        const meta =
-                          rate === "seniorPwd" || !earlyBirdAvailable
-                            ? ""
-                            : earlyBird?.caption || "";
-                        const selected = formData.registrationRate === rate;
-                        return (
-                          <button
-                            key={rate}
-                            type="button"
-                            className={`registration-fee-choice${selected ? " is-selected" : ""}`}
-                            onClick={() => updateField("registrationRate", rate)}
-                          >
-                            <span className="registration-fee-choice-tier">{tierLabel}</span>
-                            <span className="registration-fee-choice-amount">
-                              {formatPeso(amount)}
-                            </span>
-                            {meta ? (
-                              <span className="registration-fee-choice-meta">{meta}</span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
+                  <div id="registrationRate" className="registration-fee-choice-grid">
+                    {rateOptions.map((rate) => {
+                      const amount =
+                        rate === "seniorPwd"
+                          ? seniorPwdAmount
+                          : earlyBirdAvailable
+                            ? earlyBirdAmount
+                            : regularAmount;
+                      const tierLabel =
+                        rate === "seniorPwd"
+                          ? fallbackFees.seniorPwd.label
+                          : earlyBirdAvailable
+                            ? fallbackFees.earlyBird.label
+                            : fallbackFees.regular.label;
+                      const selected = formData.registrationRate === rate;
+                      return (
+                        <button
+                          key={rate}
+                          type="button"
+                          className={`registration-fee-choice${selected ? " is-selected" : ""}`}
+                          onClick={() => updateField("registrationRate", rate)}
+                        >
+                          <span className="registration-fee-choice-tier">{tierLabel}</span>
+                          <span className="registration-fee-choice-amount">
+                            {formatPeso(amount)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
                 {errors.registrationRate && (
                   <p className="mt-1 text-xs text-red-400">{errors.registrationRate}</p>
@@ -3213,10 +3195,6 @@ export function RegistrationForm({
                                       : earlyBirdAvailable
                                         ? fallbackFees.earlyBird.label
                                         : fallbackFees.regular.label;
-                                  const meta =
-                                    rate === "seniorPwd" || !earlyBirdAvailable
-                                      ? ""
-                                      : earlyBird?.caption || "";
                                   const selected = member.registrationRate === rate;
                                   return (
                                     <button
@@ -3235,9 +3213,6 @@ export function RegistrationForm({
                                       <span className="registration-fee-choice-amount">
                                         {formatPeso(amount)}
                                       </span>
-                                      {meta ? (
-                                        <span className="registration-fee-choice-meta">{meta}</span>
-                                      ) : null}
                                     </button>
                                   );
                                 })}
