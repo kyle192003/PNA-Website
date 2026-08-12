@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
 import { formatPeso, getEarlyBirdCaption, normalizeEventFees } from "@/lib/registration-fees";
 import type { EventFees } from "@/lib/types/admin";
-import { RegistrationLookup } from "@/components/RegistrationLookup";
-import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
-
 // Re-export for RegistrationModal compatibility
 export type RegistrationPaymentBreakdown = {
   categoryLabel: string;
@@ -21,6 +18,7 @@ interface SidebarEvent {
   title: string;
   datesDisplay: string;
   venueName: string;
+  venueAddress?: string;
   earlyBirdDeadline: string;
   regularDeadline?: string;
   fees: EventFees;
@@ -29,10 +27,10 @@ interface SidebarEvent {
 
 export function RegistrationSidebar({
   eventId = null,
-  showPaymentQr = true,
   paymentBreakdown = null,
 }: {
   eventId?: string | null;
+  /** @deprecated Payment QR / bank details live in the form payment section. */
   showPaymentQr?: boolean;
   paymentBreakdown?: RegistrationPaymentBreakdown | null;
 }) {
@@ -53,10 +51,10 @@ export function RegistrationSidebar({
   const datesDisplay = event?.datesDisplay ?? conference.dates.display;
   const venueName = event?.venueName ?? conference.venue.name;
   const deadline =
-    conference.registration.registrationClosesAt ??
-    event?.regularDeadline ??
+    event?.regularDeadline?.trim() ||
+    event?.earlyBirdDeadline?.trim() ||
+    conference.registration.registrationClosesAt ||
     conference.registration.regularDeadline;
-  const bank = conference.registration.bankTransfer;
   const renewalUrl = conference.membershipRenewalUrl;
 
   return (
@@ -67,10 +65,10 @@ export function RegistrationSidebar({
           <h3 className="registration-sidebar-card-title">Important Reminder</h3>
         </div>
         <p className="registration-sidebar-card-copy mb-0">
-          Registrants must be active members. Please renew your membership before registration. Renew
-          here:{" "}
+          You do not need to be an active PNA member to register. We encourage you to renew or
+          update your membership when you can. Renew here:{" "}
           <a href={renewalUrl} target="_blank" rel="noopener noreferrer">
-            www.philippinenurses.org
+            www.philippinernurses.org
           </a>
         </p>
       </div>
@@ -126,7 +124,7 @@ export function RegistrationSidebar({
                 <div className="registration-sidebar-fee-row">
                   <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
                   <p className="registration-sidebar-fee-caption mb-1">
-                    Same as early bird amount — valid Senior Citizen or PWD ID required
+                    Valid Senior Citizen or PWD ID required
                   </p>
                   <strong className="registration-sidebar-fee-amount">
                     {formatPeso(fees.earlyBird.amount)}
@@ -134,6 +132,16 @@ export function RegistrationSidebar({
                 </div>
               </>
             )}
+            <div className="registration-sidebar-fee-row">
+              <p className="registration-sidebar-fee-label">{fees.nonMember.label}</p>
+              <p className="registration-sidebar-fee-caption mb-1">
+                {fees.nonMember.caption ??
+                  "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)"}
+              </p>
+              <strong className="registration-sidebar-fee-amount">
+                {formatPeso(fees.nonMember.amount)}
+              </strong>
+            </div>
             <p className="registration-sidebar-card-copy mt-3 mb-0">
               <strong>Registration Includes:</strong> {conference.registration.includes}
             </p>
@@ -148,8 +156,18 @@ export function RegistrationSidebar({
         </div>
         <ul className="registration-sidebar-info-list">
           <li>
-            <strong>Update Your Membership:</strong> All participants are required to update their
-            PNA membership before proceeding with the registration.
+            <strong>Renew Your Membership:</strong> We encourage you to renew your PNA membership
+            at{" "}
+            <a href={renewalUrl} target="_blank" rel="noopener noreferrer">
+              www.philippinernurses.org
+            </a>
+            .
+          </li>
+          <li>
+            <strong>Conference Dates:</strong> {datesDisplay}
+          </li>
+          <li>
+            <strong>Venue:</strong> {venueName}
           </li>
           <li>
             <strong>Registration Deadline:</strong> Closes on {deadline}.
@@ -159,31 +177,7 @@ export function RegistrationSidebar({
           <li>Register online immediately after payment to avoid inconvenience.</li>
           <li>Payment without completing the registration form will not be considered.</li>
         </ul>
-        <p className="registration-sidebar-card-copy mb-0 mt-3">
-          {datesDisplay} · {venueName}
-        </p>
       </div>
-
-      <div className="registration-sidebar-card">
-        <div className="registration-sidebar-card-head">
-          <SidebarTagIcon />
-          <h3 className="registration-sidebar-card-title">Payment Details</h3>
-        </div>
-        <p className="registration-sidebar-card-copy">
-          Deposit your registration fee to the following account:
-        </p>
-        <div className="registration-bank-details">
-          <p className="registration-bank-details-bank">{bank.bankName}</p>
-          <p className="registration-bank-details-label">Account Name</p>
-          <p className="registration-bank-details-value">{bank.accountName}</p>
-          <p className="registration-bank-details-label">Current Account Number</p>
-          <p className="registration-bank-details-value registration-bank-details-number">
-            {bank.accountNumber}
-          </p>
-        </div>
-      </div>
-
-      {showPaymentQr ? <RegistrationPaymentQr variant="sidebar" eventId={eventId} /> : null}
 
       <div className="registration-sidebar-card">
         <div className="registration-sidebar-card-head">
@@ -192,9 +186,10 @@ export function RegistrationSidebar({
         </div>
         <ol className="registration-sidebar-info-list registration-sidebar-info-list--ordered">
           <li>Copy or screenshot of the proof of payment</li>
-          <li>Updated PNA ID</li>
+          <li>Updated PNA ID (members only — not required for non-members)</li>
           <li>Valid PRC ID</li>
           <li>Senior Citizen/PWD ID (if applicable)</li>
+          <li>BIR Form 2303 and 2307 (only if you request a sales invoice)</li>
         </ol>
         <p className="registration-sidebar-card-copy mb-0 mt-3">
           Thank you for your cooperation, and we look forward to your participation!
@@ -219,8 +214,6 @@ export function RegistrationSidebar({
           </li>
         </ul>
       </div>
-
-      <RegistrationLookup variant="sidebar" />
     </aside>
   );
 }

@@ -593,6 +593,20 @@ export function ParticipantsTable({
                 <dt>Payment reference</dt>
                 <dd>{selected.paymentReference?.trim() || "—"}</dd>
               </div>
+              <div>
+                <dt>Sales invoice</dt>
+                <dd>{selected.wantsSalesInvoice ? "Requested" : "Not requested"}</dd>
+              </div>
+              {selected.wantsSalesInvoice && selected.bir2303InstitutionName ? (
+                <div>
+                  <dt>BIR 2303 institution</dt>
+                  <dd>{selected.bir2303InstitutionName}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Receipt named under</dt>
+                <dd>{selected.receiptNamedUnder?.trim() || "—"}</dd>
+              </div>
               {selected.seniorPwdIdNumber ? (
                 <div>
                   <dt>Senior/PWD ID number</dt>
