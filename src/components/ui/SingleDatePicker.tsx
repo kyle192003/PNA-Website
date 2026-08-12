@@ -556,7 +556,6 @@ export function SingleDatePicker({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={`${id}-panel`}
-          aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
           onClick={() => {
             if (open) {

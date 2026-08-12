@@ -6,6 +6,7 @@ import { formatPeso, getEarlyBirdCap } from "@/lib/registration-fees";
 import type {
   FoodPreference,
   MembershipType,
+  RegistrationModeChoice,
   RegistrationRateChoice,
   SpecialRole,
   SponsorConsent,
