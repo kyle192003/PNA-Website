@@ -104,7 +104,7 @@ export const conference = {
       nonMember: {
         amount: 8300,
         label: "Non-Member Rate",
-        caption: "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
+        caption: "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
       },
     },
   },

@@ -46,7 +46,7 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
       label: fees.nonMember.label,
       caption:
         fees.nonMember.caption ??
-        "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
+        "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
       amount: fees.nonMember.amount,
     },
   ];

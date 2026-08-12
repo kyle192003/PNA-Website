@@ -322,6 +322,7 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "registrationMode":
       return data.registrationMode ? undefined : "Please select a registration type";
     case "registrationRate":
+      if (isNonMemberType(data.membershipType)) return undefined;
       return data.registrationRate ? undefined : "Please choose your registration rate";
     case "specialRole":
       return data.specialRole ? undefined : "Please choose Committee or Speaker";
@@ -589,6 +590,7 @@ function getMemberFieldError(
       }
       return undefined;
     case "registrationRate":
+      if (isNonMemberType(member.membershipType)) return undefined;
       return member.registrationRate ? undefined : "Please choose Regular or Senior Citizen/PWD";
     case "seniorPwdIdNumber":
       if (member.registrationRate !== "seniorPwd") return undefined;
@@ -843,32 +845,50 @@ export function RegistrationForm({
   const fallbackFees = conference.registration.fees;
   const earlyBirdAmount = earlyBird?.earlyBirdAmount ?? fallbackFees.earlyBird.amount;
   const regularAmount = earlyBird?.regularAmount ?? fallbackFees.regular.amount;
-  /** Senior/PWD mirrors early bird amount and is only offered after early bird ends. */
+  /** Senior/PWD mirrors early bird amount and is only offered to members after early bird ends. */
   const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? earlyBirdAmount;
   const nonMemberAmount = earlyBird?.nonMemberAmount ?? fallbackFees.nonMember.amount;
   const earlyBirdAvailable =
     earlyBird?.available ??
     (typeof earlyBird?.remaining === "number" ? earlyBird.remaining > 0 : true);
   const seniorPwdAvailable = earlyBird?.seniorPwdAvailable ?? !earlyBirdAvailable;
-  const rateOptions = (
-    seniorPwdAvailable ? (["regular", "seniorPwd"] as const) : (["regular"] as const)
-  );
+  /** Members choose regular/early bird and (after early bird) Senior/PWD. Non-members have a fixed rate. */
+  const rateOptionsFor = (membershipType: MembershipType | "") => {
+    if (isNonMemberType(membershipType)) return [] as const;
+    return seniorPwdAvailable
+      ? (["regular", "seniorPwd"] as const)
+      : (["regular"] as const);
+  };
+  const rateOptions = rateOptionsFor(formData.membershipType);
 
   useEffect(() => {
     if (!earlyBirdAvailable) return;
     setFormData((prev) =>
-      prev.registrationRate === "seniorPwd"
+      prev.registrationRate === "seniorPwd" && !isNonMemberType(prev.membershipType)
         ? { ...prev, registrationRate: "regular", seniorPwdIdNumber: "" }
         : prev
     );
     setMembers((prev) =>
       prev.map((member) =>
-        member.registrationRate === "seniorPwd"
+        member.registrationRate === "seniorPwd" && !isNonMemberType(member.membershipType)
           ? { ...member, registrationRate: "regular", seniorPwdIdNumber: "" }
           : member
       )
     );
   }, [earlyBirdAvailable]);
+
+  // Non-members cannot use early bird / Senior/PWD / regular — lock to regular choice + non-member fee.
+  useEffect(() => {
+    if (!isNonMemberType(formData.membershipType)) return;
+    setFormData((prev) => {
+      if (prev.registrationRate === "regular" && !prev.seniorPwdIdNumber) return prev;
+      return { ...prev, registrationRate: "regular", seniorPwdIdNumber: "" };
+    });
+    setSeniorPwdIdFile((prev) => {
+      if (prev) cacheRegistrationFile(eventId, "seniorPwdIdFile", null);
+      return null;
+    });
+  }, [formData.membershipType, eventId]);
 
   useEffect(() => {
     setMembers((prev) => {
@@ -883,11 +903,15 @@ export function RegistrationForm({
           return member;
         }
         changed = true;
+        const membershipType = formData.membershipType;
         return {
           ...member,
-          membershipType: formData.membershipType,
+          membershipType,
           pnaZone: formData.pnaZone,
           pnaChapter: formData.pnaChapter,
+          ...(isNonMemberType(membershipType)
+            ? { registrationRate: "regular" as const, seniorPwdIdNumber: "" }
+            : {}),
         };
       });
       return changed ? next : prev;
@@ -895,13 +919,10 @@ export function RegistrationForm({
   }, [formData.membershipType, formData.pnaZone, formData.pnaChapter]);
 
   const appliedFee = useMemo(() => {
-    if (!formData.registrationRate) return null;
     if (isNonMemberType(formData.membershipType)) {
-      if (formData.registrationRate === "seniorPwd" && seniorPwdAvailable) {
-        return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
-      }
       return { amount: nonMemberAmount, label: fallbackFees.nonMember.label };
     }
+    if (!formData.registrationRate) return null;
     if (formData.registrationRate === "seniorPwd" && seniorPwdAvailable) {
       return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
     }
@@ -935,17 +956,7 @@ export function RegistrationForm({
       key: string,
       membershipType: MembershipType | ""
     ) => {
-      if (!rate) return;
       if (isNonMemberType(membershipType)) {
-        if (rate === "seniorPwd" && seniorPwdAvailable) {
-          lines.push({
-            key,
-            name,
-            label: fallbackFees.seniorPwd.label,
-            amount: seniorPwdAmount,
-          });
-          return;
-        }
         lines.push({
           key,
           name,
@@ -954,6 +965,7 @@ export function RegistrationForm({
         });
         return;
       }
+      if (!rate) return;
       if (rate === "seniorPwd" && seniorPwdAvailable) {
         lines.push({
           key,
@@ -2010,13 +2022,27 @@ export function RegistrationForm({
         const membershipType = value as MembershipType | "";
         if (isNonMemberType(membershipType)) {
           setPnaIdFile(null);
+          setSeniorPwdIdFile(null);
           cacheRegistrationFile(eventId, "pnaIdFile", null);
+          cacheRegistrationFile(eventId, "seniorPwdIdFile", null);
           return {
             ...prev,
             membershipType,
             pnaIdNumber: "",
             pnaZone: "",
             pnaChapter: "",
+            registrationRate: "regular",
+            seniorPwdIdNumber: "",
+          };
+        }
+        const clearSeniorPwd =
+          earlyBirdAvailable && prev.registrationRate === "seniorPwd";
+        if (clearSeniorPwd) {
+          return {
+            ...prev,
+            membershipType,
+            registrationRate: "regular",
+            seniorPwdIdNumber: "",
           };
         }
       }
@@ -2141,12 +2167,26 @@ export function RegistrationForm({
             value === "non_member"
               ? value
               : ("" as const);
+          if (isNonMemberType(membershipType)) {
+            return {
+              ...member,
+              membershipType,
+              pnaZone: "",
+              pnaChapter: "",
+              sameAffiliationAsPrimary: false,
+              registrationRate: "regular" as const,
+              seniorPwdIdNumber: "",
+            };
+          }
+          const clearSeniorPwd =
+            earlyBirdAvailable && member.registrationRate === "seniorPwd";
           return {
             ...member,
             membershipType,
-            pnaZone: isNonMemberType(membershipType) ? "" : member.pnaZone,
-            pnaChapter: isNonMemberType(membershipType) ? "" : member.pnaChapter,
             sameAffiliationAsPrimary: false,
+            ...(clearSeniorPwd
+              ? { registrationRate: "regular" as const, seniorPwdIdNumber: "" }
+              : {}),
           };
         }
         if (field === "pnaZone" || field === "pnaChapter") {
@@ -2778,63 +2818,85 @@ export function RegistrationForm({
                 <p className="form-label registration-form-label mb-2">
                   Registration rate <span className="text-accent">*</span>
                 </p>
-                {earlyBirdAvailable ? (
-                  <p className="registration-form-help mb-2">
-                    Early bird is open. Senior Citizen/PWD pricing opens after early bird ends.
-                  </p>
+                {isNonMemberType(formData.membershipType) ? (
+                  <>
+                    <p className="registration-form-help mb-2">
+                      Non-members are not eligible for early bird, Senior Citizen/PWD, or regular
+                      member rates.
+                    </p>
+                    <div id="registrationRate" className="registration-fee-choice-grid">
+                      <div className="registration-fee-choice is-selected" aria-current="true">
+                        <span className="registration-fee-choice-tier">Non-Member</span>
+                        <span className="registration-fee-choice-amount">
+                          {formatPeso(nonMemberAmount)}
+                        </span>
+                        <span className="registration-fee-choice-meta">
+                          Fixed rate for participants who are not PNA members
+                        </span>
+                      </div>
+                    </div>
+                  </>
                 ) : (
-                  <p className="registration-form-help mb-2">
-                    Early bird has ended. Senior Citizen/PWD rate is now available.
-                  </p>
+                  <>
+                    {earlyBirdAvailable ? (
+                      <p className="registration-form-help mb-2">
+                        Early bird is open. Senior Citizen/PWD pricing opens after early bird ends.
+                      </p>
+                    ) : (
+                      <p className="registration-form-help mb-2">
+                        Early bird has ended. Senior Citizen/PWD rate is now available.
+                      </p>
+                    )}
+                    <div id="registrationRate" className="registration-fee-choice-grid">
+                      {rateOptions.map((rate) => {
+                        const amount =
+                          rate === "seniorPwd"
+                            ? seniorPwdAmount
+                            : earlyBirdAvailable
+                              ? earlyBirdAmount
+                              : regularAmount;
+                        const tierLabel =
+                          rate === "seniorPwd"
+                            ? "Senior / PWD"
+                            : earlyBirdAvailable
+                              ? "Early Bird"
+                              : "Regular";
+                        const meta =
+                          rate === "seniorPwd"
+                            ? "Valid Senior Citizen or PWD ID required"
+                            : earlyBird?.caption ||
+                              (earlyBirdAvailable
+                                ? "Early bird rate currently available"
+                                : "Standard registration rate");
+                        const selected = formData.registrationRate === rate;
+                        return (
+                          <button
+                            key={rate}
+                            type="button"
+                            className={`registration-fee-choice${selected ? " is-selected" : ""}`}
+                            onClick={() => updateField("registrationRate", rate)}
+                          >
+                            <span className="registration-fee-choice-tier">{tierLabel}</span>
+                            <span className="registration-fee-choice-amount">
+                              {formatPeso(amount)}
+                            </span>
+                            <span className="registration-fee-choice-meta">{meta}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
-                <div id="registrationRate" className="registration-fee-choice-grid">
-                  {rateOptions.map((rate) => {
-                    const isNonMember = isNonMemberType(formData.membershipType);
-                    const amount =
-                      rate === "seniorPwd"
-                        ? seniorPwdAmount
-                        : isNonMember
-                          ? nonMemberAmount
-                          : earlyBirdAvailable
-                            ? earlyBirdAmount
-                            : regularAmount;
-                    const tierLabel =
-                      rate === "seniorPwd"
-                        ? "Senior / PWD"
-                        : isNonMember
-                          ? "Non-Member"
-                          : earlyBirdAvailable
-                            ? "Early Bird"
-                            : "Regular";
-                    const meta =
-                      rate === "seniorPwd"
-                        ? "Valid Senior Citizen or PWD ID required"
-                        : isNonMember
-                          ? "Rate for participants who are not PNA members"
-                          : earlyBird?.caption ||
-                            (earlyBirdAvailable
-                              ? "Early bird rate currently available"
-                              : "Standard registration rate");
-                    const selected = formData.registrationRate === rate;
-                    return (
-                      <button
-                        key={rate}
-                        type="button"
-                        className={`registration-fee-choice${selected ? " is-selected" : ""}`}
-                        onClick={() => updateField("registrationRate", rate)}
-                      >
-                        <span className="registration-fee-choice-tier">{tierLabel}</span>
-                        <span className="registration-fee-choice-amount">{formatPeso(amount)}</span>
-                        <span className="registration-fee-choice-meta">{meta}</span>
-                      </button>
-                    );
-                  })}
-                </div>
                 {errors.registrationRate && (
                   <p className="mt-1 text-xs text-red-400">{errors.registrationRate}</p>
                 )}
 
-                <FadeReveal show={formData.registrationRate === "seniorPwd"}>
+                <FadeReveal
+                  show={
+                    !isNonMemberType(formData.membershipType) &&
+                    formData.registrationRate === "seniorPwd"
+                  }
+                >
                   <div className="registration-senior-fields-row">
                     <FormField
                       label="Senior Citizen / PWD ID Number"
@@ -3124,60 +3186,73 @@ export function RegistrationForm({
                             <p className="form-label registration-form-label mb-2">
                               Registration rate <span className="text-accent">*</span>
                             </p>
-                            <div
-                              id={`member-${index}-registrationRate`}
-                              className="registration-fee-choice-grid"
-                            >
-                              {rateOptions.map((rate) => {
-                                const isNonMember = isNonMemberType(member.membershipType);
-                                const amount =
-                                  rate === "seniorPwd"
-                                    ? seniorPwdAmount
-                                    : isNonMember
-                                      ? nonMemberAmount
+                            {isNonMemberType(member.membershipType) ? (
+                              <div
+                                id={`member-${index}-registrationRate`}
+                                className="registration-fee-choice-grid"
+                              >
+                                <div
+                                  className="registration-fee-choice is-selected"
+                                  aria-current="true"
+                                >
+                                  <span className="registration-fee-choice-tier">Non-Member</span>
+                                  <span className="registration-fee-choice-amount">
+                                    {formatPeso(nonMemberAmount)}
+                                  </span>
+                                  <span className="registration-fee-choice-meta">
+                                    Fixed rate — not eligible for early bird, Senior/PWD, or regular
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                id={`member-${index}-registrationRate`}
+                                className="registration-fee-choice-grid"
+                              >
+                                {rateOptionsFor(member.membershipType).map((rate) => {
+                                  const amount =
+                                    rate === "seniorPwd"
+                                      ? seniorPwdAmount
                                       : earlyBirdAvailable
                                         ? earlyBirdAmount
                                         : regularAmount;
-                                const tierLabel =
-                                  rate === "seniorPwd"
-                                    ? "Senior / PWD"
-                                    : isNonMember
-                                      ? "Non-Member"
+                                  const tierLabel =
+                                    rate === "seniorPwd"
+                                      ? "Senior / PWD"
                                       : earlyBirdAvailable
                                         ? "Early Bird"
                                         : "Regular";
-                                const meta =
-                                  rate === "seniorPwd"
-                                    ? "Valid Senior Citizen or PWD ID required"
-                                    : isNonMember
-                                      ? "Rate for participants who are not PNA members"
+                                  const meta =
+                                    rate === "seniorPwd"
+                                      ? "Valid Senior Citizen or PWD ID required"
                                       : earlyBird?.caption ||
                                         (earlyBirdAvailable
                                           ? "Early bird rate currently available"
                                           : "Standard registration rate");
-                                const selected = member.registrationRate === rate;
-                                return (
-                                  <button
-                                    key={rate}
-                                    type="button"
-                                    className={`registration-fee-choice${
-                                      selected ? " is-selected" : ""
-                                    }`}
-                                    onClick={() =>
-                                      updateMember(index, "registrationRate", rate)
-                                    }
-                                  >
-                                    <span className="registration-fee-choice-tier">
-                                      {tierLabel}
-                                    </span>
-                                    <span className="registration-fee-choice-amount">
-                                      {formatPeso(amount)}
-                                    </span>
-                                    <span className="registration-fee-choice-meta">{meta}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
+                                  const selected = member.registrationRate === rate;
+                                  return (
+                                    <button
+                                      key={rate}
+                                      type="button"
+                                      className={`registration-fee-choice${
+                                        selected ? " is-selected" : ""
+                                      }`}
+                                      onClick={() =>
+                                        updateMember(index, "registrationRate", rate)
+                                      }
+                                    >
+                                      <span className="registration-fee-choice-tier">
+                                        {tierLabel}
+                                      </span>
+                                      <span className="registration-fee-choice-amount">
+                                        {formatPeso(amount)}
+                                      </span>
+                                      <span className="registration-fee-choice-meta">{meta}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                             {memberErrors[index]?.registrationRate ? (
                               <p className="mt-1 text-xs text-red-400">
                                 {memberErrors[index]?.registrationRate}
@@ -3185,7 +3260,10 @@ export function RegistrationForm({
                             ) : null}
                           </div>
                           <FadeReveal
-                            show={member.registrationRate === "seniorPwd"}
+                            show={
+                              !isNonMemberType(member.membershipType) &&
+                              member.registrationRate === "seniorPwd"
+                            }
                             className="col-12"
                           >
                             <FormField

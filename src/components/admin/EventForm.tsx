@@ -167,7 +167,7 @@ export function EventForm({
         ...fees.nonMember,
         caption:
           fees.nonMember.caption ??
-          "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
+          "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
       },
     };
 
@@ -535,7 +535,8 @@ export function EventForm({
                   disabled={loading}
                 />
                 <p className="admin-field-help mt-2 mb-0">
-                  Non-members who qualify as Senior/PWD still use the Senior/PWD amount.
+                  Fixed rate for non-members only. Early bird, Senior/PWD, and regular rates do not
+                  apply.
                 </p>
               </div>
             </div>

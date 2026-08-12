@@ -180,7 +180,7 @@ export function getSeniorPwdAmount(fees: EventFees): number {
 
 /**
  * Resolve what the participant will be charged.
- * - Non-members: nonMember rate; Senior/PWD non-members use seniorPwd amount
+ * - Non-members: always nonMember rate (no early bird, Senior/PWD, or regular)
  * - Members during early bird: regular choice → earlyBird (Senior/PWD is not offered)
  * - Members after early bird: regular → regular; seniorPwd → early bird amount
  */
@@ -194,20 +194,6 @@ export function resolveAppliedFee(
   const earlyBirdOpen = isEarlyBirdAvailable(fees, earlyBirdUsedCount, event);
 
   if (membershipType === "non_member") {
-    if (rateChoice === "seniorPwd") {
-      if (earlyBirdOpen) {
-        return {
-          key: "nonMember",
-          amount: fees.nonMember.amount,
-          label: fees.nonMember.label,
-        };
-      }
-      return {
-        key: "seniorPwd",
-        amount: getSeniorPwdAmount(fees),
-        label: fees.seniorPwd.label,
-      };
-    }
     return {
       key: "nonMember",
       amount: fees.nonMember.amount,

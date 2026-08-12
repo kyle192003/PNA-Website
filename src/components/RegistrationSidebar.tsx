@@ -136,7 +136,7 @@ export function RegistrationSidebar({
               <p className="registration-sidebar-fee-label">{fees.nonMember.label}</p>
               <p className="registration-sidebar-fee-caption mb-1">
                 {fees.nonMember.caption ??
-                  "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)"}
+                  "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)"}
               </p>
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.nonMember.amount)}
