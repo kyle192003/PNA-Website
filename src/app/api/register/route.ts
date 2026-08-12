@@ -100,9 +100,6 @@ function validatePrimaryFields(
 ): { error?: string; input?: RegistrationInput } {
   const complimentaryInvite = Boolean(options?.complimentaryInvite);
 
-  if (typeof body.middleName !== "string" || !body.middleName.trim()) {
-    return { error: "Middle name is required." };
-  }
   if (typeof body.dateOfBirth !== "string" || !body.dateOfBirth.trim()) {
     return { error: "Date of birth is required." };
   }
@@ -358,9 +355,6 @@ export async function POST(request: Request) {
         });
         if (contact.error || !contact.phone) {
           return NextResponse.json({ error: contact.error }, { status: 400 });
-        }
-        if (typeof raw.middleName !== "string" || !raw.middleName.trim()) {
-          return NextResponse.json({ error: `${label}: Middle name is required.` }, { status: 400 });
         }
         if (typeof raw.dateOfBirth !== "string" || !raw.dateOfBirth.trim()) {
           return NextResponse.json(

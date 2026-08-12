@@ -282,7 +282,7 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "firstName":
       return getNameLengthError(data.firstName, "firstName", "First name") ?? undefined;
     case "middleName":
-      return data.middleName.trim() ? undefined : "Middle name is required";
+      return undefined;
     case "email":
       return getEmailValidationError(data.email) ?? undefined;
     case "phone":
@@ -582,7 +582,7 @@ function getMemberFieldError(
     case "firstName":
       return getNameLengthError(member.firstName, "firstName", "First name") ?? undefined;
     case "middleName":
-      return member.middleName.trim() ? undefined : "Middle name is required";
+      return undefined;
     case "email":
       return getEmailValidationError(member.email) ?? undefined;
     case "phone":
@@ -2415,6 +2415,10 @@ export function RegistrationForm({
                   <UserSectionIcon />
                   Personal Information
                 </legend>
+                <p className="registration-form-help mb-3">
+                  Enter your name exactly as it appears on your registered PRC ID (Surname, First
+                  Name, and Middle Name if any).
+                </p>
                 <div className="row g-3">
                   <FormField
                     label="Surname"
@@ -2441,7 +2445,7 @@ export function RegistrationForm({
                   <FormField
                     label="Middle Name"
                     id="middleName"
-                    required
+                    optional
                     value={formData.middleName}
                     onChange={(v) => updateField("middleName", v)}
                     onBlur={() => markFieldTouched("middleName")}
@@ -3051,7 +3055,8 @@ export function RegistrationForm({
                   <p className="registration-form-help mb-3">
                     Add each attendee sharing one deposit slip. Maximum {MAX_GROUP_SIZE} people
                     including Participant 1. One submission creates a registration for every
-                    participant; one payment and one receipt cover the whole group.
+                    participant; one payment and one receipt cover the whole group. Enter each
+                    participant&apos;s name exactly as it appears on their registered PRC ID.
                     {earlyBirdAvailable
                       ? " During early bird, Senior Citizen/PWD is not offered yet."
                       : " Each person can choose Regular or Senior Citizen/PWD."}
@@ -3100,7 +3105,7 @@ export function RegistrationForm({
                           <FormField
                             label="Middle Name"
                             id={`member-${index}-middleName`}
-                            required
+                            optional
                             value={member.middleName}
                             onChange={(v) => updateMember(index, "middleName", v)}
                             error={memberErrors[index]?.middleName}
@@ -3893,6 +3898,7 @@ function FormField({
   id,
   type = "text",
   required = false,
+  optional = false,
   value,
   onChange,
   onBlur,
@@ -3908,6 +3914,7 @@ function FormField({
   id: string;
   type?: string;
   required?: boolean;
+  optional?: boolean;
   value: string;
   onChange: (value: string) => void;
   onBlur?: (value: string) => void;
@@ -3922,7 +3929,9 @@ function FormField({
   return (
     <div className={`registration-form-field ${className}`.trim()}>
       <label htmlFor={id} className="form-label registration-form-label">
-        {label} {required && <span className="text-accent">*</span>}
+        {label}{" "}
+        {required ? <span className="text-accent">*</span> : null}
+        {optional ? <span className="registration-form-optional"> (Optional)</span> : null}
       </label>
       <input
         type={type}
