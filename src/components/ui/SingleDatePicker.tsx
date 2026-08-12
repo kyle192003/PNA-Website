@@ -357,6 +357,7 @@ export function SingleDatePicker({
         top: panelPosition.top,
         left: panelPosition.left,
         width: panelPosition.width,
+        zIndex: 10000,
       }}
     >
       <div className="admin-range-calendar-body">

@@ -482,6 +482,8 @@ button.btn-primary:hover:not(:disabled),
 :root {
   --pna-navbar-height: 3.75rem;
   --pna-header-total: 0px;
+  /* Selects/calendars portaled above modals (modal uses z-index 1100). */
+  --pna-floating-z: 10000;
 }
 
 @media (min-width: 768px) {
@@ -10322,7 +10324,7 @@ a.admin-btn-primary:hover,
 
 .pna-select-menu--portal {
   position: fixed;
-  z-index: 1400;
+  z-index: var(--pna-floating-z, 10000);
   left: 0;
   top: 0;
   max-width: none;
@@ -10621,6 +10623,11 @@ a.admin-btn-primary:hover,
   background: #ffffff;
 }
 
+/* Portaled calendars must beat the registration modal / site chrome stacking. */
+.registration-date-field .admin-range-calendar--dropdown.admin-range-calendar--portal {
+  z-index: var(--pna-floating-z, 10000);
+}
+
 .registration-date-field .admin-range-calendar-body {
   padding: 0.65rem 0.5rem 0.35rem;
 }
@@ -10744,7 +10751,7 @@ a.admin-btn-primary:hover,
 
 .admin-range-calendar--portal {
   position: fixed;
-  z-index: 1300;
+  z-index: var(--pna-floating-z, 10000);
   top: auto;
   bottom: auto;
   left: auto;

@@ -185,6 +185,7 @@ export function PnaSelect({
             top: menuPosition.top,
             left: menuPosition.left,
             width: menuPosition.width,
+            zIndex: 10000,
           }}
         >
           <span className="pna-select-caret" aria-hidden="true" />
