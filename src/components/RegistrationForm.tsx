@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { conference, PNA_ZONES } from "@/lib/conference";
 import { formatPeso, getEarlyBirdCap } from "@/lib/registration-fees";
 import type {
@@ -10,7 +10,7 @@ import type {
   SpecialRole,
   SponsorConsent,
 } from "@/lib/types/admin";
-import { SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
+import { MEMBERSHIP_TYPE_LABELS, SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
 import {
   getDateOfBirthAgeValidationError,
   getEmailValidationError,
@@ -31,6 +31,11 @@ import {
   type RegistrationMode,
 } from "@/lib/registration-draft";
 import {
+  cacheRegistrationFile,
+  clearRegistrationCachedFiles,
+  loadRegistrationCachedFiles,
+} from "@/lib/registration-file-cache";
+import {
   fetchEarlyBirdStatus,
   submitGroupRegistration,
   submitReceipt,
@@ -50,6 +55,7 @@ import { SingleDatePicker } from "@/components/ui/SingleDatePicker";
 import { PhLocationSuggest } from "@/components/PhLocationSuggest";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
 import type { RegistrationPaymentBreakdown } from "@/components/RegistrationSidebar";
+import { FadeReveal } from "@/components/ui/FadeReveal";
 import { MAX_GROUP_SIZE } from "@/lib/registrations-constants";
 import {
   REGISTRATION_STEPS,
@@ -89,6 +95,12 @@ interface FormData {
 
   foodPreference: FoodPreference | "";
   foodAllergyNote: string;
+
+  wantsSalesInvoice: "" | "yes" | "no";
+  bir2303InstitutionName: string;
+  receiptNamedUnder: string;
+  /** Group + no sales invoice: "primary" | "member-0" | ... */
+  receiptNamedParticipantKey: string;
 
   sponsorConsent: SponsorConsent | "";
   dataPrivacyConsent: boolean;
@@ -147,6 +159,11 @@ const initialFormData: FormData = {
   foodPreference: "",
   foodAllergyNote: "",
 
+  wantsSalesInvoice: "",
+  bir2303InstitutionName: "",
+  receiptNamedUnder: "",
+  receiptNamedParticipantKey: "",
+
   sponsorConsent: "",
   dataPrivacyConsent: false,
 };
@@ -169,10 +186,17 @@ const GENDER_OPTIONS: PnaSelectOption[] = [
 
 const MEMBERSHIP_TYPE_OPTIONS: PnaSelectOption[] = [
   { value: "", label: "Select membership type" },
-  { value: "lifetime", label: "Lifetime Member" },
-  { value: "regular", label: "Regular Member" },
-  { value: "non_member", label: "Non-Member" },
+  { value: "lifetime", label: MEMBERSHIP_TYPE_LABELS.lifetime },
+  { value: "regular", label: MEMBERSHIP_TYPE_LABELS.regular },
+  { value: "renewal_member", label: MEMBERSHIP_TYPE_LABELS.renewal_member },
+  { value: "non_member", label: MEMBERSHIP_TYPE_LABELS.non_member },
 ];
+
+const PNA_MEMBERSHIP_RENEW_URL = "https://www.philippinernurses.org";
+
+function isNonMemberType(type: MembershipType | "" | null | undefined): boolean {
+  return type === "non_member";
+}
 
 const PNA_ZONE_OPTIONS: PnaSelectOption[] = [
   { value: "", label: "Select PNA zone/region" },
@@ -186,6 +210,17 @@ const FOOD_PREFERENCE_OPTIONS: PnaSelectOption[] = [
   { value: "no_pork", label: "No Pork" },
   { value: "allergy", label: "Food Allergy" },
 ];
+
+function formatReceiptPersonName(
+  firstName: string,
+  middleName: string,
+  lastName: string
+): string {
+  return [firstName, middleName, lastName]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+}
 
 function calculateAge(dateOfBirth: string): number | null {
   return calculateAgeFromDateOfBirth(dateOfBirth);
@@ -229,47 +264,6 @@ function formatDisplayName(parts: {
     .join(" ");
 }
 
-/** Keeps children mounted through a 250ms opacity fade out. */
-function FadeReveal({
-  show,
-  children,
-  className = "",
-}: {
-  show: boolean;
-  children: ReactNode;
-  className?: string;
-}) {
-  const [mounted, setMounted] = useState(show);
-  const [visible, setVisible] = useState(show);
-
-  useEffect(() => {
-    if (show) {
-      setMounted(true);
-      const frame = window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => setVisible(true));
-      });
-      return () => window.cancelAnimationFrame(frame);
-    }
-
-    setVisible(false);
-    const timeout = window.setTimeout(() => setMounted(false), 250);
-    return () => window.clearTimeout(timeout);
-  }, [show]);
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      className={`registration-fade-reveal${visible ? " is-visible" : ""}${
-        className ? ` ${className}` : ""
-      }`}
-      aria-hidden={!visible}
-    >
-      {children}
-    </div>
-  );
-}
-
 function getFieldError(field: FormFieldKey, data: FormData): string | undefined {
   switch (field) {
     case "lastName":
@@ -297,10 +291,13 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "membershipType":
       return data.membershipType ? undefined : "Please select a membership type";
     case "pnaIdNumber":
+      if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaIdNumber.trim() ? undefined : "PNA ID number is required";
     case "pnaZone":
+      if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaChapter":
+      if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaChapter.trim() ? undefined : "PNA chapter is required";
     case "prcLicenseNumber":
       return data.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
@@ -337,6 +334,32 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "foodAllergyNote":
       if (data.foodPreference !== "allergy") return undefined;
       return data.foodAllergyNote.trim() ? undefined : "Please describe the food allergy";
+    case "wantsSalesInvoice":
+      return data.wantsSalesInvoice ? undefined : "Please indicate whether you want a sales invoice";
+    case "bir2303InstitutionName":
+      if (data.wantsSalesInvoice !== "yes") return undefined;
+      return data.bir2303InstitutionName.trim()
+        ? undefined
+        : "Institution / company name on BIR Form 2303 is required";
+    case "receiptNamedUnder":
+      if (data.wantsSalesInvoice === "yes") {
+        return data.bir2303InstitutionName.trim() || data.receiptNamedUnder.trim()
+          ? undefined
+          : "Receipt name is taken from the BIR 2303 institution name";
+      }
+      if (data.registrationMode === "group") {
+        return data.receiptNamedUnder.trim()
+          ? undefined
+          : "Please choose whose name should appear on the receipt";
+      }
+      return data.receiptNamedUnder.trim()
+        ? undefined
+        : "Receipt name is required";
+    case "receiptNamedParticipantKey":
+      if (data.wantsSalesInvoice === "yes" || data.registrationMode !== "group") return undefined;
+      return data.receiptNamedParticipantKey
+        ? undefined
+        : "Please choose whose name should appear on the receipt";
     case "sponsorConsent":
       return data.sponsorConsent ? undefined : "Please choose an option";
     case "dataPrivacyConsent":
@@ -367,7 +390,15 @@ const LICENSE_FIELDS: FormFieldKey[] = [
   "prcExpirationDate",
 ];
 
-const PAYMENT_FIELDS: FormFieldKey[] = ["registrationMode", "registrationRate", "foodPreference"];
+const PAYMENT_FIELDS: FormFieldKey[] = [
+  "registrationMode",
+  "registrationRate",
+  "foodPreference",
+  "wantsSalesInvoice",
+  "bir2303InstitutionName",
+  "receiptNamedUnder",
+  "receiptNamedParticipantKey",
+];
 
 const REVIEW_FIELDS: FormFieldKey[] = ["sponsorConsent", "dataPrivacyConsent"];
 
@@ -396,6 +427,120 @@ const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
   "foodAllergyNote",
 ];
 
+const DETAILS_SCROLL_TARGETS: string[] = [
+  ...DETAILS_VALIDATE_FIELDS,
+  "pnaIdFile",
+  "prcIdFile",
+];
+
+const SPECIAL_LANE_SCROLL_TARGETS: string[] = [
+  "specialRole",
+  "foodPreference",
+  "foodAllergyNote",
+  "sponsorConsent",
+  "dataPrivacyConsent-special",
+];
+
+function memberFieldDomId(index: number, field: keyof GroupMemberDraft): string {
+  return `member-${index}-${String(field)}`;
+}
+
+function buildPaymentScrollTargets(
+  registrationMode: RegistrationModeChoice | "",
+  memberCount: number
+): string[] {
+  const targets: string[] = ["registrationMode"];
+  if (registrationMode === "group") {
+    targets.push("registration-group-members");
+    for (let index = 0; index < memberCount; index += 1) {
+      for (const field of MEMBER_VALIDATE_FIELDS) {
+        targets.push(memberFieldDomId(index, field));
+      }
+    }
+  }
+  targets.push(
+    "registrationRate",
+    "seniorPwdIdNumber",
+    "seniorPwdIdFile",
+    "foodPreference",
+    "foodAllergyNote",
+    "receiptFile",
+    "paymentReference",
+    "wantsSalesInvoice",
+    "bir2303File",
+    "bir2303InstitutionName",
+    "bir2307File",
+    "receiptNamedParticipantKey",
+    "sponsorConsent",
+    "dataPrivacyConsent"
+  );
+  return targets;
+}
+
+function errorKeyForScrollTarget(target: string): string {
+  if (target === "dataPrivacyConsent-special") return "dataPrivacyConsent";
+  return target;
+}
+
+function findFirstRegistrationErrorTarget(
+  orderedTargets: string[],
+  errors: Errors,
+  memberErrors: Record<number, Partial<Record<keyof GroupMemberDraft, string>>> = {}
+): string | null {
+  for (const target of orderedTargets) {
+    if (target.startsWith("member-")) {
+      const match = /^member-(\d+)-(.+)$/.exec(target);
+      if (!match) continue;
+      const index = Number(match[1]);
+      const field = match[2] as keyof GroupMemberDraft;
+      if (memberErrors[index]?.[field]) return target;
+      continue;
+    }
+    if (errors[errorKeyForScrollTarget(target) as ErrorKey]) return target;
+  }
+  return null;
+}
+
+function scrollToRegistrationTarget(targetId: string) {
+  window.requestAnimationFrame(() => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    const focusable =
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLSelectElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLButtonElement
+        ? el
+        : el.querySelector<HTMLElement>("input, select, textarea, button");
+
+    if (focusable instanceof HTMLElement) {
+      focusable.focus({ preventScroll: true });
+      return;
+    }
+
+    if (el instanceof HTMLElement) {
+      el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+    }
+  });
+}
+
+function scrollToFirstRegistrationError(options: {
+  orderedTargets: string[];
+  errors: Errors;
+  memberErrors?: Record<number, Partial<Record<keyof GroupMemberDraft, string>>>;
+}) {
+  const targetId = findFirstRegistrationErrorTarget(
+    options.orderedTargets,
+    options.errors,
+    options.memberErrors ?? {}
+  );
+  if (targetId) scrollToRegistrationTarget(targetId);
+}
+
 function getMemberFieldError(
   member: GroupMemberDraft,
   field: keyof GroupMemberDraft
@@ -418,8 +563,10 @@ function getMemberFieldError(
     case "membershipType":
       return member.membershipType ? undefined : "Please select a membership type";
     case "pnaZone":
+      if (isNonMemberType(member.membershipType)) return undefined;
       return member.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaChapter":
+      if (isNonMemberType(member.membershipType)) return undefined;
       return member.pnaChapter.trim() ? undefined : "PNA chapter is required";
     case "prcLicenseNumber":
       return member.prcLicenseNumber.trim() ? undefined : "PRC license number is required";
@@ -492,10 +639,15 @@ function getSectionStatus(
   }
 
   if (label === "Membership") {
-    const errs = MEMBERSHIP_FIELDS.map((field) => getFieldError(field, data));
-    const fileOk = Boolean(files.pnaIdFile);
+    const fields: FormFieldKey[] = isNonMemberType(data.membershipType)
+      ? ["membershipType"]
+      : MEMBERSHIP_FIELDS;
+    const errs = fields.map((field) => getFieldError(field, data));
+    const needsPnaIdFile = !isNonMemberType(data.membershipType);
+    const fileOk = !needsPnaIdFile || Boolean(files.pnaIdFile);
     const isComplete = errs.every((error) => !error) && fileOk;
-    const anyTouched = MEMBERSHIP_FIELDS.some((field) => touched[field]) || fileOk;
+    const anyTouched =
+      fields.some((field) => touched[field]) || (needsPnaIdFile && Boolean(files.pnaIdFile));
     if (isComplete) return "complete";
     if (anyTouched && (errs.some(Boolean) || !fileOk)) return "error";
     return "pending";
@@ -528,14 +680,24 @@ function getSectionStatus(
     if (data.foodPreference === "allergy") fields.push("foodAllergyNote");
     const errs = fields.map((field) => getFieldError(field, data));
     const receiptOk = Boolean(files.receiptFile);
-    const bir2303Ok = Boolean(files.bir2303File);
+    const needsTaxDocs = data.wantsSalesInvoice === "yes";
+    const bir2303Ok = !needsTaxDocs || Boolean(files.bir2303File);
+    const bir2307Ok = !needsTaxDocs || Boolean(files.bir2307File);
     const refOk = paymentReference.trim().length >= 4 && referenceConfirmed;
     const membersOk = data.registrationMode !== "group" || membersValid;
-    const isComplete = errs.every((error) => !error) && receiptOk && bir2303Ok && refOk && membersOk;
+    const isComplete =
+      errs.every((error) => !error) &&
+      receiptOk &&
+      bir2303Ok &&
+      bir2307Ok &&
+      refOk &&
+      membersOk;
     const anyTouched =
       PAYMENT_FIELDS.some((field) => touched[field]) ||
       receiptOk ||
-      paymentReference.trim().length > 0;
+      paymentReference.trim().length > 0 ||
+      Boolean(files.bir2303File) ||
+      Boolean(files.bir2307File);
     if (isComplete) return "complete";
     if (anyTouched) return "error";
     return "pending";
@@ -639,6 +801,10 @@ export function RegistrationForm({
   const [paymentReference, setPaymentReference] = useState("");
   const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "unavailable">("idle");
   const [ocrMessage, setOcrMessage] = useState("");
+  const [bir2303OcrStatus, setBir2303OcrStatus] = useState<
+    "idle" | "scanning" | "done" | "unavailable"
+  >("idle");
+  const [bir2303OcrMessage, setBir2303OcrMessage] = useState("");
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
 
   const [earlyBird, setEarlyBird] = useState<{
@@ -652,6 +818,7 @@ export function RegistrationForm({
     earlyBirdAmount: number;
     regularAmount: number;
     seniorPwdAmount: number;
+    nonMemberAmount: number;
   } | null>(null);
 
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
@@ -677,6 +844,7 @@ export function RegistrationForm({
   const regularAmount = earlyBird?.regularAmount ?? fallbackFees.regular.amount;
   /** Senior/PWD mirrors early bird amount and is only offered after early bird ends. */
   const seniorPwdAmount = earlyBird?.seniorPwdAmount ?? earlyBirdAmount;
+  const nonMemberAmount = earlyBird?.nonMemberAmount ?? fallbackFees.nonMember.amount;
   const earlyBirdAvailable =
     earlyBird?.available ??
     (typeof earlyBird?.remaining === "number" ? earlyBird.remaining > 0 : true);
@@ -727,6 +895,12 @@ export function RegistrationForm({
 
   const appliedFee = useMemo(() => {
     if (!formData.registrationRate) return null;
+    if (isNonMemberType(formData.membershipType)) {
+      if (formData.registrationRate === "seniorPwd" && seniorPwdAvailable) {
+        return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
+      }
+      return { amount: nonMemberAmount, label: fallbackFees.nonMember.label };
+    }
     if (formData.registrationRate === "seniorPwd" && seniorPwdAvailable) {
       return { amount: seniorPwdAmount, label: fallbackFees.seniorPwd.label };
     }
@@ -736,11 +910,13 @@ export function RegistrationForm({
     return { amount: regularAmount, label: fallbackFees.regular.label };
   }, [
     formData.registrationRate,
+    formData.membershipType,
     earlyBirdAvailable,
     seniorPwdAvailable,
     earlyBirdAmount,
     regularAmount,
     seniorPwdAmount,
+    nonMemberAmount,
     fallbackFees,
   ]);
 
@@ -755,9 +931,28 @@ export function RegistrationForm({
     const resolveLine = (
       rate: RegistrationRateChoice | "",
       name: string,
-      key: string
+      key: string,
+      membershipType: MembershipType | ""
     ) => {
       if (!rate) return;
+      if (isNonMemberType(membershipType)) {
+        if (rate === "seniorPwd" && seniorPwdAvailable) {
+          lines.push({
+            key,
+            name,
+            label: fallbackFees.seniorPwd.label,
+            amount: seniorPwdAmount,
+          });
+          return;
+        }
+        lines.push({
+          key,
+          name,
+          label: fallbackFees.nonMember.label,
+          amount: nonMemberAmount,
+        });
+        return;
+      }
       if (rate === "seniorPwd" && seniorPwdAvailable) {
         lines.push({
           key,
@@ -793,7 +988,8 @@ export function RegistrationForm({
     resolveLine(
       formData.registrationRate,
       formData.firstName.trim() || "You",
-      "primary"
+      "primary",
+      formData.membershipType
     );
 
     if (formData.registrationMode === "group") {
@@ -801,7 +997,8 @@ export function RegistrationForm({
         resolveLine(
           member.registrationRate,
           member.firstName.trim() || `Participant ${index + 2}`,
-          `member-${index}`
+          `member-${index}`,
+          member.membershipType
         );
       });
     }
@@ -809,6 +1006,7 @@ export function RegistrationForm({
     return lines;
   }, [
     formData.registrationRate,
+    formData.membershipType,
     formData.firstName,
     formData.registrationMode,
     members,
@@ -818,6 +1016,7 @@ export function RegistrationForm({
     earlyBirdAmount,
     regularAmount,
     seniorPwdAmount,
+    nonMemberAmount,
     fallbackFees,
   ]);
 
@@ -858,6 +1057,10 @@ export function RegistrationForm({
         specialRole: "",
         foodPreference: draft.foodPreference,
         foodAllergyNote: draft.foodAllergyNote,
+        wantsSalesInvoice: draft.wantsSalesInvoice ?? "",
+        bir2303InstitutionName: draft.bir2303InstitutionName ?? "",
+        receiptNamedUnder: draft.receiptNamedUnder ?? "",
+        receiptNamedParticipantKey: draft.receiptNamedParticipantKey ?? "",
         sponsorConsent: draft.sponsorConsent,
         dataPrivacyConsent: draft.dataPrivacyConsent,
       });
@@ -894,6 +1097,22 @@ export function RegistrationForm({
     setFormPhase("details");
     setEarlyBird(null);
     setDraftLoaded(true);
+
+    let cancelled = false;
+    void loadRegistrationCachedFiles(eventId).then((cached) => {
+      if (cancelled) return;
+      if (cached.pnaIdFile) setPnaIdFile(cached.pnaIdFile);
+      if (cached.prcIdFile) setPrcIdFile(cached.prcIdFile);
+      if (cached.seniorPwdIdFile) setSeniorPwdIdFile(cached.seniorPwdIdFile);
+      if (cached.receiptFile) setReceiptFile(cached.receiptFile);
+      if (cached.bir2303File) setBir2303File(cached.bir2303File);
+      if (cached.bir2307File) setBir2307File(cached.bir2307File);
+      if (cached.receiptFile) setReferenceConfirmed(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [eventId, specialLane]);
 
   useEffect(() => {
@@ -941,11 +1160,69 @@ export function RegistrationForm({
         sponsorConsent: formData.sponsorConsent,
         dataPrivacyConsent: formData.dataPrivacyConsent,
         paymentReference,
+        wantsSalesInvoice: formData.wantsSalesInvoice,
+        bir2303InstitutionName: formData.bir2303InstitutionName,
+        receiptNamedUnder: formData.receiptNamedUnder,
+        receiptNamedParticipantKey: formData.receiptNamedParticipantKey,
       });
     }, 400);
 
     return () => window.clearTimeout(timeout);
   }, [draftLoaded, eventId, formData, members, paymentReference]);
+
+  useEffect(() => {
+    if (specialLane || formData.wantsSalesInvoice === "yes") return;
+    if (formData.registrationMode !== "single") return;
+    const name = formatReceiptPersonName(
+      formData.firstName,
+      formData.middleName,
+      formData.lastName
+    );
+    setFormData((prev) =>
+      prev.receiptNamedUnder === name ? prev : { ...prev, receiptNamedUnder: name }
+    );
+  }, [
+    specialLane,
+    formData.wantsSalesInvoice,
+    formData.registrationMode,
+    formData.firstName,
+    formData.middleName,
+    formData.lastName,
+  ]);
+
+  useEffect(() => {
+    if (specialLane || formData.wantsSalesInvoice === "yes") return;
+    if (formData.registrationMode !== "group") return;
+    const key = formData.receiptNamedParticipantKey;
+    if (!key) return;
+    let name = "";
+    if (key === "primary") {
+      name = formatReceiptPersonName(
+        formData.firstName,
+        formData.middleName,
+        formData.lastName
+      );
+    } else if (key.startsWith("member-")) {
+      const index = Number(key.slice("member-".length));
+      const member = members[index];
+      if (member) {
+        name = formatReceiptPersonName(member.firstName, member.middleName, member.lastName);
+      }
+    }
+    if (!name) return;
+    setFormData((prev) =>
+      prev.receiptNamedUnder === name ? prev : { ...prev, receiptNamedUnder: name }
+    );
+  }, [
+    specialLane,
+    formData.wantsSalesInvoice,
+    formData.registrationMode,
+    formData.receiptNamedParticipantKey,
+    formData.firstName,
+    formData.middleName,
+    formData.lastName,
+    members,
+  ]);
 
   useEffect(() => {
     if (!draftLoaded) return;
@@ -1072,7 +1349,11 @@ export function RegistrationForm({
     onPaymentBreakdownChange,
   ]);
 
-  function validateMembers(): boolean {
+  function validateMembers(): {
+    ok: boolean;
+    memberErrors: Record<number, Partial<Record<keyof GroupMemberDraft, string>>>;
+    membersMessage?: string;
+  } {
     if (formData.registrationMode !== "group") {
       setMemberErrors({});
       setErrors((prev) => {
@@ -1080,15 +1361,16 @@ export function RegistrationForm({
         delete next.members;
         return next;
       });
-      return true;
+      return { ok: true, memberErrors: {} };
     }
 
     if (members.length < 1) {
+      const membersMessage = "Add at least one additional participant sharing this payment.";
       setErrors((prev) => ({
         ...prev,
-        members: "Add at least one additional participant sharing this payment.",
+        members: membersMessage,
       }));
-      return false;
+      return { ok: false, memberErrors: {}, membersMessage };
     }
 
     const nextMemberErrors: Record<number, Partial<Record<keyof GroupMemberDraft, string>>> = {};
@@ -1116,14 +1398,18 @@ export function RegistrationForm({
       }
     });
 
+    const membersMessage = ok
+      ? undefined
+      : "Please fix the additional participant details.";
+
     setMemberErrors(nextMemberErrors);
     setErrors((prev) => {
       const next = { ...prev };
       if (ok) delete next.members;
-      else if (!next.members) next.members = "Please fix the additional participant details.";
+      else next.members = membersMessage;
       return next;
     });
-    return ok;
+    return { ok, memberErrors: nextMemberErrors, membersMessage };
   }
 
   function validateDetails(): boolean {
@@ -1136,7 +1422,9 @@ export function RegistrationForm({
       if (error) newErrors[field] = error;
     }
 
-    if (!pnaIdFile) newErrors.pnaIdFile = "Please upload a copy of your PNA ID.";
+    if (!isNonMemberType(formData.membershipType) && !pnaIdFile) {
+      newErrors.pnaIdFile = "Please upload a copy of your PNA ID.";
+    }
     if (!prcIdFile) newErrors.prcIdFile = "Please upload a copy of your valid PRC ID.";
 
     setTouched(allTouched);
@@ -1153,7 +1441,14 @@ export function RegistrationForm({
       return next;
     });
 
-    return Object.keys(newErrors).length === 0;
+    const ok = Object.keys(newErrors).length === 0;
+    if (!ok) {
+      scrollToFirstRegistrationError({
+        orderedTargets: DETAILS_SCROLL_TARGETS,
+        errors: newErrors,
+      });
+    }
+    return ok;
   }
 
   function validatePayment(): boolean {
@@ -1183,13 +1478,22 @@ export function RegistrationForm({
         }
         delete next.receiptFile;
         delete next.bir2303File;
+        delete next.bir2307File;
         delete next.paymentReference;
         delete next.members;
         delete next.registrationRate;
         delete next.registrationMode;
         return next;
       });
-      return Object.keys(newErrors).length === 0;
+
+      const ok = Object.keys(newErrors).length === 0;
+      if (!ok) {
+        scrollToFirstRegistrationError({
+          orderedTargets: SPECIAL_LANE_SCROLL_TARGETS,
+          errors: newErrors,
+        });
+      }
+      return ok;
     }
 
     const fieldsToCheck: FormFieldKey[] = [...PAYMENT_FIELDS, ...REVIEW_FIELDS];
@@ -1208,8 +1512,14 @@ export function RegistrationForm({
       newErrors.receiptFile = "Receipt must be 10 MB or smaller.";
     }
 
-    if (!bir2303File) {
-      newErrors.bir2303File = "BIR Form 2303 (Certificate of Registration) is required.";
+    if (formData.wantsSalesInvoice === "yes") {
+      if (!bir2303File) {
+        newErrors.bir2303File = "BIR Form 2303 (Certificate of Registration) is required.";
+      }
+      if (!bir2307File) {
+        newErrors.bir2307File =
+          "BIR Form 2307 (Certificate of Creditable Tax Withheld) is required.";
+      }
     }
 
     const trimmedRef = paymentReference.trim();
@@ -1222,8 +1532,9 @@ export function RegistrationForm({
         "Please confirm the payment reference looks correct before submitting.";
     }
 
+    const membersValidation = validateMembers();
+
     setTouched(allTouched);
-    const membersOk = validateMembers();
     setErrors((prev) => {
       const next: Errors = { ...prev };
       for (const field of fieldsToCheck) {
@@ -1234,12 +1545,28 @@ export function RegistrationForm({
       else delete next.receiptFile;
       if (newErrors.bir2303File) next.bir2303File = newErrors.bir2303File;
       else delete next.bir2303File;
+      if (newErrors.bir2307File) next.bir2307File = newErrors.bir2307File;
+      else delete next.bir2307File;
       if (newErrors.paymentReference) next.paymentReference = newErrors.paymentReference;
       else delete next.paymentReference;
       return next;
     });
 
-    return Object.keys(newErrors).length === 0 && membersOk;
+    const scrollErrors: Errors = { ...newErrors };
+    if (membersValidation.membersMessage) {
+      scrollErrors.members = membersValidation.membersMessage;
+    }
+
+    const ok =
+      Object.keys(newErrors).length === 0 && membersValidation.ok;
+    if (!ok) {
+      scrollToFirstRegistrationError({
+        orderedTargets: buildPaymentScrollTargets(formData.registrationMode, members.length),
+        errors: scrollErrors,
+        memberErrors: membersValidation.memberErrors,
+      });
+    }
+    return ok;
   }
 
   function handleContinueToPayment() {
@@ -1259,7 +1586,7 @@ export function RegistrationForm({
 
   function handleGenericFileSelected(
     file: File | null,
-    key: "pnaIdFile" | "prcIdFile" | "seniorPwdIdFile" | "bir2303File" | "bir2307File",
+    key: "pnaIdFile" | "prcIdFile" | "seniorPwdIdFile" | "bir2307File",
     setFile: (file: File | null) => void
   ) {
     setErrors((prev) => {
@@ -1270,20 +1597,102 @@ export function RegistrationForm({
 
     if (!file) {
       setFile(null);
+      cacheRegistrationFile(eventId, key, null);
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
       setErrors((prev) => ({ ...prev, [key]: "File must be 10 MB or smaller." }));
       setFile(null);
+      cacheRegistrationFile(eventId, key, null);
       return;
     }
 
     setFile(file);
+    cacheRegistrationFile(eventId, key, file);
+  }
+
+  async function handleBir2303Selected(file: File | null) {
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.bir2303File;
+      delete next.bir2303InstitutionName;
+      return next;
+    });
+
+    if (!file) {
+      setBir2303File(null);
+      cacheRegistrationFile(eventId, "bir2303File", null);
+      setBir2303OcrStatus("idle");
+      setBir2303OcrMessage("");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setErrors((prev) => ({
+        ...prev,
+        bir2303File: "File must be 10 MB or smaller.",
+      }));
+      setBir2303File(null);
+      cacheRegistrationFile(eventId, "bir2303File", null);
+      return;
+    }
+
+    setBir2303File(file);
+    cacheRegistrationFile(eventId, "bir2303File", file);
+    setBir2303OcrMessage("");
+    setBir2303OcrStatus("idle");
+
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      setBir2303OcrStatus("unavailable");
+      setBir2303OcrMessage(
+        "PDF uploaded. Please type the institution / company name as shown on BIR Form 2303."
+      );
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setBir2303OcrStatus("unavailable");
+      setBir2303OcrMessage(
+        "Please type the institution / company name as shown on BIR Form 2303."
+      );
+      return;
+    }
+
+    setBir2303OcrStatus("scanning");
+    try {
+      const { scanBir2303Image } = await import("@/lib/bir2303-ocr");
+      const result = await scanBir2303Image(file);
+      setBir2303OcrStatus("done");
+      if (result.best) {
+        setFormData((prev) => ({
+          ...prev,
+          bir2303InstitutionName: result.best,
+          receiptNamedUnder:
+            prev.wantsSalesInvoice === "yes" ? result.best : prev.receiptNamedUnder,
+        }));
+        setTouched((prev) => ({ ...prev, bir2303InstitutionName: true }));
+        setBir2303OcrMessage(
+          result.fromCache
+            ? "Using a saved scan of this BIR Form 2303. Please confirm the institution name."
+            : "We read this institution / company name from your BIR Form 2303. Please check it and edit if needed."
+        );
+      } else {
+        setBir2303OcrMessage(
+          "We could not read a clear institution name. Please type it exactly as shown on BIR Form 2303."
+        );
+      }
+    } catch {
+      setBir2303OcrStatus("unavailable");
+      setBir2303OcrMessage(
+        "Could not scan this image. Please type the institution / company name from BIR Form 2303."
+      );
+    }
   }
 
   async function handleReceiptSelected(file: File | null) {
     setReceiptFile(file);
+    cacheRegistrationFile(eventId, "receiptFile", file);
     setPaymentReference("");
     setReferenceConfirmed(false);
     setOcrMessage("");
@@ -1303,6 +1712,7 @@ export function RegistrationForm({
         receiptFile: "Receipt must be 10 MB or smaller.",
       }));
       setReceiptFile(null);
+      cacheRegistrationFile(eventId, "receiptFile", null);
       return;
     }
 
@@ -1329,7 +1739,9 @@ export function RegistrationForm({
         setPaymentReference(result.best);
         setReferenceConfirmed(false);
         setOcrMessage(
-          "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
+          result.fromCache
+            ? "Using a saved scan of this receipt. Please confirm the payment reference."
+            : "We found a payment reference on your receipt. Does this look right? Edit it if needed, then confirm below."
         );
       } else {
         setOcrMessage(
@@ -1357,12 +1769,15 @@ export function RegistrationForm({
     setPaymentReference("");
     setOcrStatus("idle");
     setOcrMessage("");
+    setBir2303OcrStatus("idle");
+    setBir2303OcrMessage("");
     setReferenceConfirmed(false);
     setErrors({});
     setMemberErrors({});
     setTouched({});
     setFormPhase("details");
     setEarlyBird(null);
+    void clearRegistrationCachedFiles(eventId);
   }
 
   function handleSubmit(e: FormEvent) {
@@ -1411,9 +1826,13 @@ export function RegistrationForm({
             institutionAddress: formData.institutionAddress.trim(),
             position: formData.position.trim(),
             membershipType: formData.membershipType as MembershipType,
-            pnaIdNumber: formData.pnaIdNumber.trim(),
-            pnaZone: formData.pnaZone,
-            pnaChapter: formData.pnaChapter.trim(),
+            pnaIdNumber: isNonMemberType(formData.membershipType)
+              ? ""
+              : formData.pnaIdNumber.trim(),
+            pnaZone: isNonMemberType(formData.membershipType) ? "" : formData.pnaZone,
+            pnaChapter: isNonMemberType(formData.membershipType)
+              ? ""
+              : formData.pnaChapter.trim(),
             prcLicenseNumber: formData.prcLicenseNumber.trim(),
             prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
             prcExpirationDate: formData.prcExpirationDate,
@@ -1430,6 +1849,16 @@ export function RegistrationForm({
             sponsorConsent: formData.sponsorConsent as SponsorConsent,
             dataPrivacyConsent: formData.dataPrivacyConsent,
             paymentReference: specialLane ? "" : paymentReference.trim(),
+            wantsSalesInvoice: specialLane ? false : formData.wantsSalesInvoice === "yes",
+            bir2303InstitutionName:
+              !specialLane && formData.wantsSalesInvoice === "yes"
+                ? formData.bir2303InstitutionName.trim()
+                : "",
+            receiptNamedUnder: specialLane
+              ? ""
+              : formData.wantsSalesInvoice === "yes"
+                ? formData.bir2303InstitutionName.trim()
+                : formData.receiptNamedUnder.trim(),
             eventId,
             inviteToken: specialLane ? inviteToken ?? undefined : undefined,
             specialRole: specialLane
@@ -1461,8 +1890,10 @@ export function RegistrationForm({
                 phone: toPhMobileInternational(member.phone) ?? member.phone,
                 dateOfBirth: member.dateOfBirth,
                 membershipType: member.membershipType as MembershipType,
-                pnaZone: member.pnaZone,
-                pnaChapter: member.pnaChapter.trim(),
+                pnaZone: isNonMemberType(member.membershipType) ? "" : member.pnaZone,
+                pnaChapter: isNonMemberType(member.membershipType)
+                  ? ""
+                  : member.pnaChapter.trim(),
                 prcLicenseNumber: member.prcLicenseNumber.trim(),
                 prcInitialRegistrationDate: member.prcInitialRegistrationDate,
                 prcExpirationDate: member.prcExpirationDate,
@@ -1506,10 +1937,12 @@ export function RegistrationForm({
             await submitRegistrationDocuments({
               referenceNumber: registration.referenceNumber,
               email: formData.email.trim(),
-              pnaId: pnaIdFile,
+              pnaId: isNonMemberType(formData.membershipType) ? null : pnaIdFile,
               prcId: prcIdFile,
-              bir2303: specialLane ? null : bir2303File,
-              bir2307: specialLane ? null : bir2307File,
+              bir2303:
+                !specialLane && formData.wantsSalesInvoice === "yes" ? bir2303File : null,
+              bir2307:
+                !specialLane && formData.wantsSalesInvoice === "yes" ? bir2307File : null,
               seniorPwdId:
                 !specialLane && formData.registrationRate === "seniorPwd"
                   ? seniorPwdIdFile
@@ -1553,6 +1986,7 @@ export function RegistrationForm({
           setSuccessDetails(details);
           setShowSuccessModal(true);
           clearRegistrationDraft(eventId);
+          void clearRegistrationCachedFiles(eventId);
           resetFormState();
         } catch (error) {
           throw error instanceof Error
@@ -1570,12 +2004,104 @@ export function RegistrationForm({
   }
 
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      if (field === "membershipType") {
+        const membershipType = value as MembershipType | "";
+        if (isNonMemberType(membershipType)) {
+          setPnaIdFile(null);
+          cacheRegistrationFile(eventId, "pnaIdFile", null);
+          return {
+            ...prev,
+            membershipType,
+            pnaIdNumber: "",
+            pnaZone: "",
+            pnaChapter: "",
+          };
+        }
+      }
+      if (field === "wantsSalesInvoice") {
+        const wantsSalesInvoice = value as "" | "yes" | "no";
+        if (wantsSalesInvoice !== "yes") {
+          setBir2303File(null);
+          setBir2307File(null);
+          cacheRegistrationFile(eventId, "bir2303File", null);
+          cacheRegistrationFile(eventId, "bir2307File", null);
+          setBir2303OcrStatus("idle");
+          setBir2303OcrMessage("");
+          return {
+            ...prev,
+            wantsSalesInvoice,
+            bir2303InstitutionName: "",
+            receiptNamedParticipantKey:
+              wantsSalesInvoice === "no" && prev.registrationMode === "group"
+                ? prev.receiptNamedParticipantKey
+                : "",
+            receiptNamedUnder:
+              wantsSalesInvoice === "no" && prev.registrationMode === "single"
+                ? formatReceiptPersonName(prev.firstName, prev.middleName, prev.lastName)
+                : wantsSalesInvoice === "no"
+                  ? prev.receiptNamedUnder
+                  : "",
+          };
+        }
+        return {
+          ...prev,
+          wantsSalesInvoice,
+          receiptNamedParticipantKey: "",
+          receiptNamedUnder: prev.bir2303InstitutionName.trim(),
+        };
+      }
+      if (field === "bir2303InstitutionName") {
+        const bir2303InstitutionName = String(value);
+        return {
+          ...prev,
+          bir2303InstitutionName,
+          receiptNamedUnder:
+            prev.wantsSalesInvoice === "yes"
+              ? bir2303InstitutionName.trim()
+              : prev.receiptNamedUnder,
+        };
+      }
+      if (field === "receiptNamedParticipantKey") {
+        const key = String(value);
+        let receiptNamedUnder = prev.receiptNamedUnder;
+        if (key === "primary") {
+          receiptNamedUnder = formatReceiptPersonName(
+            prev.firstName,
+            prev.middleName,
+            prev.lastName
+          );
+        } else if (key.startsWith("member-")) {
+          const index = Number(key.slice("member-".length));
+          const member = members[index];
+          if (member) {
+            receiptNamedUnder = formatReceiptPersonName(
+              member.firstName,
+              member.middleName,
+              member.lastName
+            );
+          }
+        }
+        return { ...prev, receiptNamedParticipantKey: key, receiptNamedUnder };
+      }
+      return { ...prev, [field]: value };
+    });
     setTouched((prev) => ({ ...prev, [field]: true }));
   }
 
   function setRegistrationMode(mode: RegistrationMode) {
-    updateField("registrationMode", mode);
+    setFormData((prev) => ({
+      ...prev,
+      registrationMode: mode,
+      receiptNamedParticipantKey: "",
+      receiptNamedUnder:
+        mode === "single" && prev.wantsSalesInvoice !== "yes"
+          ? formatReceiptPersonName(prev.firstName, prev.middleName, prev.lastName)
+          : prev.wantsSalesInvoice === "yes"
+            ? prev.bir2303InstitutionName.trim()
+            : "",
+    }));
+    setTouched((prev) => ({ ...prev, registrationMode: true }));
     if (mode === "group" && members.length === 0) {
       setMembers([createEmptyGroupMember()]);
     }
@@ -1608,10 +2134,19 @@ export function RegistrationForm({
         }
         if (field === "membershipType") {
           const membershipType =
-            value === "lifetime" || value === "regular" || value === "non_member"
+            value === "lifetime" ||
+            value === "regular" ||
+            value === "renewal_member" ||
+            value === "non_member"
               ? value
               : ("" as const);
-          return { ...member, membershipType, sameAffiliationAsPrimary: false };
+          return {
+            ...member,
+            membershipType,
+            pnaZone: isNonMemberType(membershipType) ? "" : member.pnaZone,
+            pnaChapter: isNonMemberType(membershipType) ? "" : member.pnaChapter,
+            sameAffiliationAsPrimary: false,
+          };
         }
         if (field === "pnaZone" || field === "pnaChapter") {
           return { ...member, [field]: value, sameAffiliationAsPrimary: false };
@@ -1851,47 +2386,101 @@ export function RegistrationForm({
                   <IdCardSectionIcon />
                   Membership Information
                 </legend>
-                <div className="row g-3">
-                  <SelectField
-                    label="Membership Type"
-                    id="membershipType"
-                    required
-                    value={formData.membershipType}
-                    onChange={(v) => updateField("membershipType", v as MembershipType | "")}
-                    options={MEMBERSHIP_TYPE_OPTIONS}
-                    error={errors.membershipType}
-                    placeholder="Select membership type"
-                  />
-                  <FormField
-                    label="PNA ID Number"
-                    id="pnaIdNumber"
-                    required
-                    value={formData.pnaIdNumber}
-                    onChange={(v) => updateField("pnaIdNumber", v)}
-                    onBlur={() => markFieldTouched("pnaIdNumber")}
-                    error={errors.pnaIdNumber}
-                  />
-                  <SelectField
-                    label="PNA Zone/Region"
-                    id="pnaZone"
-                    required
-                    value={formData.pnaZone}
-                    onChange={(v) => updateField("pnaZone", v)}
-                    options={PNA_ZONE_OPTIONS}
-                    error={errors.pnaZone}
-                    placeholder="Select PNA zone/region"
-                    searchable
-                    searchPlaceholder="Search zone/region..."
-                  />
-                  <FormField
-                    label="PNA Chapter (For Local and Foreign based)"
-                    id="pnaChapter"
-                    required
-                    value={formData.pnaChapter}
-                    onChange={(v) => updateField("pnaChapter", v)}
-                    onBlur={() => markFieldTouched("pnaChapter")}
-                    error={errors.pnaChapter}
-                  />
+                <div className="registration-membership-grid">
+                  <div className="registration-membership-cell">
+                    <SelectField
+                      label="Membership Type"
+                      id="membershipType"
+                      required
+                      value={formData.membershipType}
+                      onChange={(v) => updateField("membershipType", v as MembershipType | "")}
+                      options={MEMBERSHIP_TYPE_OPTIONS}
+                      error={errors.membershipType}
+                      placeholder="Select membership type"
+                      className=""
+                    />
+                    <FadeReveal
+                      show={formData.membershipType === "renewal_member"}
+                      className="registration-fade-reveal--flush registration-fade-reveal--tight"
+                    >
+                      <p className="registration-membership-notice mb-0" role="status">
+                        We encourage you to renew your PNA membership at{" "}
+                        <a
+                          href={PNA_MEMBERSHIP_RENEW_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          www.philippinernurses.org
+                        </a>
+                        .
+                      </p>
+                    </FadeReveal>
+                  </div>
+                  <FadeReveal
+                    show={
+                      !isNonMemberType(formData.membershipType) &&
+                      Boolean(formData.membershipType)
+                    }
+                    className="registration-membership-cell registration-fade-reveal--flush"
+                  >
+                    <FormField
+                      label="PNA ID Number"
+                      id="pnaIdNumber"
+                      required
+                      value={formData.pnaIdNumber}
+                      onChange={(v) => updateField("pnaIdNumber", v)}
+                      onBlur={() => markFieldTouched("pnaIdNumber")}
+                      error={errors.pnaIdNumber}
+                      className=""
+                    />
+                  </FadeReveal>
+                  <FadeReveal
+                    show={
+                      !isNonMemberType(formData.membershipType) &&
+                      Boolean(formData.membershipType)
+                    }
+                    className="registration-membership-cell registration-fade-reveal--flush"
+                  >
+                    <SelectField
+                      label="PNA Zone/Region"
+                      id="pnaZone"
+                      required
+                      value={formData.pnaZone}
+                      onChange={(v) => updateField("pnaZone", v)}
+                      options={PNA_ZONE_OPTIONS}
+                      error={errors.pnaZone}
+                      placeholder="Select PNA zone/region"
+                      searchable
+                      searchPlaceholder="Search zone/region..."
+                      className=""
+                    />
+                  </FadeReveal>
+                  <FadeReveal
+                    show={
+                      !isNonMemberType(formData.membershipType) &&
+                      Boolean(formData.membershipType)
+                    }
+                    className="registration-membership-cell registration-fade-reveal--flush"
+                  >
+                    <FormField
+                      label="PNA Chapter (For Local and Foreign based)"
+                      id="pnaChapter"
+                      required
+                      value={formData.pnaChapter}
+                      onChange={(v) => updateField("pnaChapter", v)}
+                      onBlur={() => markFieldTouched("pnaChapter")}
+                      error={errors.pnaChapter}
+                      className=""
+                    />
+                  </FadeReveal>
+                </div>
+                <FadeReveal
+                  show={
+                    !isNonMemberType(formData.membershipType) &&
+                    Boolean(formData.membershipType)
+                  }
+                  className="registration-fade-reveal--flush mt-3"
+                >
                   <FileField
                     label="Upload PNA ID"
                     id="pnaIdFile"
@@ -1899,11 +2488,13 @@ export function RegistrationForm({
                     accept="image/*"
                     hint="(Image, max 10 MB)"
                     file={pnaIdFile}
-                    onChange={(file) => handleGenericFileSelected(file, "pnaIdFile", setPnaIdFile)}
+                    onChange={(file) =>
+                      handleGenericFileSelected(file, "pnaIdFile", setPnaIdFile)
+                    }
                     error={errors.pnaIdFile}
-                    className="col-12"
+                    className=""
                   />
-                </div>
+                </FadeReveal>
               </fieldset>
 
               <fieldset className="registration-form-section">
@@ -1971,7 +2562,7 @@ export function RegistrationForm({
                       }. Registration is complimentary.`
                     : "Select whether you are registering as Committee or Speaker. Both are complimentary."}
                 </p>
-                <div className="registration-mode-toggle" role="group" aria-label="Special role">
+                <div className="registration-mode-toggle" id="specialRole" role="group" aria-label="Special role">
                   {inviteSpecialRole ? (
                     <button type="button" className="registration-mode-option is-selected" disabled>
                       {inviteSpecialRole === "committee" ? "Committee" : "Guest Speaker"}
@@ -2053,7 +2644,12 @@ export function RegistrationForm({
                   Do you consent to being acknowledged as a sponsor/delegate representing your
                   institution at this conference? <span className="text-accent">*</span>
                 </p>
-                <div className="registration-mode-toggle" role="group" aria-label="Sponsor consent">
+                <div
+                  id="sponsorConsent"
+                  className="registration-mode-toggle"
+                  role="group"
+                  aria-label="Sponsor consent"
+                >
                   <button
                     type="button"
                     className={`registration-mode-option${
@@ -2110,7 +2706,12 @@ export function RegistrationForm({
                   or more attendees share one deposit slip. Group registration creates a record for
                   every participant in one submission, with one combined payment and one receipt.
                 </p>
-                <div className="registration-mode-toggle" role="group" aria-label="Registration type">
+                <div
+                  id="registrationMode"
+                  className="registration-mode-toggle"
+                  role="group"
+                  aria-label="Registration type"
+                >
                   <button
                     type="button"
                     className={`registration-mode-option${
@@ -2178,35 +2779,41 @@ export function RegistrationForm({
                 </p>
                 {earlyBirdAvailable ? (
                   <p className="registration-form-help mb-2">
-                    Early bird is open. Senior Citizen/PWD pricing opens after early bird ends
-                    (same amount as early bird).
+                    Early bird is open. Senior Citizen/PWD pricing opens after early bird ends.
                   </p>
                 ) : (
                   <p className="registration-form-help mb-2">
-                    Early bird has ended. Senior Citizen/PWD is available at the early bird amount.
+                    Early bird has ended. Senior Citizen/PWD rate is now available.
                   </p>
                 )}
-                <div className="registration-fee-choice-grid">
+                <div id="registrationRate" className="registration-fee-choice-grid">
                   {rateOptions.map((rate) => {
+                    const isNonMember = isNonMemberType(formData.membershipType);
                     const amount =
                       rate === "seniorPwd"
                         ? seniorPwdAmount
-                        : earlyBirdAvailable
-                          ? earlyBirdAmount
-                          : regularAmount;
+                        : isNonMember
+                          ? nonMemberAmount
+                          : earlyBirdAvailable
+                            ? earlyBirdAmount
+                            : regularAmount;
                     const tierLabel =
                       rate === "seniorPwd"
                         ? "Senior / PWD"
-                        : earlyBirdAvailable
-                          ? "Early Bird"
-                          : "Regular";
+                        : isNonMember
+                          ? "Non-Member"
+                          : earlyBirdAvailable
+                            ? "Early Bird"
+                            : "Regular";
                     const meta =
                       rate === "seniorPwd"
-                        ? "Same as early bird amount — valid Senior Citizen or PWD ID required"
-                        : earlyBird?.caption ||
-                          (earlyBirdAvailable
-                            ? "Early bird rate currently available"
-                            : "Standard registration rate");
+                        ? "Valid Senior Citizen or PWD ID required"
+                        : isNonMember
+                          ? "Rate for participants who are not PNA members"
+                          : earlyBird?.caption ||
+                            (earlyBirdAvailable
+                              ? "Early bird rate currently available"
+                              : "Standard registration rate");
                     const selected = formData.registrationRate === rate;
                     return (
                       <button
@@ -2306,7 +2913,7 @@ export function RegistrationForm({
                   {errors.members ? (
                     <p className="mb-3 text-xs text-red-500">{errors.members}</p>
                   ) : null}
-                  <div className="registration-group-members">
+                  <div id="registration-group-members" className="registration-group-members">
                     {members.map((member, index) => (
                       <div key={index} className="registration-group-member">
                         <div className="registration-group-member-header">
@@ -2393,39 +3000,80 @@ export function RegistrationForm({
                               </span>
                             </label>
                           </div>
-                          <SelectField
-                            label="Membership Type"
-                            id={`member-${index}-membershipType`}
-                            required
-                            value={member.membershipType}
-                            onChange={(v) => updateMember(index, "membershipType", v)}
-                            options={MEMBERSHIP_TYPE_OPTIONS}
-                            error={memberErrors[index]?.membershipType}
-                            placeholder="Select membership type"
-                            disabled={member.sameAffiliationAsPrimary}
-                          />
-                          <SelectField
-                            label="PNA Zone/Region"
-                            id={`member-${index}-pnaZone`}
-                            required
-                            value={member.pnaZone}
-                            onChange={(v) => updateMember(index, "pnaZone", v)}
-                            options={PNA_ZONE_OPTIONS}
-                            error={memberErrors[index]?.pnaZone}
-                            placeholder="Select PNA zone/region"
-                            disabled={member.sameAffiliationAsPrimary}
-                            searchable
-                            searchPlaceholder="Search zone/region..."
-                          />
-                          <FormField
-                            label="PNA Chapter (For Local and Foreign based)"
-                            id={`member-${index}-pnaChapter`}
-                            required
-                            value={member.pnaChapter}
-                            onChange={(v) => updateMember(index, "pnaChapter", v)}
-                            error={memberErrors[index]?.pnaChapter}
-                            disabled={member.sameAffiliationAsPrimary}
-                          />
+                          <div className="col-12">
+                            <div className="registration-membership-grid">
+                              <div className="registration-membership-cell">
+                                <SelectField
+                                  label="Membership Type"
+                                  id={`member-${index}-membershipType`}
+                                  required
+                                  value={member.membershipType}
+                                  onChange={(v) => updateMember(index, "membershipType", v)}
+                                  options={MEMBERSHIP_TYPE_OPTIONS}
+                                  error={memberErrors[index]?.membershipType}
+                                  placeholder="Select membership type"
+                                  disabled={member.sameAffiliationAsPrimary}
+                                  className=""
+                                />
+                                <FadeReveal
+                                  show={member.membershipType === "renewal_member"}
+                                  className="registration-fade-reveal--flush registration-fade-reveal--tight"
+                                >
+                                  <p className="registration-membership-notice mb-0" role="status">
+                                    We encourage you to renew your PNA membership at{" "}
+                                    <a
+                                      href={PNA_MEMBERSHIP_RENEW_URL}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      www.philippinernurses.org
+                                    </a>
+                                    .
+                                  </p>
+                                </FadeReveal>
+                              </div>
+                              <FadeReveal
+                                show={
+                                  !isNonMemberType(member.membershipType) &&
+                                  Boolean(member.membershipType)
+                                }
+                                className="registration-membership-cell registration-fade-reveal--flush"
+                              >
+                                <SelectField
+                                  label="PNA Zone/Region"
+                                  id={`member-${index}-pnaZone`}
+                                  required
+                                  value={member.pnaZone}
+                                  onChange={(v) => updateMember(index, "pnaZone", v)}
+                                  options={PNA_ZONE_OPTIONS}
+                                  error={memberErrors[index]?.pnaZone}
+                                  placeholder="Select PNA zone/region"
+                                  disabled={member.sameAffiliationAsPrimary}
+                                  searchable
+                                  searchPlaceholder="Search zone/region..."
+                                  className=""
+                                />
+                              </FadeReveal>
+                              <FadeReveal
+                                show={
+                                  !isNonMemberType(member.membershipType) &&
+                                  Boolean(member.membershipType)
+                                }
+                                className="registration-membership-cell registration-fade-reveal--flush"
+                              >
+                                <FormField
+                                  label="PNA Chapter (For Local and Foreign based)"
+                                  id={`member-${index}-pnaChapter`}
+                                  required
+                                  value={member.pnaChapter}
+                                  onChange={(v) => updateMember(index, "pnaChapter", v)}
+                                  error={memberErrors[index]?.pnaChapter}
+                                  disabled={member.sameAffiliationAsPrimary}
+                                  className=""
+                                />
+                              </FadeReveal>
+                            </div>
+                          </div>
                           <FormField
                             label="PRC License Number"
                             id={`member-${index}-prcLicenseNumber`}
@@ -2475,27 +3123,37 @@ export function RegistrationForm({
                             <p className="form-label registration-form-label mb-2">
                               Registration rate <span className="text-accent">*</span>
                             </p>
-                            <div className="registration-fee-choice-grid">
+                            <div
+                              id={`member-${index}-registrationRate`}
+                              className="registration-fee-choice-grid"
+                            >
                               {rateOptions.map((rate) => {
+                                const isNonMember = isNonMemberType(member.membershipType);
                                 const amount =
                                   rate === "seniorPwd"
                                     ? seniorPwdAmount
-                                    : earlyBirdAvailable
-                                      ? earlyBirdAmount
-                                      : regularAmount;
+                                    : isNonMember
+                                      ? nonMemberAmount
+                                      : earlyBirdAvailable
+                                        ? earlyBirdAmount
+                                        : regularAmount;
                                 const tierLabel =
                                   rate === "seniorPwd"
                                     ? "Senior / PWD"
-                                    : earlyBirdAvailable
-                                      ? "Early Bird"
-                                      : "Regular";
+                                    : isNonMember
+                                      ? "Non-Member"
+                                      : earlyBirdAvailable
+                                        ? "Early Bird"
+                                        : "Regular";
                                 const meta =
                                   rate === "seniorPwd"
-                                    ? "Same as early bird amount — valid Senior Citizen or PWD ID required"
-                                    : earlyBird?.caption ||
-                                      (earlyBirdAvailable
-                                        ? "Early bird rate currently available"
-                                        : "Standard registration rate");
+                                    ? "Valid Senior Citizen or PWD ID required"
+                                    : isNonMember
+                                      ? "Rate for participants who are not PNA members"
+                                      : earlyBird?.caption ||
+                                        (earlyBirdAvailable
+                                          ? "Early bird rate currently available"
+                                          : "Standard registration rate");
                                 const selected = member.registrationRate === rate;
                                 return (
                                   <button
@@ -2586,10 +3244,7 @@ export function RegistrationForm({
                   screenshot. Proof of payment is required to complete registration.
                   {formData.registrationMode === "group"
                     ? " One payment and one receipt cover the whole group."
-                    : ""}{" "}
-                  Registration payments are subject to applicable Philippine tax documentation,
-                  including BIR Form 2303 (Certificate of Registration) and BIR Form 2307
-                  (Certificate of Creditable Tax Withheld at Source).
+                    : ""}
                 </p>
 
                 {feeLines.length > 0 ? (
@@ -2699,37 +3354,186 @@ export function RegistrationForm({
                     )}
                   </div>
                 ) : null}
-              </fieldset>
 
-              <fieldset className="registration-form-section">
-                <legend className="registration-form-legend">
-                  <DocumentSectionIcon />
-                  Tax Documents
-                </legend>
-                <div className="row g-3">
-                  <FileField
-                    label="Upload BIR Form 2303"
-                    id="bir2303File"
-                    required
-                    accept="image/*,application/pdf"
-                    hint="(Certificate of Registration, max 10 MB)"
-                    file={bir2303File}
-                    onChange={(file) =>
-                      handleGenericFileSelected(file, "bir2303File", setBir2303File)
+                <div className="col-12 mt-4 registration-sales-invoice-block">
+                  <p className="form-label registration-form-label mb-2">
+                    Do you want to secure a sales invoice? <span className="text-accent">*</span>
+                  </p>
+                  <p className="registration-form-help mb-2">
+                    Choose yes only if you need an official sales invoice. BIR Form 2303 and 2307
+                    will be required.
+                  </p>
+                  <div
+                    id="wantsSalesInvoice"
+                    className="registration-mode-toggle"
+                    role="group"
+                    aria-label="Sales invoice preference"
+                  >
+                    <button
+                      type="button"
+                      className={`registration-mode-option${
+                        formData.wantsSalesInvoice === "yes" ? " is-selected" : ""
+                      }`}
+                      onClick={() => updateField("wantsSalesInvoice", "yes")}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`registration-mode-option${
+                        formData.wantsSalesInvoice === "no" ? " is-selected" : ""
+                      }`}
+                      onClick={() => updateField("wantsSalesInvoice", "no")}
+                    >
+                      No
+                    </button>
+                  </div>
+                  {errors.wantsSalesInvoice ? (
+                    <p className="mt-1 text-xs text-red-400">{errors.wantsSalesInvoice}</p>
+                  ) : null}
+
+                  <FadeReveal
+                    show={
+                      formData.wantsSalesInvoice === "no" &&
+                      formData.registrationMode === "single"
                     }
-                    error={errors.bir2303File}
-                  />
-                  <FileField
-                    label="Upload BIR Form 2307"
-                    id="bir2307File"
-                    accept="image/*,application/pdf"
-                    hint="(Optional, Certificate of Creditable Tax Withheld, max 10 MB)"
-                    file={bir2307File}
-                    onChange={(file) =>
-                      handleGenericFileSelected(file, "bir2307File", setBir2307File)
+                    className="registration-fade-reveal--flush registration-sales-invoice-followup"
+                  >
+                    <div className="registration-sales-invoice-followup-inner">
+                      <p className="form-label registration-form-label mb-1">
+                        Name under the receipt
+                      </p>
+                      <p className="registration-form-help mb-0">
+                        <strong>
+                          {formatReceiptPersonName(
+                            formData.firstName,
+                            formData.middleName,
+                            formData.lastName
+                          ) || "—"}
+                        </strong>
+                      </p>
+                    </div>
+                  </FadeReveal>
+
+                  <FadeReveal
+                    show={
+                      formData.wantsSalesInvoice === "no" &&
+                      formData.registrationMode === "group"
                     }
-                    error={errors.bir2307File}
-                  />
+                    className="registration-fade-reveal--flush registration-sales-invoice-followup"
+                  >
+                    <div className="registration-sales-invoice-followup-inner">
+                      <SelectField
+                        label="Whose name should appear on the receipt?"
+                        id="receiptNamedParticipantKey"
+                        required
+                        value={formData.receiptNamedParticipantKey}
+                        onChange={(v) => updateField("receiptNamedParticipantKey", v)}
+                        options={[
+                          { value: "", label: "Select a participant" },
+                          {
+                            value: "primary",
+                            label:
+                              formatReceiptPersonName(
+                                formData.firstName,
+                                formData.middleName,
+                                formData.lastName
+                              ) || "Participant 1",
+                          },
+                          ...members.map((member, index) => ({
+                            value: `member-${index}`,
+                            label:
+                              formatReceiptPersonName(
+                                member.firstName,
+                                member.middleName,
+                                member.lastName
+                              ) || `Participant ${index + 2}`,
+                          })),
+                        ]}
+                        error={errors.receiptNamedParticipantKey || errors.receiptNamedUnder}
+                        placeholder="Select a participant"
+                      />
+                    </div>
+                  </FadeReveal>
+
+                  <FadeReveal
+                    show={formData.wantsSalesInvoice === "yes"}
+                    className="registration-fade-reveal--flush registration-sales-invoice-followup"
+                  >
+                    <div className="registration-sales-invoice-followup-inner registration-sales-invoice-tax-docs">
+                      <div className="registration-bir-upload-row">
+                        <div className="registration-bir-upload-col">
+                          <FileField
+                            label="Upload BIR Form 2303"
+                            id="bir2303File"
+                            required
+                            accept="image/*,application/pdf"
+                            hint="(Certificate of Registration, max 10 MB)"
+                            file={bir2303File}
+                            onChange={(file) => {
+                              void handleBir2303Selected(file);
+                            }}
+                            error={errors.bir2303File}
+                            className=""
+                          />
+                          {bir2303OcrStatus === "scanning" ? (
+                            <p className="mb-0 text-xs text-muted" role="status">
+                              Scanning BIR Form 2303 for institution / company name…
+                            </p>
+                          ) : null}
+                          {bir2303OcrMessage ? (
+                            <p className="mb-0 text-xs text-muted" role="status">
+                              {bir2303OcrMessage}
+                            </p>
+                          ) : null}
+                          <FormField
+                            label="Institution / company name on BIR Form 2303"
+                            id="bir2303InstitutionName"
+                            required
+                            value={formData.bir2303InstitutionName}
+                            onChange={(v) => updateField("bir2303InstitutionName", v)}
+                            onBlur={() => markFieldTouched("bir2303InstitutionName")}
+                            error={errors.bir2303InstitutionName}
+                            className=""
+                            disabled={bir2303OcrStatus === "scanning"}
+                          />
+                          <p className="registration-form-help mb-0">
+                            We try to read this from your uploaded BIR Form 2303. Please confirm it
+                            is correct — this name will appear on the sales invoice / receipt.
+                          </p>
+                        </div>
+                        <div className="registration-bir-upload-col">
+                          <FileField
+                            label="Upload BIR Form 2307"
+                            id="bir2307File"
+                            required
+                            accept="image/*,application/pdf"
+                            hint="(Certificate of Creditable Tax Withheld, max 10 MB)"
+                            file={bir2307File}
+                            onChange={(file) =>
+                              handleGenericFileSelected(file, "bir2307File", setBir2307File)
+                            }
+                            error={errors.bir2307File}
+                            className=""
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="form-label registration-form-label mb-1">
+                          Name under the receipt
+                        </p>
+                        <p className="registration-form-help mb-0">
+                          <strong>
+                            {formData.bir2303InstitutionName.trim() || "—"}
+                          </strong>
+                          <span className="text-muted">
+                            {" "}
+                            (from your BIR Form 2303 institution name)
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </FadeReveal>
                 </div>
               </fieldset>
 
@@ -2742,7 +3546,12 @@ export function RegistrationForm({
                   Do you consent to being acknowledged as a sponsor/delegate representing your
                   institution at this conference? <span className="text-accent">*</span>
                 </p>
-                <div className="registration-mode-toggle" role="group" aria-label="Sponsor consent">
+                <div
+                  id="sponsorConsent"
+                  className="registration-mode-toggle"
+                  role="group"
+                  aria-label="Sponsor consent"
+                >
                   <button
                     type="button"
                     className={`registration-mode-option${
@@ -2781,11 +3590,12 @@ export function RegistrationForm({
                     I hereby confirm that the information provided is accurate and complete. I
                     acknowledge the terms and conditions governing participation in the{" "}
                     {conference.conferenceName}, including the requirement for payment confirmation
-                    prior to the event, and compliance with applicable Philippine tax documentation
-                    such as BIR Form 2303 (Certificate of Registration) and BIR Form 2307
-                    (Certificate of Creditable Tax Withheld at Source), where applicable. I consent
-                    to the collection and processing of my personal data in accordance with the
-                    Data Privacy Act of 2012 (Republic Act No. 10173).
+                    prior to the event
+                    {formData.wantsSalesInvoice === "yes"
+                      ? ", and submission of BIR Form 2303 and BIR Form 2307 for the requested sales invoice"
+                      : ""}
+                    . I consent to the collection and processing of my personal data in accordance
+                    with the Data Privacy Act of 2012 (Republic Act No. 10173).
                   </span>
                 </label>
                 {errors.dataPrivacyConsent && (
@@ -2839,6 +3649,10 @@ export function RegistrationForm({
                   sponsorConsent: formData.sponsorConsent,
                   dataPrivacyConsent: formData.dataPrivacyConsent,
                   paymentReference,
+                  wantsSalesInvoice: formData.wantsSalesInvoice,
+                  bir2303InstitutionName: formData.bir2303InstitutionName,
+                  receiptNamedUnder: formData.receiptNamedUnder,
+                  receiptNamedParticipantKey: formData.receiptNamedParticipantKey,
                 });
                 setDraftSavedNotice(true);
                 window.setTimeout(() => setDraftSavedNotice(false), 2500);
@@ -2850,13 +3664,13 @@ export function RegistrationForm({
             {isPaymentPhase ? (
               <button
                 type="submit"
-                disabled={loading || ocrStatus === "scanning"}
+                disabled={loading || ocrStatus === "scanning" || bir2303OcrStatus === "scanning"}
                 className="registration-form-footer-btn registration-form-footer-btn--primary"
               >
                 {loading
                   ? "Processing..."
-                  : ocrStatus === "scanning"
-                    ? "Scanning receipt..."
+                  : ocrStatus === "scanning" || bir2303OcrStatus === "scanning"
+                    ? "Scanning document..."
                     : "Submit registration"}
                 <span aria-hidden="true">→</span>
               </button>
