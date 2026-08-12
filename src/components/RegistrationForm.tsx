@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { conference, getPnaChapterSelectOptions, getPnaChaptersForZone, PNA_ZONES } from "@/lib/conference";
+import { conference, getPnaChapterSelectOptions, getPnaChaptersForZone, isNcrRegion } from "@/lib/conference";
 import { formatPeso, getEarlyBirdCap } from "@/lib/registration-fees";
 import type {
   FoodPreference,
@@ -52,6 +52,7 @@ import { MessageDialog } from "@/components/ui/MessageDialog";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { useConfirmAction } from "@/hooks/use-confirm-action";
 import { PnaSelect, type PnaSelectOption } from "@/components/ui/PnaSelect";
+import { PnaRegionSelect } from "@/components/ui/PnaRegionSelect";
 import { SingleDatePicker } from "@/components/ui/SingleDatePicker";
 import { PhLocationSuggest } from "@/components/PhLocationSuggest";
 import { RegistrationPaymentQr } from "@/components/RegistrationPaymentQr";
@@ -83,6 +84,7 @@ interface FormData {
   membershipType: MembershipType | "";
   pnaIdNumber: string;
   pnaZone: string;
+  pnaNcrZone: string;
   pnaChapter: string;
 
   prcLicenseNumber: string;
@@ -108,7 +110,6 @@ interface FormData {
 }
 
 interface FileFields {
-  pnaIdFile: File | null;
   prcIdFile: File | null;
   seniorPwdIdFile: File | null;
   receiptFile: File | null;
@@ -120,7 +121,6 @@ type FormFieldKey = keyof FormData;
 
 type ErrorKey =
   | FormFieldKey
-  | "pnaIdFile"
   | "prcIdFile"
   | "seniorPwdIdFile"
   | "receiptFile"
@@ -146,6 +146,7 @@ const initialFormData: FormData = {
   membershipType: "",
   pnaIdNumber: "",
   pnaZone: "",
+  pnaNcrZone: "",
   pnaChapter: "",
 
   prcLicenseNumber: "",
@@ -170,7 +171,6 @@ const initialFormData: FormData = {
 };
 
 const initialFiles: FileFields = {
-  pnaIdFile: null,
   prcIdFile: null,
   seniorPwdIdFile: null,
   receiptFile: null,
@@ -199,15 +199,18 @@ function isNonMemberType(type: MembershipType | "" | null | undefined): boolean 
   return type === "non_member";
 }
 
-const PNA_ZONE_OPTIONS: PnaSelectOption[] = [
-  { value: "", label: "Select PNA zone/region" },
-  ...PNA_ZONES.map((zone) => ({ value: zone, label: zone })),
-];
-
-function getPnaChapterOptions(zone: string): PnaSelectOption[] {
+function getPnaChapterOptions(zone: string, ncrZone = ""): PnaSelectOption[] {
+  const needsNcrZone = isNcrRegion(zone);
   return [
-    { value: "", label: zone ? "Select PNA chapter" : "Select zone/region first" },
-    ...getPnaChapterSelectOptions(zone),
+    {
+      value: "",
+      label: !zone
+        ? "Select zone/region first"
+        : needsNcrZone && !ncrZone
+          ? "Select NCR zone first"
+          : "Select PNA chapter",
+    },
+    ...getPnaChapterSelectOptions(zone, ncrZone),
   ];
 }
 
@@ -304,14 +307,20 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "pnaZone":
       if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaZone ? undefined : "Please select a PNA zone/region";
+    case "pnaNcrZone":
+      if (isNonMemberType(data.membershipType) || !isNcrRegion(data.pnaZone)) return undefined;
+      return data.pnaNcrZone ? undefined : "Please select an NCR zone";
     case "pnaChapter":
       if (isNonMemberType(data.membershipType)) return undefined;
+      if (isNcrRegion(data.pnaZone) && !data.pnaNcrZone) return undefined;
       if (!data.pnaChapter.trim()) return "PNA chapter is required";
       if (
         data.pnaZone &&
-        !getPnaChaptersForZone(data.pnaZone).includes(data.pnaChapter)
+        !getPnaChaptersForZone(data.pnaZone, data.pnaNcrZone).includes(data.pnaChapter)
       ) {
-        return "Please select a chapter for the chosen zone/region";
+        return isNcrRegion(data.pnaZone)
+          ? "Please select a chapter for the chosen NCR zone"
+          : "Please select a chapter for the chosen zone/region";
       }
       return undefined;
     case "prcLicenseNumber":
@@ -379,7 +388,7 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
     case "sponsorConsent":
       return data.sponsorConsent ? undefined : "Please choose an option";
     case "dataPrivacyConsent":
-      return data.dataPrivacyConsent ? undefined : "You must consent to data processing";
+      return data.dataPrivacyConsent ? undefined : "Please confirm the information and terms";
     default:
       return undefined;
   }
@@ -398,7 +407,13 @@ const PERSONAL_FIELDS: FormFieldKey[] = [
   "position",
 ];
 
-const MEMBERSHIP_FIELDS: FormFieldKey[] = ["membershipType", "pnaIdNumber", "pnaZone", "pnaChapter"];
+const MEMBERSHIP_FIELDS: FormFieldKey[] = [
+  "membershipType",
+  "pnaIdNumber",
+  "pnaZone",
+  "pnaNcrZone",
+  "pnaChapter",
+];
 
 const LICENSE_FIELDS: FormFieldKey[] = [
   "prcLicenseNumber",
@@ -433,6 +448,7 @@ const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
   "dateOfBirth",
   "membershipType",
   "pnaZone",
+  "pnaNcrZone",
   "pnaChapter",
   "prcLicenseNumber",
   "prcInitialRegistrationDate",
@@ -445,7 +461,6 @@ const MEMBER_VALIDATE_FIELDS: (keyof GroupMemberDraft)[] = [
 
 const DETAILS_SCROLL_TARGETS: string[] = [
   ...DETAILS_VALIDATE_FIELDS,
-  "pnaIdFile",
   "prcIdFile",
 ];
 
@@ -581,14 +596,22 @@ function getMemberFieldError(
     case "pnaZone":
       if (isNonMemberType(member.membershipType)) return undefined;
       return member.pnaZone ? undefined : "Please select a PNA zone/region";
+    case "pnaNcrZone":
+      if (isNonMemberType(member.membershipType) || !isNcrRegion(member.pnaZone)) {
+        return undefined;
+      }
+      return member.pnaNcrZone ? undefined : "Please select an NCR zone";
     case "pnaChapter":
       if (isNonMemberType(member.membershipType)) return undefined;
+      if (isNcrRegion(member.pnaZone) && !member.pnaNcrZone) return undefined;
       if (!member.pnaChapter.trim()) return "PNA chapter is required";
       if (
         member.pnaZone &&
-        !getPnaChaptersForZone(member.pnaZone).includes(member.pnaChapter)
+        !getPnaChaptersForZone(member.pnaZone, member.pnaNcrZone).includes(member.pnaChapter)
       ) {
-        return "Please select a chapter for the chosen zone/region";
+        return isNcrRegion(member.pnaZone)
+          ? "Please select a chapter for the chosen NCR zone"
+          : "Please select a chapter for the chosen zone/region";
       }
       return undefined;
     case "prcLicenseNumber":
@@ -667,13 +690,10 @@ function getSectionStatus(
       ? ["membershipType"]
       : MEMBERSHIP_FIELDS;
     const errs = fields.map((field) => getFieldError(field, data));
-    const needsPnaIdFile = !isNonMemberType(data.membershipType);
-    const fileOk = !needsPnaIdFile || Boolean(files.pnaIdFile);
-    const isComplete = errs.every((error) => !error) && fileOk;
-    const anyTouched =
-      fields.some((field) => touched[field]) || (needsPnaIdFile && Boolean(files.pnaIdFile));
+    const isComplete = errs.every((error) => !error);
+    const anyTouched = fields.some((field) => touched[field]);
     if (isComplete) return "complete";
-    if (anyTouched && (errs.some(Boolean) || !fileOk)) return "error";
+    if (anyTouched && errs.some(Boolean)) return "error";
     return "pending";
   }
 
@@ -815,7 +835,6 @@ export function RegistrationForm({
   const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState<Partial<Record<FormFieldKey, boolean>>>({});
 
-  const [pnaIdFile, setPnaIdFile] = useState<File | null>(null);
   const [prcIdFile, setPrcIdFile] = useState<File | null>(null);
   const [seniorPwdIdFile, setSeniorPwdIdFile] = useState<File | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -847,14 +866,13 @@ export function RegistrationForm({
 
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [draftSavedNotice, setDraftSavedNotice] = useState(false);
 
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
   const files: FileFields = useMemo(
-    () => ({ pnaIdFile, prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File }),
-    [pnaIdFile, prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File]
+    () => ({ prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File }),
+    [prcIdFile, seniorPwdIdFile, receiptFile, bir2303File, bir2307File]
   );
 
   const membersValid = useMemo(
@@ -919,6 +937,7 @@ export function RegistrationForm({
         if (
           member.membershipType === formData.membershipType &&
           member.pnaZone === formData.pnaZone &&
+          member.pnaNcrZone === formData.pnaNcrZone &&
           member.pnaChapter === formData.pnaChapter
         ) {
           return member;
@@ -929,6 +948,7 @@ export function RegistrationForm({
           ...member,
           membershipType,
           pnaZone: formData.pnaZone,
+          pnaNcrZone: formData.pnaNcrZone,
           pnaChapter: formData.pnaChapter,
           ...(isNonMemberType(membershipType)
             ? { registrationRate: "regular" as const, seniorPwdIdNumber: "" }
@@ -937,7 +957,7 @@ export function RegistrationForm({
       });
       return changed ? next : prev;
     });
-  }, [formData.membershipType, formData.pnaZone, formData.pnaChapter]);
+  }, [formData.membershipType, formData.pnaZone, formData.pnaNcrZone, formData.pnaChapter]);
 
   const appliedFee = useMemo(() => {
     if (isNonMemberType(formData.membershipType)) {
@@ -1081,6 +1101,7 @@ export function RegistrationForm({
         membershipType: draft.membershipType,
         pnaIdNumber: draft.pnaIdNumber,
         pnaZone: draft.pnaZone,
+        pnaNcrZone: draft.pnaNcrZone,
         pnaChapter: draft.pnaChapter,
         prcLicenseNumber: draft.prcLicenseNumber,
         prcInitialRegistrationDate: draft.prcInitialRegistrationDate,
@@ -1116,7 +1137,6 @@ export function RegistrationForm({
       setShowDraftRestored(false);
     }
 
-    setPnaIdFile(null);
     setPrcIdFile(null);
     setSeniorPwdIdFile(null);
     setReceiptFile(null);
@@ -1135,7 +1155,6 @@ export function RegistrationForm({
     let cancelled = false;
     void loadRegistrationCachedFiles(eventId).then((cached) => {
       if (cancelled) return;
-      if (cached.pnaIdFile) setPnaIdFile(cached.pnaIdFile);
       if (cached.prcIdFile) setPrcIdFile(cached.prcIdFile);
       if (cached.seniorPwdIdFile) setSeniorPwdIdFile(cached.seniorPwdIdFile);
       if (cached.receiptFile) setReceiptFile(cached.receiptFile);
@@ -1181,6 +1200,7 @@ export function RegistrationForm({
         membershipType: formData.membershipType,
         pnaIdNumber: formData.pnaIdNumber,
         pnaZone: formData.pnaZone,
+        pnaNcrZone: formData.pnaNcrZone,
         pnaChapter: formData.pnaChapter,
         prcLicenseNumber: formData.prcLicenseNumber,
         prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
@@ -1456,9 +1476,6 @@ export function RegistrationForm({
       if (error) newErrors[field] = error;
     }
 
-    if (!isNonMemberType(formData.membershipType) && !pnaIdFile) {
-      newErrors.pnaIdFile = "Please upload a copy of your PNA ID.";
-    }
     if (!prcIdFile) newErrors.prcIdFile = "Please upload a copy of your valid PRC ID.";
 
     setTouched(allTouched);
@@ -1468,8 +1485,6 @@ export function RegistrationForm({
         if (newErrors[field]) next[field] = newErrors[field];
         else delete next[field];
       }
-      if (newErrors.pnaIdFile) next.pnaIdFile = newErrors.pnaIdFile;
-      else delete next.pnaIdFile;
       if (newErrors.prcIdFile) next.prcIdFile = newErrors.prcIdFile;
       else delete next.prcIdFile;
       return next;
@@ -1620,7 +1635,7 @@ export function RegistrationForm({
 
   function handleGenericFileSelected(
     file: File | null,
-    key: "pnaIdFile" | "prcIdFile" | "seniorPwdIdFile" | "bir2307File",
+    key: "prcIdFile" | "seniorPwdIdFile" | "bir2307File",
     setFile: (file: File | null) => void
   ) {
     setErrors((prev) => {
@@ -1794,7 +1809,6 @@ export function RegistrationForm({
     setFormData(initialFormData);
     setMembers([]);
     setShowDraftRestored(false);
-    setPnaIdFile(null);
     setPrcIdFile(null);
     setSeniorPwdIdFile(null);
     setReceiptFile(null);
@@ -1971,7 +1985,7 @@ export function RegistrationForm({
             await submitRegistrationDocuments({
               referenceNumber: registration.referenceNumber,
               email: formData.email.trim(),
-              pnaId: isNonMemberType(formData.membershipType) ? null : pnaIdFile,
+              pnaId: null,
               prcId: prcIdFile,
               bir2303:
                 !specialLane && formData.wantsSalesInvoice === "yes" ? bir2303File : null,
@@ -2042,15 +2056,14 @@ export function RegistrationForm({
       if (field === "membershipType") {
         const membershipType = value as MembershipType | "";
         if (isNonMemberType(membershipType)) {
-          setPnaIdFile(null);
           setSeniorPwdIdFile(null);
-          cacheRegistrationFile(eventId, "pnaIdFile", null);
           cacheRegistrationFile(eventId, "seniorPwdIdFile", null);
           return {
             ...prev,
             membershipType,
             pnaIdNumber: "",
             pnaZone: "",
+            pnaNcrZone: "",
             pnaChapter: "",
             registrationRate: "regular",
             seniorPwdIdNumber: "",
@@ -2101,10 +2114,25 @@ export function RegistrationForm({
       }
       if (field === "pnaZone") {
         const pnaZone = String(value);
-        const chapters = getPnaChaptersForZone(pnaZone);
+        const pnaNcrZone = isNcrRegion(pnaZone)
+          ? isNcrRegion(prev.pnaZone)
+            ? prev.pnaNcrZone
+            : ""
+          : "";
+        const chapters = getPnaChaptersForZone(pnaZone, pnaNcrZone);
         return {
           ...prev,
           pnaZone,
+          pnaNcrZone,
+          pnaChapter: chapters.includes(prev.pnaChapter) ? prev.pnaChapter : "",
+        };
+      }
+      if (field === "pnaNcrZone") {
+        const pnaNcrZone = String(value);
+        const chapters = getPnaChaptersForZone(prev.pnaZone, pnaNcrZone);
+        return {
+          ...prev,
+          pnaNcrZone,
           pnaChapter: chapters.includes(prev.pnaChapter) ? prev.pnaChapter : "",
         };
       }
@@ -2144,6 +2172,35 @@ export function RegistrationForm({
       return { ...prev, [field]: value };
     });
     setTouched((prev) => ({ ...prev, [field]: true }));
+  }
+
+  function updatePnaRegion(nextZone: string, nextNcrZone: string) {
+    setFormData((prev) => {
+      const chapters = getPnaChaptersForZone(nextZone, nextNcrZone);
+      return {
+        ...prev,
+        pnaZone: nextZone,
+        pnaNcrZone: nextNcrZone,
+        pnaChapter: chapters.includes(prev.pnaChapter) ? prev.pnaChapter : "",
+      };
+    });
+    setTouched((prev) => ({ ...prev, pnaZone: true, pnaNcrZone: true }));
+  }
+
+  function updateMemberPnaRegion(index: number, nextZone: string, nextNcrZone: string) {
+    setMembers((prev) =>
+      prev.map((member, i) => {
+        if (i !== index) return member;
+        const chapters = getPnaChaptersForZone(nextZone, nextNcrZone);
+        return {
+          ...member,
+          pnaZone: nextZone,
+          pnaNcrZone: nextNcrZone,
+          pnaChapter: chapters.includes(member.pnaChapter) ? member.pnaChapter : "",
+          sameAffiliationAsPrimary: false,
+        };
+      })
+    );
   }
 
   function setRegistrationMode(mode: RegistrationMode) {
@@ -2202,6 +2259,7 @@ export function RegistrationForm({
               ...member,
               membershipType,
               pnaZone: "",
+              pnaNcrZone: "",
               pnaChapter: "",
               sameAffiliationAsPrimary: false,
               registrationRate: "regular" as const,
@@ -2221,10 +2279,26 @@ export function RegistrationForm({
         }
         if (field === "pnaZone") {
           const pnaZone = value;
-          const chapters = getPnaChaptersForZone(pnaZone);
+          const pnaNcrZone = isNcrRegion(pnaZone)
+            ? isNcrRegion(member.pnaZone)
+              ? member.pnaNcrZone
+              : ""
+            : "";
+          const chapters = getPnaChaptersForZone(pnaZone, pnaNcrZone);
           return {
             ...member,
             pnaZone,
+            pnaNcrZone,
+            pnaChapter: chapters.includes(member.pnaChapter) ? member.pnaChapter : "",
+            sameAffiliationAsPrimary: false,
+          };
+        }
+        if (field === "pnaNcrZone") {
+          const pnaNcrZone = value;
+          const chapters = getPnaChaptersForZone(member.pnaZone, pnaNcrZone);
+          return {
+            ...member,
+            pnaNcrZone,
             pnaChapter: chapters.includes(member.pnaChapter) ? member.pnaChapter : "",
             sameAffiliationAsPrimary: false,
           };
@@ -2259,6 +2333,7 @@ export function RegistrationForm({
           sameAffiliationAsPrimary: true,
           membershipType: formData.membershipType,
           pnaZone: formData.pnaZone,
+          pnaNcrZone: formData.pnaNcrZone,
           pnaChapter: formData.pnaChapter,
         };
       })
@@ -2402,7 +2477,7 @@ export function RegistrationForm({
                     error={errors.dateOfBirth}
                     max={getMaxDateOfBirthForMinAge()}
                   />
-                  <div className="col-12 col-md-6">
+                  <div className="col-12 col-md-6 registration-form-field">
                     <label htmlFor="age" className="form-label registration-form-label">
                       Age
                       <span className="registration-form-optional"> (Automatic)</span>
@@ -2522,14 +2597,14 @@ export function RegistrationForm({
                     }
                     className="registration-membership-cell registration-fade-reveal--flush"
                   >
-                    <SelectField
+                    <RegionSelectField
                       label="PNA Zone/Region"
                       id="pnaZone"
                       required
-                      value={formData.pnaZone}
-                      onChange={(v) => updateField("pnaZone", v)}
-                      options={PNA_ZONE_OPTIONS}
-                      error={errors.pnaZone}
+                      zone={formData.pnaZone}
+                      ncrZone={formData.pnaNcrZone}
+                      onChange={updatePnaRegion}
+                      error={errors.pnaZone ?? errors.pnaNcrZone}
                       placeholder="Select PNA zone/region"
                       searchable
                       searchPlaceholder="Search zone/region..."
@@ -2549,41 +2624,25 @@ export function RegistrationForm({
                       required
                       value={formData.pnaChapter}
                       onChange={(v) => updateField("pnaChapter", v)}
-                      options={getPnaChapterOptions(formData.pnaZone)}
+                      options={getPnaChapterOptions(formData.pnaZone, formData.pnaNcrZone)}
                       error={errors.pnaChapter}
                       placeholder={
-                        formData.pnaZone
-                          ? "Select PNA chapter"
-                          : "Select zone/region first"
+                        !formData.pnaZone
+                          ? "Select zone/region first"
+                          : isNcrRegion(formData.pnaZone) && !formData.pnaNcrZone
+                            ? "Select NCR zone first"
+                            : "Select PNA chapter"
                       }
-                      disabled={!formData.pnaZone}
+                      disabled={
+                        !formData.pnaZone ||
+                        (isNcrRegion(formData.pnaZone) && !formData.pnaNcrZone)
+                      }
                       searchable
                       searchPlaceholder="Search chapter..."
                       className=""
                     />
                   </FadeReveal>
                 </div>
-                <FadeReveal
-                  show={
-                    !isNonMemberType(formData.membershipType) &&
-                    Boolean(formData.membershipType)
-                  }
-                  className="registration-fade-reveal--flush mt-3"
-                >
-                  <FileField
-                    label="Upload PNA ID"
-                    id="pnaIdFile"
-                    required
-                    accept="image/*"
-                    hint="(Image, max 10 MB)"
-                    file={pnaIdFile}
-                    onChange={(file) =>
-                      handleGenericFileSelected(file, "pnaIdFile", setPnaIdFile)
-                    }
-                    error={errors.pnaIdFile}
-                    className=""
-                  />
-                </FadeReveal>
               </fieldset>
 
               <fieldset className="registration-form-section">
@@ -2591,7 +2650,7 @@ export function RegistrationForm({
                   <LicenseSectionIcon />
                   License Information
                 </legend>
-                <div className="row g-3">
+                <div className="row g-3 registration-license-fields">
                   <FormField
                     label="PRC License Number"
                     id="prcLicenseNumber"
@@ -2600,6 +2659,7 @@ export function RegistrationForm({
                     onChange={(v) => updateField("prcLicenseNumber", v)}
                     onBlur={() => markFieldTouched("prcLicenseNumber")}
                     error={errors.prcLicenseNumber}
+                    className="col-12"
                   />
                   <SingleDatePicker
                     label="Initial Registration Date"
@@ -2680,7 +2740,7 @@ export function RegistrationForm({
                   )}
                 </div>
                 {errors.specialRole ? (
-                  <p className="mt-1 text-xs text-red-400">{errors.specialRole}</p>
+                  <p className="registration-field-error">{errors.specialRole}</p>
                 ) : null}
               </fieldset>
 
@@ -2717,7 +2777,7 @@ export function RegistrationForm({
                         }`}
                       />
                       {errors.foodAllergyNote && (
-                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
+                        <p className="registration-field-error">{errors.foodAllergyNote}</p>
                       )}
                     </div>
                   ) : null}
@@ -2759,7 +2819,7 @@ export function RegistrationForm({
                   </button>
                 </div>
                 {errors.sponsorConsent && (
-                  <p className="mt-1 text-xs text-red-400">{errors.sponsorConsent}</p>
+                  <p className="registration-field-error">{errors.sponsorConsent}</p>
                 )}
               </fieldset>
 
@@ -2774,8 +2834,9 @@ export function RegistrationForm({
                     className="registration-form-checkbox mt-1"
                   />
                   <span className="small text-muted lh-base">
-                    I consent to the collection and processing of my personal data for conference
-                    registration and related communications. <span className="text-accent">*</span>
+                    I confirm that the information I provide is accurate and complete, and I agree to
+                    the terms of participation for this event.{" "}
+                    <span className="text-accent">*</span>
                   </span>
                 </label>
                 {errors.dataPrivacyConsent && (
@@ -2910,7 +2971,7 @@ export function RegistrationForm({
                   </div>
                 )}
                 {errors.registrationRate && (
-                  <p className="mt-1 text-xs text-red-400">{errors.registrationRate}</p>
+                  <p className="registration-field-error">{errors.registrationRate}</p>
                 )}
 
                 <FadeReveal
@@ -2974,7 +3035,7 @@ export function RegistrationForm({
                         }`}
                       />
                       {errors.foodAllergyNote && (
-                        <p className="mt-1 text-xs text-red-400">{errors.foodAllergyNote}</p>
+                        <p className="registration-field-error">{errors.foodAllergyNote}</p>
                       )}
                     </div>
                   ) : null}
@@ -3015,7 +3076,7 @@ export function RegistrationForm({
                             </button>
                           ) : null}
                         </div>
-                        <div className="row g-3">
+                        <div className="row g-3 registration-license-fields">
                           <FormField
                             label="Surname"
                             id={`member-${index}-lastName`}
@@ -3124,14 +3185,19 @@ export function RegistrationForm({
                                 }
                                 className="registration-membership-cell registration-fade-reveal--flush"
                               >
-                                <SelectField
+                                <RegionSelectField
                                   label="PNA Zone/Region"
                                   id={`member-${index}-pnaZone`}
                                   required
-                                  value={member.pnaZone}
-                                  onChange={(v) => updateMember(index, "pnaZone", v)}
-                                  options={PNA_ZONE_OPTIONS}
-                                  error={memberErrors[index]?.pnaZone}
+                                  zone={member.pnaZone}
+                                  ncrZone={member.pnaNcrZone}
+                                  onChange={(nextZone, nextNcrZone) =>
+                                    updateMemberPnaRegion(index, nextZone, nextNcrZone)
+                                  }
+                                  error={
+                                    memberErrors[index]?.pnaZone ??
+                                    memberErrors[index]?.pnaNcrZone
+                                  }
                                   placeholder="Select PNA zone/region"
                                   disabled={member.sameAffiliationAsPrimary}
                                   searchable
@@ -3152,15 +3218,22 @@ export function RegistrationForm({
                                   required
                                   value={member.pnaChapter}
                                   onChange={(v) => updateMember(index, "pnaChapter", v)}
-                                  options={getPnaChapterOptions(member.pnaZone)}
+                                  options={getPnaChapterOptions(
+                                    member.pnaZone,
+                                    member.pnaNcrZone
+                                  )}
                                   error={memberErrors[index]?.pnaChapter}
                                   placeholder={
-                                    member.pnaZone
-                                      ? "Select PNA chapter"
-                                      : "Select zone/region first"
+                                    !member.pnaZone
+                                      ? "Select zone/region first"
+                                      : isNcrRegion(member.pnaZone) && !member.pnaNcrZone
+                                        ? "Select NCR zone first"
+                                        : "Select PNA chapter"
                                   }
                                   disabled={
-                                    member.sameAffiliationAsPrimary || !member.pnaZone
+                                    member.sameAffiliationAsPrimary ||
+                                    !member.pnaZone ||
+                                    (isNcrRegion(member.pnaZone) && !member.pnaNcrZone)
                                   }
                                   searchable
                                   searchPlaceholder="Search chapter..."
@@ -3176,6 +3249,7 @@ export function RegistrationForm({
                             value={member.prcLicenseNumber}
                             onChange={(v) => updateMember(index, "prcLicenseNumber", v)}
                             error={memberErrors[index]?.prcLicenseNumber}
+                            className="col-12"
                           />
                           <SingleDatePicker
                             label="PRC Initial Registration Date"
@@ -3277,7 +3351,7 @@ export function RegistrationForm({
                               </div>
                             )}
                             {memberErrors[index]?.registrationRate ? (
-                              <p className="mt-1 text-xs text-red-400">
+                              <p className="registration-field-error">
                                 {memberErrors[index]?.registrationRate}
                               </p>
                             ) : null}
@@ -3406,7 +3480,7 @@ export function RegistrationForm({
                     </p>
                   ) : null}
                   {errors.receiptFile && (
-                    <p className="mt-1 text-xs text-red-400">{errors.receiptFile}</p>
+                    <p className="registration-field-error">{errors.receiptFile}</p>
                   )}
                 </div>
 
@@ -3452,7 +3526,7 @@ export function RegistrationForm({
                       </span>
                     </label>
                     {errors.paymentReference && (
-                      <p className="mt-1 text-xs text-red-400">{errors.paymentReference}</p>
+                      <p className="registration-field-error">{errors.paymentReference}</p>
                     )}
                   </div>
                 ) : null}
@@ -3491,7 +3565,7 @@ export function RegistrationForm({
                     </button>
                   </div>
                   {errors.wantsSalesInvoice ? (
-                    <p className="mt-1 text-xs text-red-400">{errors.wantsSalesInvoice}</p>
+                    <p className="registration-field-error">{errors.wantsSalesInvoice}</p>
                   ) : null}
 
                   <FadeReveal
@@ -3674,7 +3748,7 @@ export function RegistrationForm({
                   </button>
                 </div>
                 {errors.sponsorConsent && (
-                  <p className="mt-1 text-xs text-red-400">{errors.sponsorConsent}</p>
+                  <p className="registration-field-error">{errors.sponsorConsent}</p>
                 )}
               </fieldset>
 
@@ -3696,8 +3770,7 @@ export function RegistrationForm({
                     {formData.wantsSalesInvoice === "yes"
                       ? ", and submission of BIR Form 2303 and BIR Form 2307 for the requested sales invoice"
                       : ""}
-                    . I consent to the collection and processing of my personal data in accordance
-                    with the Data Privacy Act of 2012 (Republic Act No. 10173).
+                    . <span className="text-accent">*</span>
                   </span>
                 </label>
                 {errors.dataPrivacyConsent && (
@@ -3717,51 +3790,6 @@ export function RegistrationForm({
             >
               <span aria-hidden="true">←</span>
               Back
-            </button>
-            <button
-              type="button"
-              className="registration-form-footer-btn registration-form-footer-btn--outline"
-              onClick={() => {
-                saveRegistrationDraft(eventId, {
-                  mode: formData.registrationMode,
-                  lastName: formData.lastName,
-                  firstName: formData.firstName,
-                  middleName: formData.middleName,
-                  email: formData.email,
-                  phone: formData.phone,
-                  dateOfBirth: formData.dateOfBirth,
-                  age: String(calculateAge(formData.dateOfBirth) ?? ""),
-                  gender: formData.gender,
-                  organization: formData.organization,
-                  institutionAddress: formData.institutionAddress,
-                  position: formData.position,
-                  membershipType: formData.membershipType,
-                  pnaIdNumber: formData.pnaIdNumber,
-                  pnaZone: formData.pnaZone,
-                  pnaChapter: formData.pnaChapter,
-                  prcLicenseNumber: formData.prcLicenseNumber,
-                  prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
-                  prcExpirationDate: formData.prcExpirationDate,
-                  registrationMode: formData.registrationMode,
-                  registrationRate: formData.registrationRate,
-                  seniorPwdIdNumber: formData.seniorPwdIdNumber,
-                  members: formData.registrationMode === "group" ? members : [],
-                  foodPreference: formData.foodPreference,
-                  foodAllergyNote: formData.foodAllergyNote,
-                  sponsorConsent: formData.sponsorConsent,
-                  dataPrivacyConsent: formData.dataPrivacyConsent,
-                  paymentReference,
-                  wantsSalesInvoice: formData.wantsSalesInvoice,
-                  bir2303InstitutionName: formData.bir2303InstitutionName,
-                  receiptNamedUnder: formData.receiptNamedUnder,
-                  receiptNamedParticipantKey: formData.receiptNamedParticipantKey,
-                });
-                setDraftSavedNotice(true);
-                window.setTimeout(() => setDraftSavedNotice(false), 2500);
-              }}
-            >
-              <BookmarkIcon />
-              Save Draft
             </button>
             {isPaymentPhase ? (
               <button
@@ -3787,11 +3815,6 @@ export function RegistrationForm({
               </button>
             )}
           </div>
-          {draftSavedNotice ? (
-            <p className="registration-form-draft-saved" role="status">
-              Draft saved.
-            </p>
-          ) : null}
         </form>
       </div>
     </>
@@ -3865,14 +3888,6 @@ function ClipboardCheckSectionIcon() {
   );
 }
 
-function BookmarkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M7 4h10v16l-5-3-5 3V4Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function FormField({
   label,
   id,
@@ -3905,7 +3920,7 @@ function FormField({
   className?: string;
 }) {
   return (
-    <div className={className}>
+    <div className={`registration-form-field ${className}`.trim()}>
       <label htmlFor={id} className="form-label registration-form-label">
         {label} {required && <span className="text-accent">*</span>}
       </label>
@@ -3922,7 +3937,56 @@ function FormField({
         disabled={disabled}
         className={`input-dark ${error ? "input-dark-error" : ""}`}
       />
-      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {error && <p className="registration-field-error">{error}</p>}
+    </div>
+  );
+}
+
+function RegionSelectField({
+  label,
+  id,
+  required = false,
+  zone,
+  ncrZone,
+  onChange,
+  error,
+  placeholder,
+  disabled = false,
+  searchable = false,
+  searchPlaceholder,
+  className = "col-12 col-md-6",
+}: {
+  label: string;
+  id: string;
+  required?: boolean;
+  zone: string;
+  ncrZone: string;
+  onChange: (zone: string, ncrZone: string) => void;
+  error?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`registration-form-field ${className}`.trim()}>
+      <label htmlFor={id} className="form-label registration-form-label">
+        {label} {required && <span className="text-accent">*</span>}
+      </label>
+      <PnaRegionSelect
+        id={id}
+        zone={zone}
+        ncrZone={ncrZone}
+        onChange={onChange}
+        placeholder={placeholder}
+        required={required}
+        disabled={disabled}
+        searchable={searchable}
+        searchPlaceholder={searchPlaceholder}
+        className={error ? "pna-select--error" : ""}
+      />
+      {error && <p className="registration-field-error">{error}</p>}
     </div>
   );
 }
@@ -3955,7 +4019,7 @@ function SelectField({
   className?: string;
 }) {
   return (
-    <div className={className}>
+    <div className={`registration-form-field ${className}`.trim()}>
       <label htmlFor={id} className="form-label registration-form-label">
         {label} {required && <span className="text-accent">*</span>}
       </label>
@@ -3971,7 +4035,7 @@ function SelectField({
         searchPlaceholder={searchPlaceholder}
         className={error ? "pna-select--error" : ""}
       />
-      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {error && <p className="registration-field-error">{error}</p>}
     </div>
   );
 }
@@ -3996,7 +4060,7 @@ function PhoneField({
   className?: string;
 }) {
   return (
-    <div className={className}>
+    <div className={`registration-form-field ${className}`.trim()}>
       <label htmlFor={id} className="form-label registration-form-label">
         {label} {required && <span className="text-accent">*</span>}
       </label>
@@ -4012,7 +4076,7 @@ function PhoneField({
           value={toPhMobileLocalDigits(value)}
           onChange={(e) => onChange(toPhMobileLocalDigits(e.target.value))}
           onBlur={onBlur}
-          placeholder="9606207919"
+          placeholder="9xxxxxxxxx"
           maxLength={10}
           className={`input-dark registration-phone-input${error ? " input-dark-error" : ""}`}
         />
@@ -4020,7 +4084,7 @@ function PhoneField({
       <p className="registration-phone-hint mb-0">
         Enter 10 digits starting with 9 (do not include 0).
       </p>
-      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {error && <p className="registration-field-error">{error}</p>}
     </div>
   );
 }
@@ -4067,13 +4131,13 @@ function FileField({
           />
         </div>
         {file ? <p className="mt-2 mb-0 text-xs text-muted">Selected: {file.name}</p> : null}
-        {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+        {error && <p className="registration-field-error">{error}</p>}
       </div>
     );
   }
 
   return (
-    <div className={className}>
+    <div className={`registration-form-field ${className}`.trim()}>
       <label htmlFor={id} className="form-label registration-form-label">
         {label} {required && <span className="text-accent">*</span>}
         {hint ? <span className="registration-form-optional"> {hint}</span> : null}
@@ -4086,7 +4150,7 @@ function FileField({
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
       />
       {file ? <p className="mt-2 mb-0 text-xs text-muted">Selected: {file.name}</p> : null}
-      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {error && <p className="registration-field-error">{error}</p>}
     </div>
   );
 }

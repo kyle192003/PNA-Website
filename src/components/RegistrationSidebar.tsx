@@ -173,7 +173,6 @@ export function RegistrationSidebar({
         </div>
         <ol className="registration-sidebar-info-list registration-sidebar-info-list--ordered">
           <li>Copy or screenshot of the proof of payment</li>
-          <li>Updated PNA ID (members only — not required for non-members)</li>
           <li>Valid PRC ID</li>
           <li>Senior Citizen/PWD ID (if applicable)</li>
           <li>BIR Form 2303 and 2307 (only if you request a sales invoice)</li>
