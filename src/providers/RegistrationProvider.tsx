@@ -18,6 +18,7 @@ import type { PublicEvent } from "@/lib/types/admin";
 interface RegistrationContextValue {
   openRegistration: (eventId?: string) => void;
   closeRegistration: () => void;
+  isRegistrationOpen: boolean;
 }
 
 const RegistrationContext = createContext<RegistrationContextValue | null>(null);
@@ -286,7 +287,13 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   ]);
 
   return (
-    <RegistrationContext.Provider value={{ openRegistration, closeRegistration }}>
+    <RegistrationContext.Provider
+      value={{
+        openRegistration,
+        closeRegistration,
+        isRegistrationOpen: registrationOpen || pickerOpen,
+      }}
+    >
       {children}
       {pickerOpen && (
         <RegisterEventPickerModal

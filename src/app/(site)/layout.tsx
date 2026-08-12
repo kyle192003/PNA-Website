@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { RegistrationStatusChatbot } from "@/components/RegistrationStatusChatbot";
 import { SitePageMotion } from "@/components/motion/SitePageMotion";
 import { AdminSessionProvider } from "@/providers/AdminSessionProvider";
 import { RegistrationProvider } from "@/providers/RegistrationProvider";
@@ -22,6 +23,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <SitePageMotion>{children}</SitePageMotion>
             </main>
             <Footer />
+            <RegistrationStatusChatbot />
           </EventOverviewProvider>
         </RegistrationProvider>
       </AdminSessionProvider>

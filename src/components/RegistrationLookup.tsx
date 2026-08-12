@@ -17,10 +17,12 @@ import { useConfirmAction } from "@/hooks/use-confirm-action";
 export function RegistrationLookup({
   variant = "default",
 }: {
-  variant?: "default" | "sidebar";
+  variant?: "default" | "sidebar" | "chatbot";
 }) {
   const queryClient = useQueryClient();
   const isSidebar = variant === "sidebar";
+  const isChatbot = variant === "chatbot";
+  const compact = isSidebar || isChatbot;
   const [reference, setReference] = useState("");
   const [email, setEmail] = useState("");
   const [searchReference, setSearchReference] = useState("");
@@ -85,20 +87,33 @@ export function RegistrationLookup({
 
   return (
     <div
-      className={`registration-lookup-wrap ${isSidebar ? "registration-sidebar-block" : "glass-card p-6"}`}
+      className={
+        isChatbot
+          ? "registration-lookup-wrap registration-lookup-wrap--chatbot"
+          : `registration-lookup-wrap ${isSidebar ? "registration-sidebar-block" : "glass-card p-6"}`
+      }
     >
       <LoadingOverlay show={loading} scope="local" variant="form" />
       <ActionConfirmDialogs hook={confirmHook} />
 
-      <h3
-        className={`font-display font-bold mb-2 ${isSidebar ? "registration-sidebar-heading h6" : "text-ink"}`}
-      >
-        Check Registration Status
-      </h3>
-      <p className={`text-sm mb-4 ${isSidebar ? "registration-sidebar-muted" : "text-muted"}`}>
-        Enter your reference number and the email used at registration to verify status and upload
-        payment proof.
-      </p>
+      {!isChatbot ? (
+        <>
+          <h3
+            className={`font-display font-bold mb-2 ${isSidebar ? "registration-sidebar-heading h6" : "text-ink"}`}
+          >
+            Check Registration Status
+          </h3>
+          <p className={`text-sm mb-4 ${isSidebar ? "registration-sidebar-muted" : "text-muted"}`}>
+            Enter your reference number and the email used at registration to verify status and
+            upload payment proof.
+          </p>
+        </>
+      ) : (
+        <p className="registration-lookup-chatbot-help mb-3">
+          Enter your reference number and the email used at registration to verify status and upload
+          payment proof.
+        </p>
+      )}
 
       <form onSubmit={handleLookup} className="d-flex flex-column gap-2">
         <input
@@ -106,7 +121,7 @@ export function RegistrationLookup({
           value={reference}
           onChange={(e) => setReference(e.target.value)}
           placeholder="PNA-2026-A1B2C3D4"
-          className={`uppercase ${isSidebar ? "registration-sidebar-input" : "input-dark"}`}
+          className={`uppercase ${compact ? "registration-sidebar-input" : "input-dark"}`}
           disabled={isBusy}
           autoComplete="off"
         />
@@ -115,14 +130,14 @@ export function RegistrationLookup({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email used at registration"
-          className={isSidebar ? "registration-sidebar-input" : "input-dark"}
+          className={compact ? "registration-sidebar-input" : "input-dark"}
           disabled={isBusy}
           autoComplete="email"
         />
         <button
           type="submit"
           disabled={isBusy || !reference.trim() || !email.trim()}
-          className={`btn-primary ${isSidebar ? "registration-sidebar-btn" : "!py-2.5 !px-4 !text-xs"}`}
+          className={`btn-primary ${compact ? "registration-sidebar-btn" : "!py-2.5 !px-4 !text-xs"}`}
         >
           Look Up
         </button>
@@ -132,7 +147,7 @@ export function RegistrationLookup({
 
       {lookupQuery.isError && (
         <div
-          className={`mt-4 rounded-lg p-3 text-sm ${isSidebar ? "registration-sidebar-error" : "bg-red-500/10 border border-red-500/30 text-red-300"}`}
+          className={`mt-4 rounded-lg p-3 text-sm ${compact ? "registration-sidebar-error" : "bg-red-500/10 border border-red-500/30 text-red-300"}`}
         >
           {lookupQuery.error.message}
         </div>
@@ -140,60 +155,60 @@ export function RegistrationLookup({
 
       {lookupQuery.isSuccess && lookupQuery.data && (
         <div
-          className={`mt-4 rounded-lg p-4 ${isSidebar ? "registration-sidebar-success" : "bg-emerald-500/10 border border-emerald-500/30"}`}
+          className={`mt-4 rounded-lg p-4 ${compact ? "registration-sidebar-success" : "bg-emerald-500/10 border border-emerald-500/30"}`}
         >
           <p
-            className={`text-sm font-semibold mb-2 ${isSidebar ? "text-green-100" : "text-emerald-300"}`}
+            className={`text-sm font-semibold mb-2 ${compact ? "text-green-100" : "text-emerald-300"}`}
           >
             Registration Found
           </p>
           <dl
-            className={`space-y-1 text-sm ${isSidebar ? "registration-sidebar-muted" : "text-emerald-200/80"}`}
+            className={`space-y-1 text-sm ${compact ? "registration-sidebar-muted" : "text-emerald-200/80"}`}
           >
             <div className="flex justify-between gap-4">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>
                 Reference
               </dt>
               <dd
-                className={`font-semibold ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}
+                className={`font-semibold ${compact ? "registration-sidebar-text" : "text-ink"}`}
               >
                 {lookupQuery.data.referenceNumber}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>Name</dt>
-              <dd className={isSidebar ? "registration-sidebar-text" : undefined}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>Name</dt>
+              <dd className={compact ? "registration-sidebar-text" : undefined}>
                 {formatParticipantName(lookupQuery.data)}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>
                 Email
               </dt>
-              <dd className={`text-end ${isSidebar ? "registration-sidebar-text" : undefined}`}>
+              <dd className={`text-end ${compact ? "registration-sidebar-text" : undefined}`}>
                 {lookupQuery.data.emailMasked}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>
                 Organization
               </dt>
-              <dd className={`text-end ${isSidebar ? "registration-sidebar-text" : undefined}`}>
+              <dd className={`text-end ${compact ? "registration-sidebar-text" : undefined}`}>
                 {lookupQuery.data.organization}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>
                 Category
               </dt>
-              <dd className={isSidebar ? "registration-sidebar-text" : undefined}>
+              <dd className={compact ? "registration-sidebar-text" : undefined}>
                 {(conference.registration.fees as Record<string, { label?: string }>)[
                   lookupQuery.data.category
                 ]?.label ?? lookupQuery.data.category}
               </dd>
             </div>
             <div className="flex justify-between gap-4 align-items-center">
-              <dt className={isSidebar ? "registration-sidebar-muted" : "text-emerald-400"}>
+              <dt className={compact ? "registration-sidebar-muted" : "text-emerald-400"}>
                 Payment
               </dt>
               <dd>
@@ -203,7 +218,7 @@ export function RegistrationLookup({
           </dl>
 
           {lookupQuery.data.paymentNotes && (
-            <p className={`mt-3 mb-0 small ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}>
+            <p className={`mt-3 mb-0 small ${compact ? "registration-sidebar-text" : "text-ink"}`}>
               <strong>Note:</strong> {lookupQuery.data.paymentNotes}
             </p>
           )}
@@ -213,7 +228,7 @@ export function RegistrationLookup({
               onSubmit={handleReceiptUpload}
               className="mt-4 pt-3 border-top border-white border-opacity-10"
             >
-              <p className={`small mb-2 ${isSidebar ? "registration-sidebar-text" : "text-ink"}`}>
+              <p className={`small mb-2 ${compact ? "registration-sidebar-text" : "text-ink"}`}>
                 Upload proof of payment (
                 {PAYMENT_STATUS_LABELS[lookupQuery.data.paymentStatus]})
                 {lookupQuery.data.hasReceipt ? " — replaces the previous file" : ""}
@@ -221,14 +236,14 @@ export function RegistrationLookup({
               <input
                 type="file"
                 accept="image/*,application/pdf"
-                className={`mb-2 ${isSidebar ? "registration-sidebar-input" : "input-dark"}`}
+                className={`mb-2 ${compact ? "registration-sidebar-input" : "input-dark"}`}
                 onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
                 disabled={loading}
               />
               <button
                 type="submit"
                 disabled={!receiptFile || loading}
-                className={`btn-primary w-100 ${isSidebar ? "registration-sidebar-btn" : ""}`}
+                className={`btn-primary w-100 ${compact ? "registration-sidebar-btn" : ""}`}
               >
                 {loading ? "Uploading..." : "Submit Receipt"}
               </button>
@@ -237,7 +252,7 @@ export function RegistrationLookup({
 
           {uploadError && (
             <p
-              className={`mt-3 mb-0 small ${isSidebar ? "registration-sidebar-error" : "text-red-400"}`}
+              className={`mt-3 mb-0 small ${compact ? "registration-sidebar-error" : "text-red-400"}`}
             >
               {uploadError}
             </p>
