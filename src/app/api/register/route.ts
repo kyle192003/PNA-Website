@@ -35,7 +35,12 @@ import {
 } from "@/lib/security/rate-limit";
 import { readJsonBody } from "@/lib/security/safe-input";
 
-const membershipTypes: MembershipType[] = ["lifetime", "regular", "non_member"];
+const membershipTypes: MembershipType[] = [
+  "lifetime",
+  "regular",
+  "renewal_member",
+  "non_member",
+];
 const rates: RegistrationRateChoice[] = ["regular", "seniorPwd"];
 const modes: RegistrationModeChoice[] = ["single", "group"];
 const foods: FoodPreference[] = ["regular", "vegetarian", "no_pork", "allergy"];
@@ -123,14 +128,19 @@ function validatePrimaryFields(
   if (!membershipTypes.includes(body.membershipType as MembershipType)) {
     return { error: "Please select a valid membership type." };
   }
-  if (typeof body.pnaIdNumber !== "string" || !body.pnaIdNumber.trim()) {
+  const isNonMember = body.membershipType === "non_member";
+  if (
+    !isNonMember &&
+    (typeof body.pnaIdNumber !== "string" || !body.pnaIdNumber.trim())
+  ) {
     return { error: "PNA ID number is required." };
   }
   if (
-    typeof body.pnaZone !== "string" ||
-    !body.pnaZone.trim() ||
-    typeof body.pnaChapter !== "string" ||
-    !body.pnaChapter.trim()
+    !isNonMember &&
+    (typeof body.pnaZone !== "string" ||
+      !body.pnaZone.trim() ||
+      typeof body.pnaChapter !== "string" ||
+      !body.pnaChapter.trim())
   ) {
     return { error: "PNA zone/region and chapter are required." };
   }
@@ -157,6 +167,20 @@ function validatePrimaryFields(
     }
     if (typeof body.paymentReference !== "string" || !body.paymentReference.trim()) {
       return { error: "Payment reference number is required." };
+    }
+    if (body.wantsSalesInvoice !== true && body.wantsSalesInvoice !== false) {
+      return { error: "Please indicate whether you want a sales invoice." };
+    }
+    if (
+      body.wantsSalesInvoice === true &&
+      (typeof body.bir2303InstitutionName !== "string" || !body.bir2303InstitutionName.trim())
+    ) {
+      return {
+        error: "Institution / company name as shown on BIR Form 2303 is required for a sales invoice.",
+      };
+    }
+    if (typeof body.receiptNamedUnder !== "string" || !body.receiptNamedUnder.trim()) {
+      return { error: "Please indicate whose name should appear on the receipt." };
     }
   } else if (!specialRoles.includes(body.specialRole as SpecialRole)) {
     return { error: "Please choose Committee or Speaker." };
@@ -192,9 +216,9 @@ function validatePrimaryFields(
       institutionAddress: String(body.institutionAddress ?? ""),
       position: String(body.position ?? ""),
       membershipType: body.membershipType as MembershipType,
-      pnaIdNumber: String(body.pnaIdNumber ?? ""),
-      pnaZone: String(body.pnaZone ?? ""),
-      pnaChapter: String(body.pnaChapter ?? ""),
+      pnaIdNumber: isNonMember ? "" : String(body.pnaIdNumber ?? ""),
+      pnaZone: isNonMember ? "" : String(body.pnaZone ?? ""),
+      pnaChapter: isNonMember ? "" : String(body.pnaChapter ?? ""),
       prcLicenseNumber: String(body.prcLicenseNumber ?? ""),
       prcInitialRegistrationDate: String(body.prcInitialRegistrationDate ?? ""),
       prcExpirationDate: String(body.prcExpirationDate ?? ""),
@@ -212,6 +236,14 @@ function validatePrimaryFields(
       sponsorConsent: body.sponsorConsent as SponsorConsent,
       dataPrivacyConsent: Boolean(body.dataPrivacyConsent),
       paymentReference: complimentaryInvite ? "" : String(body.paymentReference ?? ""),
+      wantsSalesInvoice: complimentaryInvite ? false : Boolean(body.wantsSalesInvoice),
+      bir2303InstitutionName:
+        !complimentaryInvite && body.wantsSalesInvoice === true
+          ? String(body.bir2303InstitutionName ?? "").trim()
+          : "",
+      receiptNamedUnder: complimentaryInvite
+        ? ""
+        : String(body.receiptNamedUnder ?? "").trim(),
       inviteToken:
         complimentaryInvite && typeof body.inviteToken === "string"
           ? body.inviteToken
@@ -359,13 +391,20 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
-        if (typeof raw.pnaZone !== "string" || !raw.pnaZone.trim()) {
+        const memberIsNonMember = raw.membershipType === "non_member";
+        if (
+          !memberIsNonMember &&
+          (typeof raw.pnaZone !== "string" || !raw.pnaZone.trim())
+        ) {
           return NextResponse.json(
             { error: `${label}: PNA zone/region is required.` },
             { status: 400 }
           );
         }
-        if (typeof raw.pnaChapter !== "string" || !raw.pnaChapter.trim()) {
+        if (
+          !memberIsNonMember &&
+          (typeof raw.pnaChapter !== "string" || !raw.pnaChapter.trim())
+        ) {
           return NextResponse.json(
             { error: `${label}: PNA chapter is required.` },
             { status: 400 }
@@ -410,8 +449,8 @@ export async function POST(request: Request) {
           phone: contact.phone,
           dateOfBirth: String(raw.dateOfBirth ?? ""),
           membershipType: raw.membershipType as MembershipType,
-          pnaZone: String(raw.pnaZone ?? ""),
-          pnaChapter: String(raw.pnaChapter ?? ""),
+          pnaZone: memberIsNonMember ? "" : String(raw.pnaZone ?? ""),
+          pnaChapter: memberIsNonMember ? "" : String(raw.pnaChapter ?? ""),
           prcLicenseNumber: String(raw.prcLicenseNumber ?? ""),
           prcInitialRegistrationDate: String(raw.prcInitialRegistrationDate ?? ""),
           prcExpirationDate: String(raw.prcExpirationDate ?? ""),

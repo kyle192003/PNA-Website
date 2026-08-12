@@ -45,6 +45,11 @@ export type RegistrationDraft = {
   sponsorConsent: SponsorConsent | "";
   dataPrivacyConsent: boolean;
   paymentReference: string;
+  wantsSalesInvoice: "" | "yes" | "no";
+  bir2303InstitutionName: string;
+  receiptNamedUnder: string;
+  /** Group only: which participant is named on the receipt when no sales invoice. */
+  receiptNamedParticipantKey: string;
   savedAt: string;
 };
 
@@ -83,6 +88,7 @@ function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft 
     membershipType:
       raw.membershipType === "lifetime" ||
       raw.membershipType === "regular" ||
+      raw.membershipType === "renewal_member" ||
       raw.membershipType === "non_member"
         ? raw.membershipType
         : "",
@@ -118,7 +124,13 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
       organization: parsed.organization ?? "",
       institutionAddress: parsed.institutionAddress ?? "",
       position: parsed.position ?? "",
-      membershipType: parsed.membershipType ?? "",
+      membershipType:
+        parsed.membershipType === "lifetime" ||
+        parsed.membershipType === "regular" ||
+        parsed.membershipType === "renewal_member" ||
+        parsed.membershipType === "non_member"
+          ? parsed.membershipType
+          : "",
       pnaIdNumber: parsed.pnaIdNumber ?? "",
       pnaZone: parsed.pnaZone ?? "",
       pnaChapter: parsed.pnaChapter ?? "",
@@ -139,6 +151,13 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
       sponsorConsent: parsed.sponsorConsent ?? "",
       dataPrivacyConsent: Boolean(parsed.dataPrivacyConsent),
       paymentReference: parsed.paymentReference ?? "",
+      wantsSalesInvoice:
+        parsed.wantsSalesInvoice === "yes" || parsed.wantsSalesInvoice === "no"
+          ? parsed.wantsSalesInvoice
+          : "",
+      bir2303InstitutionName: parsed.bir2303InstitutionName ?? "",
+      receiptNamedUnder: parsed.receiptNamedUnder ?? "",
+      receiptNamedParticipantKey: parsed.receiptNamedParticipantKey ?? "",
       savedAt: parsed.savedAt ?? new Date().toISOString(),
     };
   } catch {
