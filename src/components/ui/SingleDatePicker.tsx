@@ -533,7 +533,7 @@ export function SingleDatePicker({
 
   const portaledCalendar = showPanel
     ? createPortal(
-        <div className="registration-date-field">{calendarPanel}</div>,
+        <div className="registration-date-portal">{calendarPanel}</div>,
         document.body
       )
     : null;

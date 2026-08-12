@@ -10699,7 +10699,8 @@ a.admin-btn-primary:hover,
   font-weight: 400;
 }
 
-.registration-date-field .admin-range-calendar--dropdown {
+.registration-date-field .admin-range-calendar--dropdown,
+.registration-date-portal .admin-range-calendar--dropdown {
   z-index: 40;
   width: min(100%, 17rem);
   min-width: min(100%, 15.5rem);
@@ -10707,40 +10708,54 @@ a.admin-btn-primary:hover,
   background: #ffffff;
 }
 
-/* Portaled calendars must beat the registration modal / site chrome stacking. */
-.registration-date-field .admin-range-calendar--dropdown.admin-range-calendar--portal {
+/* Portaled calendars sit on document.body and must beat the registration modal. */
+.registration-date-portal {
+  position: relative;
   z-index: var(--pna-floating-z, 10000);
 }
 
-.registration-date-field .admin-range-calendar-body {
+.registration-date-field .admin-range-calendar--dropdown.admin-range-calendar--portal,
+.registration-date-portal .admin-range-calendar--dropdown.admin-range-calendar--portal {
+  z-index: var(--pna-floating-z, 10000);
+}
+
+.registration-date-field .admin-range-calendar-body,
+.registration-date-portal .admin-range-calendar-body {
   padding: 0.65rem 0.5rem 0.35rem;
 }
 
-.registration-date-field .admin-range-calendar-month {
+.registration-date-field .admin-range-calendar-month,
+.registration-date-portal .admin-range-calendar-month {
   font-size: 0.875rem;
 }
 
-.registration-date-field .admin-range-calendar-nav-btn {
+.registration-date-field .admin-range-calendar-nav-btn,
+.registration-date-portal .admin-range-calendar-nav-btn {
   width: 1.85rem;
   height: 1.85rem;
 }
 
-.registration-date-field .admin-range-calendar-weekdays span {
+.registration-date-field .admin-range-calendar-weekdays span,
+.registration-date-portal .admin-range-calendar-weekdays span {
   font-size: 0.6875rem;
 }
 
 .registration-date-field .admin-range-calendar-empty,
-.registration-date-field .admin-range-calendar-day {
+.registration-date-field .admin-range-calendar-day,
+.registration-date-portal .admin-range-calendar-empty,
+.registration-date-portal .admin-range-calendar-day {
   min-height: 1.95rem;
 }
 
-.registration-date-field .admin-range-calendar-day-num {
+.registration-date-field .admin-range-calendar-day-num,
+.registration-date-portal .admin-range-calendar-day-num {
   width: 1.7rem;
   height: 1.7rem;
   font-size: 0.75rem;
 }
 
-.registration-date-field .admin-range-calendar-footer {
+.registration-date-field .admin-range-calendar-footer,
+.registration-date-portal .admin-range-calendar-footer {
   display: none;
 }
 
@@ -10999,12 +11014,14 @@ a.admin-btn-primary:hover,
   cursor: not-allowed;
 }
 
-.registration-date-field .admin-range-calendar-header-btn {
+.registration-date-field .admin-range-calendar-header-btn,
+.registration-date-portal .admin-range-calendar-header-btn {
   font-size: 0.8125rem;
   padding: 0.15rem 0.3rem;
 }
 
-.registration-date-field .admin-range-calendar-picker-item {
+.registration-date-field .admin-range-calendar-picker-item,
+.registration-date-portal .admin-range-calendar-picker-item {
   min-height: 2.1rem;
   font-size: 0.75rem;
 }
