@@ -114,18 +114,18 @@ export function RegistrationSidebar({
               <>
                 <div className="registration-sidebar-fee-row">
                   <p className="registration-sidebar-fee-label">{fees.regular.label}</p>
-                  <p className="registration-sidebar-fee-caption mb-1">
-                    {fees.regular.caption ?? "Standard registration rate"}
-                  </p>
+                  {fees.regular.caption ? (
+                    <p className="registration-sidebar-fee-caption mb-1">{fees.regular.caption}</p>
+                  ) : null}
                   <strong className="registration-sidebar-fee-amount">
                     {formatPeso(fees.regular.amount)}
                   </strong>
                 </div>
                 <div className="registration-sidebar-fee-row">
                   <p className="registration-sidebar-fee-label">{fees.seniorPwd.label}</p>
-                  <p className="registration-sidebar-fee-caption mb-1">
-                    Valid Senior Citizen or PWD ID required
-                  </p>
+                  {fees.seniorPwd.caption ? (
+                    <p className="registration-sidebar-fee-caption mb-1">{fees.seniorPwd.caption}</p>
+                  ) : null}
                   <strong className="registration-sidebar-fee-amount">
                     {formatPeso(fees.earlyBird.amount)}
                   </strong>
@@ -134,10 +134,9 @@ export function RegistrationSidebar({
             )}
             <div className="registration-sidebar-fee-row">
               <p className="registration-sidebar-fee-label">{fees.nonMember.label}</p>
-              <p className="registration-sidebar-fee-caption mb-1">
-                {fees.nonMember.caption ??
-                  "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)"}
-              </p>
+              {fees.nonMember.caption ? (
+                <p className="registration-sidebar-fee-caption mb-1">{fees.nonMember.caption}</p>
+              ) : null}
               <strong className="registration-sidebar-fee-amount">
                 {formatPeso(fees.nonMember.amount)}
               </strong>

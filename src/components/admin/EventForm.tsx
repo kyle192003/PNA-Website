@@ -157,17 +157,12 @@ export function EventForm({
       seniorPwd: {
         ...fees.seniorPwd,
         amount: earlyAmount,
-        caption: "Valid Senior Citizen or PWD ID required",
       },
       regular: {
         ...fees.regular,
-        caption: "Applies after early bird slots fill or the early bird period ends",
       },
       nonMember: {
         ...fees.nonMember,
-        caption:
-          fees.nonMember.caption ??
-          "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
       },
     };
 
@@ -535,8 +530,7 @@ export function EventForm({
                   disabled={loading}
                 />
                 <p className="admin-field-help mt-2 mb-0">
-                  Fixed rate for non-members only. Early bird, Senior/PWD, and regular rates do not
-                  apply.
+                  Fixed rate for non-members only.
                 </p>
               </div>
             </div>

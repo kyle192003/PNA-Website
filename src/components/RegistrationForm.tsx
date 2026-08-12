@@ -2819,23 +2819,16 @@ export function RegistrationForm({
                   Registration rate <span className="text-accent">*</span>
                 </p>
                 {isNonMemberType(formData.membershipType) ? (
-                  <>
-                    <p className="registration-form-help mb-2">
-                      Non-members are not eligible for early bird, Senior Citizen/PWD, or regular
-                      member rates.
-                    </p>
-                    <div id="registrationRate" className="registration-fee-choice-grid">
-                      <div className="registration-fee-choice is-selected" aria-current="true">
-                        <span className="registration-fee-choice-tier">Non-Member</span>
-                        <span className="registration-fee-choice-amount">
-                          {formatPeso(nonMemberAmount)}
-                        </span>
-                        <span className="registration-fee-choice-meta">
-                          Fixed rate for participants who are not PNA members
-                        </span>
-                      </div>
+                  <div id="registrationRate" className="registration-fee-choice-grid">
+                    <div className="registration-fee-choice is-selected" aria-current="true">
+                      <span className="registration-fee-choice-tier">
+                        {fallbackFees.nonMember.label}
+                      </span>
+                      <span className="registration-fee-choice-amount">
+                        {formatPeso(nonMemberAmount)}
+                      </span>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <>
                     {earlyBirdAvailable ? (
@@ -2857,17 +2850,14 @@ export function RegistrationForm({
                               : regularAmount;
                         const tierLabel =
                           rate === "seniorPwd"
-                            ? "Senior / PWD"
+                            ? fallbackFees.seniorPwd.label
                             : earlyBirdAvailable
-                              ? "Early Bird"
-                              : "Regular";
+                              ? fallbackFees.earlyBird.label
+                              : fallbackFees.regular.label;
                         const meta =
-                          rate === "seniorPwd"
-                            ? "Valid Senior Citizen or PWD ID required"
-                            : earlyBird?.caption ||
-                              (earlyBirdAvailable
-                                ? "Early bird rate currently available"
-                                : "Standard registration rate");
+                          rate === "seniorPwd" || !earlyBirdAvailable
+                            ? ""
+                            : earlyBird?.caption || "";
                         const selected = formData.registrationRate === rate;
                         return (
                           <button
@@ -2880,7 +2870,9 @@ export function RegistrationForm({
                             <span className="registration-fee-choice-amount">
                               {formatPeso(amount)}
                             </span>
-                            <span className="registration-fee-choice-meta">{meta}</span>
+                            {meta ? (
+                              <span className="registration-fee-choice-meta">{meta}</span>
+                            ) : null}
                           </button>
                         );
                       })}
@@ -3195,12 +3187,11 @@ export function RegistrationForm({
                                   className="registration-fee-choice is-selected"
                                   aria-current="true"
                                 >
-                                  <span className="registration-fee-choice-tier">Non-Member</span>
+                                  <span className="registration-fee-choice-tier">
+                                    {fallbackFees.nonMember.label}
+                                  </span>
                                   <span className="registration-fee-choice-amount">
                                     {formatPeso(nonMemberAmount)}
-                                  </span>
-                                  <span className="registration-fee-choice-meta">
-                                    Fixed rate — not eligible for early bird, Senior/PWD, or regular
                                   </span>
                                 </div>
                               </div>
@@ -3218,17 +3209,14 @@ export function RegistrationForm({
                                         : regularAmount;
                                   const tierLabel =
                                     rate === "seniorPwd"
-                                      ? "Senior / PWD"
+                                      ? fallbackFees.seniorPwd.label
                                       : earlyBirdAvailable
-                                        ? "Early Bird"
-                                        : "Regular";
+                                        ? fallbackFees.earlyBird.label
+                                        : fallbackFees.regular.label;
                                   const meta =
-                                    rate === "seniorPwd"
-                                      ? "Valid Senior Citizen or PWD ID required"
-                                      : earlyBird?.caption ||
-                                        (earlyBirdAvailable
-                                          ? "Early bird rate currently available"
-                                          : "Standard registration rate");
+                                    rate === "seniorPwd" || !earlyBirdAvailable
+                                      ? ""
+                                      : earlyBird?.caption || "";
                                   const selected = member.registrationRate === rate;
                                   return (
                                     <button
@@ -3247,7 +3235,9 @@ export function RegistrationForm({
                                       <span className="registration-fee-choice-amount">
                                         {formatPeso(amount)}
                                       </span>
-                                      <span className="registration-fee-choice-meta">{meta}</span>
+                                      {meta ? (
+                                        <span className="registration-fee-choice-meta">{meta}</span>
+                                      ) : null}
                                     </button>
                                   );
                                 })}

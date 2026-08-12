@@ -93,18 +93,18 @@ export const conference = {
       },
       regular: {
         amount: 7800,
-        label: "Regular Rate",
-        caption: "Applies after early bird slots fill or the early bird period ends",
+        label: "Regular Rate (For PNA Members)",
+        caption: "",
       },
       seniorPwd: {
         amount: 7300,
-        label: "Senior Citizen/PWD Rate",
-        caption: "Valid Senior Citizen or PWD ID required",
+        label: "Senior Citizen/PWD Rate (For PNA Members)",
+        caption: "",
       },
       nonMember: {
         amount: 8300,
         label: "Non-Member Rate",
-        caption: "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
+        caption: "",
       },
     },
   },

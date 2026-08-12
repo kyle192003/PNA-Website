@@ -33,20 +33,18 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
       : [
           {
             label: fees.regular.label,
-            caption: fees.regular.caption ?? "Standard registration rate",
+            caption: fees.regular.caption,
             amount: fees.regular.amount,
           },
           {
             label: fees.seniorPwd.label,
-            caption: "Valid Senior Citizen or PWD ID required",
+            caption: fees.seniorPwd.caption,
             amount: fees.earlyBird.amount,
           },
         ]),
     {
       label: fees.nonMember.label,
-      caption:
-        fees.nonMember.caption ??
-        "Fixed rate for non-members (not eligible for early bird, Senior/PWD, or regular)",
+      caption: fees.nonMember.caption,
       amount: fees.nonMember.amount,
     },
   ];
