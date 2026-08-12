@@ -6,12 +6,15 @@ import type {
   RegistrationRateChoice,
   SponsorConsent,
 } from "@/lib/types/admin";
+import { parseNcrZoneFromChapter } from "@/lib/conference";
 
 export type RegistrationMode = RegistrationModeChoice;
 
 export type GroupMemberDraft = Omit<RegistrationGroupMemberNote, "registrationRate" | "membershipType"> & {
   registrationRate: RegistrationRateChoice | "";
   membershipType: MembershipType | "";
+  /** UI-only: NCR Zone 1–6. Encoded into pnaChapter on submit. */
+  pnaNcrZone: string;
   /** UI-only: copy chapter / membership / zone from Participant 1. */
   sameAffiliationAsPrimary: boolean;
 };
@@ -32,6 +35,7 @@ export type RegistrationDraft = {
   membershipType: MembershipType | "";
   pnaIdNumber: string;
   pnaZone: string;
+  pnaNcrZone: string;
   pnaChapter: string;
   prcLicenseNumber: string;
   prcInitialRegistrationDate: string;
@@ -69,6 +73,7 @@ export function createEmptyGroupMember(): GroupMemberDraft {
     dateOfBirth: "",
     membershipType: "",
     pnaZone: "",
+    pnaNcrZone: "",
     pnaChapter: "",
     prcLicenseNumber: "",
     prcInitialRegistrationDate: "",
@@ -94,6 +99,7 @@ function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft 
         : "",
     pnaZone: raw.pnaZone ?? "",
     pnaChapter: raw.pnaChapter ?? "",
+    pnaNcrZone: raw.pnaNcrZone || parseNcrZoneFromChapter(raw.pnaChapter ?? ""),
     foodPreference: (raw.foodPreference as FoodPreference) || "regular",
     foodAllergyNote: raw.foodAllergyNote ?? "",
     registrationRate:
@@ -133,6 +139,7 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
           : "",
       pnaIdNumber: parsed.pnaIdNumber ?? "",
       pnaZone: parsed.pnaZone ?? "",
+      pnaNcrZone: parsed.pnaNcrZone || parseNcrZoneFromChapter(parsed.pnaChapter ?? ""),
       pnaChapter: parsed.pnaChapter ?? "",
       prcLicenseNumber: parsed.prcLicenseNumber ?? "",
       prcInitialRegistrationDate: parsed.prcInitialRegistrationDate ?? "",
@@ -180,4 +187,27 @@ export function saveRegistrationDraft(
 export function clearRegistrationDraft(eventId?: string | null): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(draftKey(eventId));
+  clearRegistrationPrivacyAccepted(eventId);
+}
+
+const PRIVACY_PREFIX = "pna-registration-privacy:";
+
+function privacyKey(eventId?: string | null): string {
+  return `${PRIVACY_PREFIX}${eventId?.trim() || "general"}`;
+}
+
+/** True when the user already accepted the Data Privacy gate for this event. */
+export function hasRegistrationPrivacyAccepted(eventId?: string | null): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(privacyKey(eventId)) === "1";
+}
+
+export function saveRegistrationPrivacyAccepted(eventId?: string | null): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(privacyKey(eventId), "1");
+}
+
+export function clearRegistrationPrivacyAccepted(eventId?: string | null): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(privacyKey(eventId));
 }

@@ -179,17 +179,17 @@ export type PnaZone = (typeof PNA_ZONES)[number];
 
 /** NCR chapters are cities grouped under Zone 1–6 (each place is its own chapter). */
 export const PNA_NCR_CHAPTER_GROUPS = [
-  { group: "NCR Zone 1", chapters: ["Manila"] },
+  { group: "Zone 1", chapters: ["Manila"] },
   {
-    group: "NCR Zone 2",
+    group: "Zone 2",
     chapters: ["Caloocan", "Malabon", "Navotas", "Valenzuela"],
   },
-  { group: "NCR Zone 3", chapters: ["Quezon City", "Marikina"] },
-  { group: "NCR Zone 4", chapters: ["San Juan", "Pasig", "Mandaluyong"] },
-  { group: "NCR Zone 5", chapters: ["Makati", "Taguig", "Pateros"] },
+  { group: "Zone 3", chapters: ["Quezon City", "Marikina"] },
+  { group: "Zone 4", chapters: ["San Juan", "Pasig", "Mandaluyong"] },
+  { group: "Zone 5", chapters: ["Makati", "Taguig", "Pateros"] },
   {
-    group: "NCR Zone 6",
-    chapters: ["Pasay", "Paranaque", "Muntinlupa", "Las Piñas"],
+    group: "Zone 6",
+    chapters: ["Pasay", "Parañaque", "Muntinlupa", "Las Piñas"],
   },
 ] as const;
 
@@ -198,6 +198,12 @@ export type PnaChapterOption = {
   label: string;
   group?: string;
 };
+
+export const PNA_NCR_ZONES = PNA_NCR_CHAPTER_GROUPS.map((group) => group.group);
+
+export function isNcrRegion(zone: string): boolean {
+  return zone === "NCR";
+}
 
 function ncrChapterValue(zoneLabel: string, chapter: string): string {
   return `${zoneLabel} — ${chapter}`;
@@ -211,6 +217,19 @@ const NCR_CHAPTER_OPTIONS: readonly PnaChapterOption[] = PNA_NCR_CHAPTER_GROUPS.
       group,
     }))
 );
+
+/** Reads Zone 1–6 from a stored NCR chapter value such as `Zone 1 — Manila`. */
+export function parseNcrZoneFromChapter(chapter: string): string {
+  const normalized = chapter.replace(/^NCR\s+/i, "").trim();
+  return (
+    PNA_NCR_ZONES.find(
+      (zone) =>
+        normalized === zone ||
+        normalized.startsWith(`${zone} — `) ||
+        normalized.startsWith(`${zone} - `)
+    ) ?? ""
+  );
+}
 
 /** Chapters available per PNA zone/region. */
 export const PNA_CHAPTERS_BY_ZONE: Record<PnaZone, readonly string[]> = {
@@ -341,15 +360,30 @@ export const PNA_CHAPTERS_BY_ZONE: Record<PnaZone, readonly string[]> = {
   ],
 };
 
-export function getPnaChaptersForZone(zone: string): readonly string[] {
+export function getPnaChaptersForZone(zone: string, ncrZone = ""): readonly string[] {
   if (!zone) return [];
+  if (zone === "NCR") {
+    const options = ncrZone
+      ? NCR_CHAPTER_OPTIONS.filter((option) => option.group === ncrZone)
+      : NCR_CHAPTER_OPTIONS;
+    return options.map((option) => option.value);
+  }
   return PNA_CHAPTERS_BY_ZONE[zone as PnaZone] ?? [];
 }
 
-/** Chapter select options (NCR includes zone group headers). */
-export function getPnaChapterSelectOptions(zone: string): readonly PnaChapterOption[] {
+/** Chapter select options. For NCR, pass the selected Zone 1–6 to list that zone’s cities. */
+export function getPnaChapterSelectOptions(
+  zone: string,
+  ncrZone = ""
+): readonly PnaChapterOption[] {
   if (!zone) return [];
-  if (zone === "NCR") return NCR_CHAPTER_OPTIONS;
+  if (zone === "NCR") {
+    if (!ncrZone) return [];
+    return getPnaChaptersForZone(zone, ncrZone).map((value) => {
+      const option = NCR_CHAPTER_OPTIONS.find((item) => item.value === value);
+      return { value, label: option?.label ?? value };
+    });
+  }
   return getPnaChaptersForZone(zone).map((chapter) => ({
     value: chapter,
     label: chapter,

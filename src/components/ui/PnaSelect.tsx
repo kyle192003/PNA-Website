@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 export type PnaSelectOption = {
   value: string;
   label: string;
-  /** Optional group header (e.g. NCR Zone 1). */
+  /** Optional group header (e.g. Zone 1). */
   group?: string;
 };
 
@@ -34,6 +34,13 @@ type MenuPosition = {
 const MENU_ANIMATION_MS = 180;
 const MENU_GAP_PX = 8;
 const MENU_MAX_HEIGHT_PX = 220;
+
+function searchableText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
 
 export function PnaSelect({
   id,
@@ -75,14 +82,14 @@ export function PnaSelect({
 
   const filteredOptions = useMemo(() => {
     if (!searchable) return options;
-    const query = searchQuery.trim().toLowerCase();
+    const query = searchableText(searchQuery.trim());
     if (!query) return options;
-    return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(query) ||
-        option.value.toLowerCase().includes(query) ||
-        (option.group?.toLowerCase().includes(query) ?? false)
-    );
+    return options.filter((option) => {
+      const haystack = searchableText(
+        `${option.label} ${option.value} ${option.group ?? ""}`
+      );
+      return haystack.includes(query);
+    });
   }, [options, searchable, searchQuery]);
 
   useEffect(() => {

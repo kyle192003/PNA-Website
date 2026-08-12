@@ -4,7 +4,6 @@
  */
 
 export type RegistrationCachedFileKey =
-  | "pnaIdFile"
   | "prcIdFile"
   | "seniorPwdIdFile"
   | "receiptFile"
@@ -12,7 +11,6 @@ export type RegistrationCachedFileKey =
   | "bir2307File";
 
 export const REGISTRATION_CACHED_FILE_KEYS: RegistrationCachedFileKey[] = [
-  "pnaIdFile",
   "prcIdFile",
   "seniorPwdIdFile",
   "receiptFile",
