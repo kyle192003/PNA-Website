@@ -434,7 +434,13 @@ export interface GroupRegistrationInput {
   members: GroupMemberInput[];
 }
 
-export type InquiryStatus = "new" | "read";
+export type InquiryStatus = "new" | "read" | "replied";
+
+export interface InquiryReply {
+  id: string;
+  body: string;
+  sentAt: string;
+}
 
 export interface ContactInquiry {
   id: string;
@@ -446,6 +452,8 @@ export interface ContactInquiry {
   status: InquiryStatus;
   createdAt: string;
   readAt: string | null;
+  repliedAt?: string | null;
+  replies?: InquiryReply[];
 }
 
 export interface ContactInquiryInput {
@@ -458,6 +466,7 @@ export interface ContactInquiryInput {
 export const INQUIRY_STATUS_LABELS: Record<InquiryStatus, string> = {
   new: "New",
   read: "Read",
+  replied: "Replied",
 };
 
 export interface AdminStats {

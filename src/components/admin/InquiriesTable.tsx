@@ -24,6 +24,10 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
   const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState<ContactInquiry | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [replySuccess, setReplySuccess] = useState<string | null>(null);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
@@ -68,9 +72,49 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
 
   function openInquiry(inquiry: ContactInquiry) {
     setSelected(inquiry);
+    setReplyDraft("");
+    setReplyError(null);
+    setReplySuccess(null);
     requestAnimationFrame(() => setDetailOpen(true));
     if (inquiry.status === "new") {
       void markAsRead(inquiry.id, false);
+    }
+  }
+
+  async function sendReply() {
+    if (!selected) return;
+    const message = replyDraft.trim();
+    if (!message) {
+      setReplyError("Write a reply before sending.");
+      setReplySuccess(null);
+      return;
+    }
+
+    setReplySending(true);
+    setReplyError(null);
+    setReplySuccess(null);
+    try {
+      const res = await fetch(`/api/admin/inquiries/${selected.id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to send reply.");
+      }
+
+      setSelected(data.inquiry);
+      setReplyDraft("");
+      setReplySuccess(data.message ?? "Reply sent.");
+      setInquiries((current) =>
+        current.map((inquiry) => (inquiry.id === data.inquiry.id ? data.inquiry : inquiry))
+      );
+      notifyInquiriesUpdated();
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : "Failed to send reply.");
+    } finally {
+      setReplySending(false);
     }
   }
 
@@ -293,20 +337,61 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
               <p className="admin-detail-message-body">{selected.message}</p>
             </div>
 
-            <a
-              href={`mailto:${selected.email}?subject=${encodeURIComponent(`Re: Conference inquiry from ${selected.name}`)}`}
-              className="admin-link-btn"
-            >
-              Reply by email
-            </a>
+            <div className="admin-inquiry-reply">
+              <label className="admin-label" htmlFor="inquiry-reply">
+                Reply by email
+              </label>
+              <textarea
+                id="inquiry-reply"
+                className="admin-inquiry-reply-textarea"
+                value={replyDraft}
+                onChange={(event) => {
+                  setReplyDraft(event.target.value);
+                  if (replyError) setReplyError(null);
+                  if (replySuccess) setReplySuccess(null);
+                }}
+                placeholder="Write your reply. This will be sent with the same PNA email template."
+                disabled={replySending || loading}
+                maxLength={5000}
+              />
+              <p className="admin-inquiry-reply-hint">
+                Sends through the website SMTP mailer using the branded PNA template.
+              </p>
+              {replyError ? <p className="admin-inquiry-reply-error">{replyError}</p> : null}
+              {replySuccess ? <p className="admin-inquiry-reply-success">{replySuccess}</p> : null}
+              <div className="admin-inquiry-reply-actions">
+                <button
+                  type="button"
+                  className="admin-action-btn admin-action-btn--paid"
+                  onClick={() => void sendReply()}
+                  disabled={replySending || loading || !replyDraft.trim()}
+                >
+                  {replySending ? "Sending..." : "Send reply"}
+                </button>
+              </div>
+
+              {(selected.replies?.length ?? 0) > 0 ? (
+                <div className="admin-inquiry-reply-history">
+                  <p className="admin-label mb-0">Sent replies</p>
+                  {[...(selected.replies ?? [])].reverse().map((reply) => (
+                    <div key={reply.id} className="admin-inquiry-reply-item">
+                      <p className="admin-inquiry-reply-meta">
+                        Sent {new Date(reply.sentAt).toLocaleString()}
+                      </p>
+                      <p className="admin-inquiry-reply-body">{reply.body}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
             <div className="admin-action-grid">
-              {selected.status === "read" ? (
+              {selected.status === "read" || selected.status === "replied" ? (
                 <button
                   type="button"
                   className="admin-action-btn admin-action-btn--pending"
                   onClick={() => markAsNew(selected.id)}
-                  disabled={loading}
+                  disabled={loading || replySending}
                 >
                   Mark as new
                 </button>
@@ -315,7 +400,7 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
                   type="button"
                   className="admin-action-btn admin-action-btn--paid"
                   onClick={() => markAsRead(selected.id)}
-                  disabled={loading}
+                  disabled={loading || replySending}
                 >
                   Mark as read
                 </button>
@@ -324,7 +409,7 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
                 type="button"
                 className="admin-action-btn admin-action-btn--reject"
                 onClick={() => requestDelete(selected)}
-                disabled={loading}
+                disabled={loading || replySending}
               >
                 Delete
               </button>

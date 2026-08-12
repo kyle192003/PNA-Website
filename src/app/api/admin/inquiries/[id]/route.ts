@@ -20,7 +20,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
     const status = parsed.data.status as InquiryStatus;
 
-    if (status !== "new" && status !== "read") {
+    if (status !== "new" && status !== "read" && status !== "replied") {
       return NextResponse.json({ error: "Invalid inquiry status." }, { status: 400 });
     }
 

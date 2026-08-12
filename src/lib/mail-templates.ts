@@ -689,8 +689,8 @@ export async function sendAdminInquiryNotification(
     headline: "New contact inquiry received",
     bodyHtml: `
       <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
-        A visitor submitted the contact form on the PNA website. Reply directly to this email to
-        respond to the inquirer.
+        A visitor submitted the contact form on the PNA website. You can reply from
+        the admin inquiries page using the same branded email template.
       </p>
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border-collapse:collapse;">
         <tr>
@@ -751,6 +751,64 @@ export async function sendAdminInquiryNotification(
     html,
     text,
     replyTo: payload.email,
+  });
+}
+
+/** Branded reply from the secretariat to a public contact inquiry. */
+export async function sendInquiryReplyEmail(payload: {
+  name: string;
+  email: string;
+  originalMessage: string;
+  replyBody: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const firstName = payload.name.trim().split(/\s+/)[0] || payload.name;
+  const subject = `Re: Your inquiry to ${conference.shortName}`;
+  const replyTo = getAdminNotifyEmail() || conference.contact.email;
+
+  const html = wrapEmail({
+    title: subject,
+    headline: "Response to your inquiry",
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hi <strong>${escapeHtml(firstName)}</strong>,</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        Thank you for contacting ${escapeHtml(conference.organization)}. Here is our response to your inquiry:
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border-collapse:collapse;">
+        <tr>
+          <td style="background:${BRAND.greenSoft};border-left:4px solid ${BRAND.greenMid};padding:16px 18px;">
+            <p style="margin:0;font-size:15px;line-height:1.75;color:${BRAND.text};white-space:pre-wrap;">${escapeHtml(payload.replyBody)}</p>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Your original message</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.7;color:${BRAND.greenMuted};white-space:pre-wrap;">${escapeHtml(payload.originalMessage)}</p>
+      <p style="margin:20px 0 0;font-size:14px;line-height:1.7;color:${BRAND.greenMuted};">
+        If you have more questions, you can reply to this email.
+      </p>
+    `,
+  });
+
+  const text = [
+    `Hi ${firstName},`,
+    "",
+    `Thank you for contacting ${conference.organization}. Here is our response to your inquiry:`,
+    "",
+    payload.replyBody,
+    "",
+    "Your original message:",
+    payload.originalMessage,
+    "",
+    "If you have more questions, you can reply to this email.",
+    "",
+    SPAM_NOTE,
+  ].join("\n");
+
+  return sendBrandedMail({
+    to: payload.email,
+    subject,
+    html,
+    text,
+    replyTo,
   });
 }
 
