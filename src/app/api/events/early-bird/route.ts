@@ -36,5 +36,6 @@ export async function GET(request: Request) {
     earlyBirdAmount: fees.earlyBird.amount,
     regularAmount: fees.regular.amount,
     seniorPwdAmount: getSeniorPwdAmount(fees),
+    nonMemberAmount: fees.nonMember.amount,
   });
 }

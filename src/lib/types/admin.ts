@@ -248,7 +248,18 @@ export const SPECIAL_INVITE_STATUS_LABELS: Record<SpecialInviteStatus, string> =
 /** @deprecated Prefer appliedFeeKey / registrationRate. */
 export type FeeTier = "early" | "regular";
 
-export type MembershipType = "lifetime" | "regular" | "non_member";
+export type MembershipType = "lifetime" | "regular" | "renewal_member" | "non_member";
+
+export const MEMBERSHIP_TYPE_LABELS: Record<MembershipType, string> = {
+  lifetime: "Lifetime Member",
+  regular: "Regular Member",
+  renewal_member: "Renewal Member",
+  non_member: "Non-Member",
+};
+
+export function isPnaMemberMembership(type: MembershipType | "" | null | undefined): boolean {
+  return type === "lifetime" || type === "regular" || type === "renewal_member";
+}
 
 export type RegistrationModeChoice = "single" | "group";
 
@@ -317,6 +328,12 @@ export interface RegistrationRecord {
   groupMembersNote: RegistrationGroupMemberNote[];
   bir2303Url: string | null;
   bir2307Url: string | null;
+  /** Whether the registrant requested a sales invoice (requires BIR tax docs). */
+  wantsSalesInvoice: boolean;
+  /** Institution / company name as shown on BIR Form 2303 when a sales invoice is requested. */
+  bir2303InstitutionName: string;
+  /** Name to appear on the official receipt / sales invoice. */
+  receiptNamedUnder: string;
   foodPreference: FoodPreference | "";
   foodAllergyNote: string;
   sponsorConsent: SponsorConsent | "";
@@ -413,6 +430,12 @@ export interface RegistrationInput {
   sponsorConsent: SponsorConsent;
   dataPrivacyConsent: boolean;
   paymentReference: string;
+  /** Request a sales invoice (requires BIR 2303/2307 uploads). */
+  wantsSalesInvoice?: boolean;
+  /** Institution name from BIR Form 2303 when wantsSalesInvoice is true. */
+  bir2303InstitutionName?: string;
+  /** Name to appear on the receipt / sales invoice. */
+  receiptNamedUnder?: string;
   /** Exclusive invite token for complimentary committee/speaker lane. */
   inviteToken?: string;
   specialRole?: SpecialRole;
@@ -501,6 +524,11 @@ export function getDefaultEventFees(): EventFees {
       amount: fees.seniorPwd.amount,
       label: fees.seniorPwd.label,
       caption: fees.seniorPwd.caption,
+    },
+    nonMember: {
+      amount: fees.nonMember.amount,
+      label: fees.nonMember.label,
+      caption: fees.nonMember.caption,
     },
   };
 }

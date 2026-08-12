@@ -11,7 +11,7 @@ export const conference = {
     "Strengthening Institutions Through Collaborative Governance and National Excellence",
   tagline:
     "Advancing public service, institutional integrity, and inclusive national development across the Republic of the Philippines.",
-  membershipRenewalUrl: "https://www.philippinenurses.org",
+  membershipRenewalUrl: "https://www.philippinernurses.org",
   hero: {
     headline: "Advancing Governance, Service, and National Development",
     description:
@@ -99,7 +99,12 @@ export const conference = {
       seniorPwd: {
         amount: 7300,
         label: "Senior Citizen/PWD Rate",
-        caption: "Same as early bird — available after early bird ends",
+        caption: "Valid Senior Citizen or PWD ID required",
+      },
+      nonMember: {
+        amount: 8300,
+        label: "Non-Member Rate",
+        caption: "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
       },
     },
   },

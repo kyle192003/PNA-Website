@@ -38,6 +38,9 @@ export interface RegistrationInput {
   sponsorConsent: SponsorConsent;
   dataPrivacyConsent: boolean;
   paymentReference: string;
+  wantsSalesInvoice?: boolean;
+  bir2303InstitutionName?: string;
+  receiptNamedUnder?: string;
   eventId?: string | null;
   inviteToken?: string;
   specialRole?: SpecialRole;
@@ -252,6 +255,7 @@ export async function fetchEarlyBirdStatus(eventId?: string | null): Promise<{
   earlyBirdAmount: number;
   regularAmount: number;
   seniorPwdAmount: number;
+  nonMemberAmount: number;
 }> {
   const params = new URLSearchParams();
   if (eventId) params.set("eventId", eventId);

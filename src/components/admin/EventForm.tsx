@@ -157,11 +157,17 @@ export function EventForm({
       seniorPwd: {
         ...fees.seniorPwd,
         amount: earlyAmount,
-        caption: "Same as early bird — available after early bird ends",
+        caption: "Valid Senior Citizen or PWD ID required",
       },
       regular: {
         ...fees.regular,
         caption: "Applies after early bird slots fill or the early bird period ends",
+      },
+      nonMember: {
+        ...fees.nonMember,
+        caption:
+          fees.nonMember.caption ??
+          "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
       },
     };
 
@@ -360,8 +366,7 @@ export function EventForm({
             <p className="admin-field-help mb-3">
               Early bird applies to the first N registrants <strong>and</strong> only while the date
               window is open. If the window ends with unused slots, pricing still switches to
-              regular. Senior Citizen/PWD is hidden during early bird and uses the same amount as
-              early bird after it ends.
+              regular. Senior Citizen/PWD is hidden during early bird and shown after it ends.
             </p>
           </div>
 
@@ -504,7 +509,33 @@ export function EventForm({
                   disabled={loading}
                 />
                 <p className="admin-field-help mt-2 mb-0">
-                  Matches early bird. Shown only after early bird ends.
+                  Shown only after early bird ends.
+                </p>
+              </div>
+              <div className="col-md-4">
+                <label className="admin-label" htmlFor="feeNonMember">
+                  Non-Member amount (₱)
+                </label>
+                <input
+                  id="feeNonMember"
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="admin-input"
+                  value={fees.nonMember.amount}
+                  onChange={(e) =>
+                    setFees((prev) => ({
+                      ...prev,
+                      nonMember: {
+                        ...prev.nonMember,
+                        amount: Number(e.target.value) || 0,
+                      },
+                    }))
+                  }
+                  disabled={loading}
+                />
+                <p className="admin-field-help mt-2 mb-0">
+                  Non-members who qualify as Senior/PWD still use the Senior/PWD amount.
                 </p>
               </div>
             </div>

@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { conference } from "@/lib/conference";
 import { formatPeso, normalizeEventFees } from "@/lib/registration-fees";
-import { RegistrationLookup } from "@/components/RegistrationLookup";
-
 const inclusions = [
   "2 snacks, lunch and conference kit for the 3 day event",
   "Access to all plenary and parallel sessions",
@@ -23,26 +21,35 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
       .catch(() => setEarlyBirdAvailable(true));
   }, []);
 
-  const visibleFees = earlyBirdAvailable
-    ? [
-        {
-          label: fees.earlyBird.label,
-          caption: fees.earlyBird.caption,
-          amount: fees.earlyBird.amount,
-        },
-      ]
-    : [
-        {
-          label: fees.regular.label,
-          caption: fees.regular.caption ?? "Standard registration rate",
-          amount: fees.regular.amount,
-        },
-        {
-          label: fees.seniorPwd.label,
-          caption: "Same as early bird amount — valid Senior Citizen or PWD ID required",
-          amount: fees.earlyBird.amount,
-        },
-      ];
+  const visibleFees = [
+    ...(earlyBirdAvailable
+      ? [
+          {
+            label: fees.earlyBird.label,
+            caption: fees.earlyBird.caption,
+            amount: fees.earlyBird.amount,
+          },
+        ]
+      : [
+          {
+            label: fees.regular.label,
+            caption: fees.regular.caption ?? "Standard registration rate",
+            amount: fees.regular.amount,
+          },
+          {
+            label: fees.seniorPwd.label,
+            caption: "Valid Senior Citizen or PWD ID required",
+            amount: fees.earlyBird.amount,
+          },
+        ]),
+    {
+      label: fees.nonMember.label,
+      caption:
+        fees.nonMember.caption ??
+        "For participants who are not PNA members (Senior/PWD non-members use the Senior/PWD rate)",
+      amount: fees.nonMember.amount,
+    },
+  ];
 
   return (
     <div className={`d-flex flex-column ${isSidebar ? "gap-4 registration-details-sidebar" : "gap-3"}`}>
@@ -118,8 +125,6 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
           {conference.contact.registrationEmail}
         </a>
       </p>
-
-      <RegistrationLookup variant={isSidebar ? "sidebar" : "default"} />
     </div>
   );
 }

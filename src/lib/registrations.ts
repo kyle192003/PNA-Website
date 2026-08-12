@@ -52,7 +52,12 @@ function deriveLegacyPayment(raw: RegistrationRecord): {
       ? raw.paymentAmount
       : 0;
 
-  if (raw.appliedFeeKey === "earlyBird" || raw.appliedFeeKey === "regular" || raw.appliedFeeKey === "seniorPwd") {
+  if (
+    raw.appliedFeeKey === "earlyBird" ||
+    raw.appliedFeeKey === "regular" ||
+    raw.appliedFeeKey === "seniorPwd" ||
+    raw.appliedFeeKey === "nonMember"
+  ) {
     return {
       feeTier: raw.appliedFeeKey === "earlyBird" ? "early" : "regular",
       paymentAmount,
@@ -104,6 +109,7 @@ function normalizeGroupMembersNote(raw: unknown): RegistrationGroupMemberNote[] 
       membershipType:
         row.membershipType === "lifetime" ||
         row.membershipType === "regular" ||
+        row.membershipType === "renewal_member" ||
         row.membershipType === "non_member"
           ? row.membershipType
           : "",
@@ -164,6 +170,9 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
     groupMembersNote: normalizeGroupMembersNote(raw.groupMembersNote),
     bir2303Url: raw.bir2303Url ?? null,
     bir2307Url: raw.bir2307Url ?? null,
+    wantsSalesInvoice: Boolean(raw.wantsSalesInvoice),
+    bir2303InstitutionName: raw.bir2303InstitutionName?.trim() ?? "",
+    receiptNamedUnder: raw.receiptNamedUnder?.trim() ?? "",
     foodPreference: (raw.foodPreference as FoodPreference | "") || "",
     foodAllergyNote: raw.foodAllergyNote ?? "",
     sponsorConsent: (raw.sponsorConsent as SponsorConsent | "") || "",
@@ -334,6 +343,11 @@ function buildRegistrationRecord(
     groupMembersNote: normalizeGroupMembersNote(input.groupMembersNote),
     bir2303Url: null,
     bir2307Url: null,
+    wantsSalesInvoice: Boolean(input.wantsSalesInvoice),
+    bir2303InstitutionName: input.wantsSalesInvoice
+      ? input.bir2303InstitutionName?.trim() ?? ""
+      : "",
+    receiptNamedUnder: input.receiptNamedUnder?.trim() ?? "",
     foodPreference: input.foodPreference,
     foodAllergyNote: input.foodAllergyNote?.trim() ?? "",
     sponsorConsent: input.sponsorConsent,
@@ -410,7 +424,12 @@ export async function createRegistration(
 
   const event = input.eventId ? await getEventById(input.eventId) : null;
   const earlyBirdUsed = await countEarlyBirdUsed(input.eventId ?? null);
-  const applied = resolveAppliedFee(input.registrationRate, earlyBirdUsed, event);
+  const applied = resolveAppliedFee(
+    input.registrationRate,
+    earlyBirdUsed,
+    event,
+    input.membershipType
+  );
 
   const registration = buildRegistrationRecord(input, {
     appliedFeeKey: applied.key,
@@ -556,7 +575,8 @@ export async function createGroupRegistrations(
   const primaryApplied = resolveAppliedFee(
     input.primary.registrationRate,
     earlyBirdUsed,
-    event
+    event,
+    input.primary.membershipType
   );
   if (primaryApplied.key === "earlyBird") earlyBirdUsed += 1;
 
@@ -577,7 +597,12 @@ export async function createGroupRegistrations(
   created.push(primary);
 
   for (const member of members) {
-    const memberApplied = resolveAppliedFee(member.registrationRate, earlyBirdUsed, event);
+    const memberApplied = resolveAppliedFee(
+      member.registrationRate,
+      earlyBirdUsed,
+      event,
+      member.membershipType
+    );
     if (memberApplied.key === "earlyBird") earlyBirdUsed += 1;
 
     const memberInput: RegistrationInput = {
@@ -607,6 +632,9 @@ export async function createGroupRegistrations(
       sponsorConsent: input.primary.sponsorConsent,
       dataPrivacyConsent: input.primary.dataPrivacyConsent,
       paymentReference: input.primary.paymentReference,
+      wantsSalesInvoice: input.primary.wantsSalesInvoice,
+      bir2303InstitutionName: input.primary.bir2303InstitutionName,
+      receiptNamedUnder: input.primary.receiptNamedUnder,
       eventId: input.primary.eventId,
     };
 

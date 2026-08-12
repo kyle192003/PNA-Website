@@ -4,6 +4,7 @@ import type {
   EarlyBirdMode,
   EventFees,
   EventRateFee,
+  MembershipType,
   RegistrationRateChoice,
   AppliedFeeKey,
   FeeTier,
@@ -83,11 +84,12 @@ export function normalizeEventFees(raw: unknown): EventFees {
   const source = raw as Record<string, LegacyFee | EventRateFee>;
 
   // Already new shape
-  if (source.earlyBird || source.regular || source.seniorPwd) {
+  if (source.earlyBird || source.regular || source.seniorPwd || source.nonMember) {
     return {
       earlyBird: normalizeRateFee(source.earlyBird, defaults.earlyBird),
       regular: normalizeRateFee(source.regular, defaults.regular),
       seniorPwd: normalizeRateFee(source.seniorPwd, defaults.seniorPwd),
+      nonMember: normalizeRateFee(source.nonMember, defaults.nonMember),
     };
   }
 
@@ -178,16 +180,40 @@ export function getSeniorPwdAmount(fees: EventFees): number {
 
 /**
  * Resolve what the participant will be charged.
- * - During early bird: regular choice → earlyBird (Senior/PWD is not offered)
- * - After early bird: regular → regular; seniorPwd → early bird amount
+ * - Non-members: nonMember rate; Senior/PWD non-members use seniorPwd amount
+ * - Members during early bird: regular choice → earlyBird (Senior/PWD is not offered)
+ * - Members after early bird: regular → regular; seniorPwd → early bird amount
  */
 export function resolveAppliedFee(
   rateChoice: RegistrationRateChoice,
   earlyBirdUsedCount: number,
-  event?: Pick<ConferenceEvent, "fees" | "earlyBirdDeadline"> | null
+  event?: Pick<ConferenceEvent, "fees" | "earlyBirdDeadline"> | null,
+  membershipType?: MembershipType | "" | null
 ): { key: AppliedFeeKey; amount: number; label: string } {
   const fees = getFeesForEvent(event);
   const earlyBirdOpen = isEarlyBirdAvailable(fees, earlyBirdUsedCount, event);
+
+  if (membershipType === "non_member") {
+    if (rateChoice === "seniorPwd") {
+      if (earlyBirdOpen) {
+        return {
+          key: "nonMember",
+          amount: fees.nonMember.amount,
+          label: fees.nonMember.label,
+        };
+      }
+      return {
+        key: "seniorPwd",
+        amount: getSeniorPwdAmount(fees),
+        label: fees.seniorPwd.label,
+      };
+    }
+    return {
+      key: "nonMember",
+      amount: fees.nonMember.amount,
+      label: fees.nonMember.label,
+    };
+  }
 
   if (rateChoice === "seniorPwd") {
     // Defensive: if submitted during early bird, charge early bird as a standard registration.
@@ -259,5 +285,6 @@ export function feeLabelForKey(
   if (key === "earlyBird") return fees.earlyBird.label;
   if (key === "seniorPwd") return fees.seniorPwd.label;
   if (key === "regular") return fees.regular.label;
+  if (key === "nonMember") return fees.nonMember.label;
   return key;
 }
