@@ -1,5 +1,8 @@
 "use client";
 
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -25,9 +28,15 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div className="pna-confirm-dialog" role="presentation">
       <button
         type="button"
@@ -71,6 +80,7 @@ export function ConfirmDialog({
         </div>
         {tagline ? <p className="pna-confirm-dialog-tagline">{tagline}</p> : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

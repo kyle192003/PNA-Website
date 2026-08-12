@@ -1,5 +1,8 @@
 "use client";
 
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+
 interface MessageDialogProps {
   open: boolean;
   title: string;
@@ -17,11 +20,17 @@ export function MessageDialog({
   variant = "success",
   onClose,
 }: MessageDialogProps) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
 
   const icon = variant === "success" ? "✓" : variant === "error" ? "!" : "i";
 
-  return (
+  return createPortal(
     <div className={`pna-success-dialog pna-message-dialog--${variant}`} role="presentation">
       <button
         type="button"
@@ -54,7 +63,8 @@ export function MessageDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

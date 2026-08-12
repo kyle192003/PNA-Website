@@ -539,7 +539,10 @@ export function SingleDatePicker({
     : null;
 
   return (
-    <div className={`${className} admin-date-field registration-date-field`.trim()} ref={rootRef}>
+    <div
+      ref={rootRef}
+      className={`${className} admin-date-field registration-date-field registration-form-field`.trim()}
+    >
       <label className="form-label registration-form-label" htmlFor={id}>
         {label} {required ? <span className="text-accent">*</span> : null}
       </label>
@@ -591,7 +594,7 @@ export function SingleDatePicker({
 
       {helpText ? <p className="registration-form-help mt-1 mb-0">{helpText}</p> : null}
       {error ? (
-        <p id={errorId} className="mt-1 text-xs text-red-400">
+        <p id={errorId} className="registration-field-error">
           {error}
         </p>
       ) : null}
