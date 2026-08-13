@@ -1,3 +1,5 @@
+import { getSuggestedEmailDomain } from "@/lib/email-domain";
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Philippine mobile local form: 9XXXXXXXXX (10 digits, no leading 0). */
@@ -50,6 +52,8 @@ export function toPhMobileInternational(phone: string): string | null {
 export function getEmailValidationError(email: string, label = "Email"): string | null {
   if (!email.trim()) return `${label} is required.`;
   if (!isValidEmail(email)) return `Please enter a valid ${label.toLowerCase()} address.`;
+  const suggestion = getSuggestedEmailDomain(email);
+  if (suggestion) return `Please check the email domain. You mean @${suggestion}?`;
   return null;
 }
 

@@ -23,6 +23,8 @@ import {
   toPhMobileInternational,
   toPhMobileLocalDigits,
 } from "@/lib/form-validation";
+import { getEmailConfirmationError } from "@/lib/email-domain";
+import { EmailConfirmField } from "@/components/ui/EmailConfirmField";
 import {
   clearRegistrationDraft,
   createEmptyGroupMember,
@@ -651,13 +653,18 @@ function getMemberFieldError(
   }
 }
 
-function computeMembersValid(members: GroupMemberDraft[], primaryEmail: string): boolean {
+function computeMembersValid(
+  members: GroupMemberDraft[],
+  primaryEmail: string,
+  memberEmailConfirms: string[]
+): boolean {
   if (members.length < 1) return false;
   const emails = [primaryEmail.trim().toLowerCase()];
-  for (const member of members) {
+  for (const [index, member] of members.entries()) {
     for (const field of MEMBER_VALIDATE_FIELDS) {
       if (getMemberFieldError(member, field)) return false;
     }
+    if (getEmailConfirmationError(member.email, memberEmailConfirms[index] ?? "")) return false;
     const email = member.email.trim().toLowerCase();
     if (!email || emails.includes(email)) return false;
     emails.push(email);
@@ -674,11 +681,12 @@ function getSectionStatus(
   referenceConfirmed: boolean,
   membersValid: boolean,
   phase: RegistrationFormPhase,
-  specialLane: boolean
+  specialLane: boolean,
+  emailConfirmed: boolean
 ): RegistrationStepStatus {
   if (label === "Personal") {
     const errs = PERSONAL_FIELDS.map((field) => getFieldError(field, data));
-    const isComplete = errs.every((error) => !error);
+    const isComplete = errs.every((error) => !error) && (specialLane || emailConfirmed);
     const anyTouched = PERSONAL_FIELDS.some((field) => touched[field]);
     if (isComplete) return "complete";
     if (anyTouched && errs.some(Boolean)) return "error";
@@ -765,7 +773,8 @@ function buildStepStates(
   referenceConfirmed: boolean,
   membersValid: boolean,
   phase: RegistrationFormPhase,
-  specialLane: boolean
+  specialLane: boolean,
+  emailConfirmed: boolean
 ): RegistrationStepState[] {
   const raw = REGISTRATION_STEPS.map((label) => ({
     label,
@@ -778,7 +787,8 @@ function buildStepStates(
       referenceConfirmed,
       membersValid,
       phase,
-      specialLane
+      specialLane,
+      emailConfirmed
     ),
   }));
 
@@ -866,6 +876,8 @@ export function RegistrationForm({
 
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [emailConfirm, setEmailConfirm] = useState("");
+  const [memberEmailConfirms, setMemberEmailConfirms] = useState<string[]>([]);
   const [eventMeta, setEventMeta] = useState<{
     title: string;
     datesDisplay: string;
@@ -882,8 +894,9 @@ export function RegistrationForm({
 
   const membersValid = useMemo(
     () =>
-      formData.registrationMode !== "group" || computeMembersValid(members, formData.email),
-    [formData.registrationMode, members, formData.email]
+      formData.registrationMode !== "group" ||
+      computeMembersValid(members, formData.email, memberEmailConfirms),
+    [formData.registrationMode, members, formData.email, memberEmailConfirms]
   );
 
   const fallbackFees = conference.registration.fees;
@@ -1133,11 +1146,21 @@ export function RegistrationForm({
               : [createEmptyGroupMember()]
             : []
       );
+      setEmailConfirm("");
+      setMemberEmailConfirms(
+        specialLane
+          ? []
+          : draft.registrationMode === "group"
+            ? (draft.members.length > 0 ? draft.members : [createEmptyGroupMember()]).map(() => "")
+            : []
+      );
       setPaymentReference(draft.paymentReference ?? "");
       setShowDraftRestored(true);
     } else {
       setFormData(initialFormData);
       setMembers([]);
+      setEmailConfirm("");
+      setMemberEmailConfirms([]);
       setPaymentReference("");
       setShowDraftRestored(false);
     }
@@ -1324,7 +1347,8 @@ export function RegistrationForm({
         referenceConfirmed,
         membersValid,
         formPhase,
-        specialLane
+        specialLane,
+        specialLane || !getEmailConfirmationError(formData.email, emailConfirm)
       )
     );
   }, [
@@ -1336,6 +1360,7 @@ export function RegistrationForm({
     membersValid,
     formPhase,
     specialLane,
+    emailConfirm,
     onStepStatesChange,
   ]);
 
@@ -1481,6 +1506,16 @@ export function RegistrationForm({
       } else if (email) {
         emails.push(email);
       }
+      if (!fieldErrors.email) {
+        const confirmError = getEmailConfirmationError(
+          member.email,
+          memberEmailConfirms[index] ?? ""
+        );
+        if (confirmError) {
+          fieldErrors.email = confirmError;
+          ok = false;
+        }
+      }
       if (Object.keys(fieldErrors).length > 0) {
         nextMemberErrors[index] = fieldErrors;
       }
@@ -1511,6 +1546,10 @@ export function RegistrationForm({
     }
 
     if (!prcIdFile) newErrors.prcIdFile = "Please upload a copy of your valid PRC ID.";
+    if (!specialLane) {
+      const confirmError = getEmailConfirmationError(formData.email, emailConfirm);
+      if (confirmError && !newErrors.email) newErrors.email = confirmError;
+    }
 
     setTouched(allTouched);
     setErrors((prev) => {
@@ -1859,6 +1898,8 @@ export function RegistrationForm({
     setTouched({});
     setFormPhase("details");
     setEarlyBird(null);
+    setEmailConfirm("");
+    setMemberEmailConfirms([]);
     void clearRegistrationCachedFiles(eventId);
   }
 
@@ -2090,6 +2131,7 @@ export function RegistrationForm({
   }
 
   function updateField<K extends FormFieldKey>(field: K, value: FormData[K]) {
+    if (field === "email") setEmailConfirm("");
     setFormData((prev) => {
       if (field === "membershipType") {
         const membershipType = value as MembershipType | "";
@@ -2256,9 +2298,11 @@ export function RegistrationForm({
     setTouched((prev) => ({ ...prev, registrationMode: true }));
     if (mode === "group" && members.length === 0) {
       setMembers([createEmptyGroupMember()]);
+      setMemberEmailConfirms([""]);
     }
     if (mode === "single") {
       setMembers([]);
+      setMemberEmailConfirms([]);
       setMemberErrors({});
       setErrors((prev) => {
         const next = { ...prev };
@@ -2269,6 +2313,9 @@ export function RegistrationForm({
   }
 
   function updateMember(index: number, field: keyof GroupMemberDraft, value: string) {
+    if (field === "email") {
+      setMemberEmailConfirms((prev) => prev.map((confirm, i) => (i === index ? "" : confirm)));
+    }
     setMembers((prev) =>
       prev.map((member, i) => {
         if (i !== index) return member;
@@ -2381,10 +2428,12 @@ export function RegistrationForm({
   function addMember() {
     if (1 + members.length >= MAX_GROUP_SIZE) return;
     setMembers((prev) => [...prev, createEmptyGroupMember()]);
+    setMemberEmailConfirms((prev) => [...prev, ""]);
   }
 
   function removeMember(index: number) {
     setMembers((prev) => prev.filter((_, i) => i !== index));
+    setMemberEmailConfirms((prev) => prev.filter((_, i) => i !== index));
     setMemberErrors((prev) => {
       const next: typeof prev = {};
       Object.entries(prev).forEach(([key, value]) => {
@@ -2490,13 +2539,27 @@ export function RegistrationForm({
                     error={errors.middleName}
                     placeholder="Santos"
                   />
-                  <FormField
+                  <EmailConfirmField
                     label="Email Address"
                     id="email"
-                    type="email"
                     required
                     value={formData.email}
                     onChange={(v) => updateField("email", v)}
+                    confirmValue={emailConfirm}
+                    onConfirmChange={(v) => {
+                      setEmailConfirm(v);
+                      if (
+                        !getEmailValidationError(formData.email) &&
+                        !getEmailConfirmationError(formData.email, v)
+                      ) {
+                        setErrors((prev) => {
+                          if (!prev.email) return prev;
+                          const next = { ...prev };
+                          delete next.email;
+                          return next;
+                        });
+                      }
+                    }}
                     onBlur={() => markFieldTouched("email")}
                     error={errors.email}
                     placeholder="juandelacruz@gmail.com"
@@ -3149,13 +3212,38 @@ export function RegistrationForm({
                             error={memberErrors[index]?.middleName}
                             placeholder="Santos"
                           />
-                          <FormField
+                          <EmailConfirmField
                             label="Email Address"
                             id={`member-${index}-email`}
-                            type="email"
                             required
                             value={member.email}
                             onChange={(v) => updateMember(index, "email", v)}
+                            confirmValue={memberEmailConfirms[index] ?? ""}
+                            onConfirmChange={(v) => {
+                              setMemberEmailConfirms((prev) => {
+                                const next = [...prev];
+                                next[index] = v;
+                                return next;
+                              });
+                              if (
+                                !getEmailValidationError(member.email) &&
+                                !getEmailConfirmationError(member.email, v)
+                              ) {
+                                setMemberErrors((prev) => {
+                                  const current = prev[index];
+                                  if (!current?.email) return prev;
+                                  const next = { ...prev };
+                                  const nextFields = { ...current };
+                                  delete nextFields.email;
+                                  if (Object.keys(nextFields).length === 0) {
+                                    delete next[index];
+                                  } else {
+                                    next[index] = nextFields;
+                                  }
+                                  return next;
+                                });
+                              }
+                            }}
                             error={memberErrors[index]?.email}
                             placeholder="juandelacruz@gmail.com"
                           />

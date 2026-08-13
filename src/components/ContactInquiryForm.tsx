@@ -7,6 +7,8 @@ import {
   type ContactInquiryFieldErrors,
   type ContactInquiryFormData,
 } from "@/lib/form-validation";
+import { getEmailConfirmationError } from "@/lib/email-domain";
+import { EmailConfirmField } from "@/components/ui/EmailConfirmField";
 
 const emptyForm: ContactInquiryFormData = {
   name: "",
@@ -17,6 +19,7 @@ const emptyForm: ContactInquiryFormData = {
 
 export function ContactInquiryForm() {
   const [form, setForm] = useState(emptyForm);
+  const [emailConfirm, setEmailConfirm] = useState("");
   const [errors, setErrors] = useState<ContactInquiryFieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -35,6 +38,8 @@ export function ContactInquiryForm() {
 
   function validateForm(): boolean {
     const nextErrors = validateContactInquiry(form);
+    const confirmError = getEmailConfirmationError(form.email, emailConfirm);
+    if (confirmError && !nextErrors.email) nextErrors.email = confirmError;
     setErrors(nextErrors);
     const invalid = Object.keys(nextErrors) as Array<keyof ContactInquiryFieldErrors>;
     if (invalid.length === 0) return true;
@@ -77,6 +82,7 @@ export function ContactInquiryForm() {
       }
 
       setForm(emptyForm);
+      setEmailConfirm("");
       setErrors({});
       setSuccess(true);
     } catch {
@@ -110,13 +116,24 @@ export function ContactInquiryForm() {
         error={errors.name}
         disabled={submitting}
       />
-      <ContactField
+      <EmailConfirmField
         id="contact-email"
         label="E-mail ID"
-        type="email"
+        variant="contact"
         required
         value={form.email}
         onChange={(value) => updateField("email", value)}
+        confirmValue={emailConfirm}
+        onConfirmChange={(value) => {
+          setEmailConfirm(value);
+          if (
+            !errors.email ||
+            getEmailConfirmationError(form.email, value)
+          ) {
+            return;
+          }
+          setErrors((current) => ({ ...current, email: undefined }));
+        }}
         error={errors.email}
         disabled={submitting}
       />

@@ -2140,6 +2140,73 @@ body.pna-mobile-nav-open {
   padding-bottom: 0;
 }
 
+.email-confirm-wrap {
+  position: relative;
+  z-index: 2;
+}
+
+.email-confirm-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.35rem;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 12px 28px -16px rgba(15, 46, 28, 0.35);
+}
+
+.email-confirm-suggestion {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #14532d;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.email-confirm-suggestion:hover {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.email-confirm-label {
+  display: block;
+  margin: 0.2rem 0.4rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #3f6b54;
+}
+
+.email-confirm-panel .input-dark,
+.email-confirm-panel .contact-field-control {
+  margin: 0;
+}
+
+.email-confirm-panel-error {
+  margin: 0.35rem 0.4rem 0.2rem;
+  font-size: 0.75rem;
+  color: #dc2626;
+}
+
+.registration-email-field {
+  overflow: visible;
+}
+
+.registration-email-field:has(.email-confirm-panel) {
+  z-index: 8;
+}
+
 .registration-date-field:has(.admin-range-dropdown-clear-btn) {
   padding-bottom: 0.35rem;
 }
@@ -10186,6 +10253,20 @@ a.admin-btn-primary:hover,
   margin: 0.375rem 0 0;
   font-size: 0.8125rem;
   color: #dc2626;
+}
+
+.contact-field .email-confirm-wrap {
+  z-index: 5;
+}
+
+.contact-field .email-confirm-panel .contact-field-control {
+  border-bottom: 1px solid #e5e7eb;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.contact-field .email-confirm-panel .contact-field-control:focus {
+  border-bottom-color: #16a34a;
 }
 
 .contact-submit-btn {
