@@ -592,7 +592,9 @@ export function SingleDatePicker({
         {portaledCalendar}
       </div>
 
-      {helpText ? <p className="registration-form-help mt-1 mb-0">{helpText}</p> : null}
+      {helpText ? (
+        <p className="registration-form-help registration-date-help mb-0">{helpText}</p>
+      ) : null}
       {error ? (
         <p id={errorId} className="registration-field-error">
           {error}

@@ -68,7 +68,7 @@ export function RegistrationSidebar({
           You do not need to be an active PNA member to register. We encourage you to renew or
           update your membership when you can. Renew here:{" "}
           <a href={renewalUrl} target="_blank" rel="noopener noreferrer">
-            www.philippinernurses.org
+            www.philippinenurses.org
           </a>
         </p>
       </div>
@@ -146,7 +146,7 @@ export function RegistrationSidebar({
             <strong>Renew Your Membership:</strong> We encourage you to renew your PNA membership
             at{" "}
             <a href={renewalUrl} target="_blank" rel="noopener noreferrer">
-              www.philippinernurses.org
+              www.philippinenurses.org
             </a>
             .
           </li>

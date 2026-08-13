@@ -1596,6 +1596,13 @@ body.pna-mobile-nav-open {
   max-height: min(88dvh, 42rem) !important;
 }
 
+@media (max-width: 767.98px) {
+  .registration-modal-dialog:has(.registration-modal-layout--privacy) {
+    height: min(94dvh, 880px) !important;
+    max-height: min(94dvh, 880px) !important;
+  }
+}
+
 .registration-modal-layout--privacy {
   overflow: hidden;
 }
@@ -1631,10 +1638,9 @@ body.pna-mobile-nav-open {
 }
 
 .registration-privacy-gate {
-  container-type: size;
   display: flex;
   flex-direction: column;
-  gap: clamp(0.45rem, 1.4cqh, 0.9rem);
+  gap: 0.85rem;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -1646,8 +1652,8 @@ body.pna-mobile-nav-open {
   margin: 0;
   flex-shrink: 0;
   color: #334155;
-  font-size: clamp(0.78rem, 1.7cqh + 0.15vw, 0.95rem);
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .registration-privacy-gate-card {
@@ -1655,32 +1661,34 @@ body.pna-mobile-nav-open {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
-  gap: clamp(0.35rem, 1.2cqh, 0.75rem);
-  padding: clamp(0.7rem, 2cqh, 1.15rem) clamp(0.8rem, 1.8vw, 1.25rem);
+  gap: 0.9rem;
+  padding: 1rem 1.05rem;
   border: 1px solid #dbe7df;
   border-radius: 0.85rem;
   background: #f8fbf9;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .registration-privacy-gate-block {
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .registration-privacy-gate-heading {
-  margin: 0 0 clamp(0.15rem, 0.5cqh, 0.3rem);
+  margin: 0 0 0.3rem;
   color: #14532d;
-  font-size: clamp(0.88rem, 2cqh + 0.15vw, 1.05rem);
+  font-size: 0.98rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .registration-privacy-gate-card p {
   margin: 0;
   color: #475569;
-  font-size: clamp(0.74rem, 1.65cqh + 0.12vw, 0.92rem);
-  line-height: 1.45;
+  font-size: 0.875rem;
+  line-height: 1.55;
 }
 
 .registration-privacy-gate-consent {
@@ -1691,14 +1699,14 @@ body.pna-mobile-nav-open {
   flex-shrink: 0;
   cursor: pointer;
   color: #334155;
-  font-size: clamp(0.74rem, 1.55cqh + 0.12vw, 0.88rem);
-  line-height: 1.4;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .registration-privacy-gate-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(0.45rem, 1cqh, 0.7rem);
+  gap: 0.65rem;
   margin-top: 0;
   padding-top: 0;
   flex-shrink: 0;
@@ -1706,9 +1714,98 @@ body.pna-mobile-nav-open {
 
 .registration-privacy-gate-actions .registration-form-footer-btn {
   flex: 1 1 9rem;
-  min-height: clamp(2.4rem, 5.5cqh, 2.9rem);
-  padding: clamp(0.55rem, 1.4cqh, 0.75rem) clamp(0.9rem, 1.8vw, 1.25rem);
-  font-size: clamp(0.8rem, 1.6cqh + 0.1vw, 0.9rem);
+  min-height: 2.75rem;
+  padding: 0.7rem 1.15rem;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 767.98px) {
+  .registration-modal-layout--privacy {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .registration-modal-layout--privacy .registration-modal-main,
+  .registration-modal-layout--privacy .registration-modal-form {
+    overflow: visible;
+    flex: 1 0 auto;
+    min-height: auto;
+  }
+
+  .registration-modal-layout--privacy .registration-modal-form {
+    padding: 0.85rem 1rem 1.15rem;
+  }
+
+  .registration-privacy-gate {
+    height: auto;
+    min-height: 0;
+    flex: 0 0 auto;
+    overflow: visible;
+    gap: 0.9rem;
+  }
+
+  .registration-privacy-gate-card {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+    gap: 1rem;
+    padding: 0.95rem 1rem;
+  }
+
+  .registration-privacy-gate-lead {
+    font-size: 0.875rem;
+  }
+
+  .registration-privacy-gate-heading {
+    font-size: 0.95rem;
+  }
+
+  .registration-privacy-gate-card p {
+    font-size: 0.84rem;
+    line-height: 1.5;
+  }
+
+  .registration-privacy-gate-consent {
+    font-size: 0.82rem;
+  }
+
+  .registration-privacy-gate-actions {
+    flex-direction: column;
+  }
+
+  .registration-privacy-gate-actions .registration-form-footer-btn {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  .registration-privacy-gate {
+    gap: clamp(0.55rem, 1.4dvh, 0.9rem);
+  }
+
+  .registration-privacy-gate-card {
+    justify-content: flex-start;
+    gap: clamp(0.65rem, 1.6dvh, 1rem);
+    padding: clamp(0.85rem, 2dvh, 1.2rem) clamp(1rem, 1.8vw, 1.3rem);
+  }
+
+  .registration-privacy-gate-lead {
+    font-size: clamp(0.84rem, 1.5dvh + 0.2vw, 0.95rem);
+  }
+
+  .registration-privacy-gate-heading {
+    font-size: clamp(0.92rem, 1.6dvh + 0.15vw, 1.05rem);
+  }
+
+  .registration-privacy-gate-card p {
+    font-size: clamp(0.8rem, 1.35dvh + 0.15vw, 0.9rem);
+  }
+
+  .registration-privacy-gate-consent {
+    font-size: clamp(0.78rem, 1.3dvh + 0.12vw, 0.88rem);
+  }
 }
 
 .registration-privacy-stage-panel {
@@ -2044,11 +2141,22 @@ body.pna-mobile-nav-open {
 }
 
 .registration-date-field:has(.admin-range-dropdown-clear-btn) {
-  padding-bottom: 1.05rem;
+  padding-bottom: 0.35rem;
 }
 
 .registration-date-field:has(.admin-range-dropdown-clear-btn):has(> .registration-field-error) {
-  padding-bottom: 1.95rem;
+  padding-bottom: 1.2rem;
+}
+
+.registration-date-field:has(.admin-range-dropdown-clear-btn) > .registration-form-help,
+.registration-date-field > .registration-date-help {
+  margin-top: 1.85rem;
+  margin-bottom: 0.1rem;
+  line-height: 1.4;
+}
+
+.registration-date-field:not(:has(.admin-range-dropdown-clear-btn)) > .registration-date-help {
+  margin-top: 0.35rem;
 }
 
 .registration-form-section > .registration-field-error,
@@ -2424,6 +2532,203 @@ body.pna-mobile-nav-open {
 
 .registration-bank-details-number {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.registration-payment-help-trigger {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #166534;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.registration-payment-help-trigger:hover {
+  color: #14532d;
+}
+
+.registration-payment-help-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: adminModalRootFadeIn 0.2s ease forwards;
+}
+
+.registration-payment-help-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(20, 83, 45, 0.45);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+
+.registration-payment-help-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 36rem);
+  max-height: min(88dvh, 40rem);
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 20px 50px -16px rgba(0, 0, 0, 0.35);
+  animation: adminModalPanelFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.registration-payment-help-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.1rem 1.15rem 0.85rem;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.registration-payment-help-title {
+  margin: 0 0 0.25rem;
+  color: #14532d;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.registration-payment-help-subtitle {
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.registration-payment-help-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+}
+
+.registration-payment-help-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.registration-payment-help-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.registration-payment-help-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.registration-payment-help-section-title {
+  margin: 0;
+  color: #14532d;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.registration-payment-help-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.registration-payment-help-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: #334155;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.registration-payment-help-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  border-radius: 999px;
+  background: #14532d;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.registration-payment-help-tip {
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.registration-payment-help-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding: 0.85rem 1.15rem 1.1rem;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.registration-payment-help-actions .registration-form-footer-btn {
+  min-width: 7.5rem;
+  padding: 0.7rem 1.2rem;
+}
+
+@media (max-width: 575.98px) {
+  .registration-payment-help-dialog {
+    padding: 0.65rem;
+    align-items: flex-end;
+  }
+
+  .registration-payment-help-panel {
+    width: 100%;
+    max-height: min(92dvh, 44rem);
+    border-bottom-left-radius: 0.75rem;
+    border-bottom-right-radius: 0.75rem;
+  }
+
+  .registration-payment-help-actions .registration-form-footer-btn {
+    width: 100%;
+  }
 }
 
 .registration-sidebar-fees {
@@ -11281,7 +11586,7 @@ a.admin-btn-primary:hover,
    are not pushed down by the taller Initial Registration column. */
 .registration-date-field .admin-range-dropdown-clear-btn {
   position: absolute;
-  top: calc(100% + 0.15rem);
+  top: calc(100% + 0.4rem);
   left: 0;
   z-index: 2;
   line-height: 1.2;

@@ -193,7 +193,7 @@ const MEMBERSHIP_TYPE_OPTIONS: PnaSelectOption[] = [
   { value: "non_member", label: MEMBERSHIP_TYPE_LABELS.non_member },
 ];
 
-const PNA_MEMBERSHIP_RENEW_URL = "https://www.philippinernurses.org";
+const PNA_MEMBERSHIP_RENEW_URL = "https://www.philippinenurses.org";
 
 function isNonMemberType(type: MembershipType | "" | null | undefined): boolean {
   return type === "non_member";
@@ -2570,7 +2570,7 @@ export function RegistrationForm({
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          www.philippinernurses.org
+                          www.philippinenurses.org
                         </a>
                         .
                       </p>
@@ -3177,7 +3177,7 @@ export function RegistrationForm({
                                       target="_blank"
                                       rel="noopener noreferrer"
                                     >
-                                      www.philippinernurses.org
+                                      www.philippinenurses.org
                                     </a>
                                     .
                                   </p>
@@ -3421,7 +3421,7 @@ export function RegistrationForm({
                   Proof of Payment
                 </legend>
                 <p className="registration-form-help mb-3">
-                  Pay using the QR code or bank transfer below, then upload your receipt or
+                  Pay using the bank transfer details below, then upload your receipt or
                   screenshot. Proof of payment is required to complete registration.
                   {formData.registrationMode === "group"
                     ? " One payment and one receipt cover the whole group."
