@@ -41,6 +41,14 @@ const socialLinks = [
   },
 ];
 
+const SECRETARIAT_CONTACT = {
+  emails: [
+    "philippinenursesassociation@yahoo.com.ph",
+    "pnanatcon2026@gmail.com",
+  ],
+  phones: ["(632) 7001 9859", "(0919) 085 7360"],
+} as const;
+
 export default async function ContactPage() {
   const { featured } = await getHomepageEvents();
   const venue = resolveEventVenueDisplay(featured);
@@ -84,10 +92,21 @@ export default async function ContactPage() {
                 <p>{venue.name}</p>
                 <p>{venue.address}</p>
                 {venue.city ? <p>{venue.city}</p> : null}
-                <a href={`mailto:${conference.contact.email}`} className="contact-panel-email">
-                  {conference.contact.email}
-                </a>
-                <p className="contact-panel-phone">{conference.contact.phone}</p>
+                {SECRETARIAT_CONTACT.emails.map((email) => (
+                  <a key={email} href={`mailto:${email}`} className="contact-panel-email">
+                    {email}
+                  </a>
+                ))}
+                <p className="contact-panel-phone mb-0">
+                  {SECRETARIAT_CONTACT.phones.map((phone, index) => (
+                    <span key={phone}>
+                      {index > 0 ? " | " : null}
+                      <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="contact-panel-email">
+                        {phone}
+                      </a>
+                    </span>
+                  ))}
+                </p>
               </div>
 
               <div className="contact-social" aria-label="Social media links">
