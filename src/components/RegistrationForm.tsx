@@ -866,6 +866,11 @@ export function RegistrationForm({
 
   const [successDetails, setSuccessDetails] = useState<RegistrationSuccessDetails | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [eventMeta, setEventMeta] = useState<{
+    title: string;
+    datesDisplay: string;
+    venueName: string;
+  } | null>(null);
 
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
@@ -1351,6 +1356,35 @@ export function RegistrationForm({
       cancelled = true;
     };
   }, [formPhase, eventId, specialLane]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (eventId) params.set("eventId", eventId);
+
+    fetch(`/api/events/registration-sidebar?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const event = data.event;
+        if (!event) {
+          setEventMeta(null);
+          return;
+        }
+        setEventMeta({
+          title: event.title || inviteEventTitle || conference.conferenceName,
+          datesDisplay: event.datesDisplay || conference.dates.display,
+          venueName: event.venueName || conference.venue.name,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setEventMeta(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, inviteEventTitle]);
 
   useEffect(() => {
     if (!onPaymentBreakdownChange) return;
@@ -2018,6 +2052,10 @@ export function RegistrationForm({
                 ? SPECIAL_ROLE_LABELS[formData.specialRole]
                 : feeSummaryLabel) ||
               "Conference Registration",
+            eventTitle:
+              eventMeta?.title || inviteEventTitle || conference.conferenceName,
+            datesDisplay: eventMeta?.datesDisplay || conference.dates.display,
+            venueName: eventMeta?.venueName || conference.venue.name,
             receiptUploaded,
             receiptUploadFailed,
             groupSize: groupMeta?.groupSize,

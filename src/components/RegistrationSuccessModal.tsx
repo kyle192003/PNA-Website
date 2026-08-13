@@ -22,6 +22,9 @@ export interface RegistrationSuccessDetails {
   organization: string;
   position: string;
   category: string;
+  eventTitle?: string;
+  datesDisplay?: string;
+  venueName?: string;
   receiptUploaded?: boolean;
   /** Set when registration saved but receipt upload failed. */
   receiptUploadFailed?: boolean;
@@ -54,8 +57,8 @@ export function RegistrationSuccessModal({
         </div>
         <h3 className="font-display text-xl font-bold text-ink">Registration Successfully Recorded</h3>
         <p className="mt-2 text-sm text-muted">
-          Thank you, {formatParticipantName(details)}. Your official registration for the{" "}
-          {conference.conferenceName} has been received by the Secretariat.
+          Thank you, {formatParticipantName(details)}. Your official registration for{" "}
+          {details.eventTitle || conference.conferenceName} has been received by the Secretariat.
           {isGroup
             ? ` This group registration covers ${details.groupSize} participants.`
             : ""}
@@ -86,8 +89,14 @@ export function RegistrationSuccessModal({
         {isGroup ? (
           <DetailRow label="Participants" value={String(details.groupSize)} />
         ) : null}
-        <DetailRow label="Conference Dates" value={conference.dates.display} />
-        <DetailRow label="Venue" value={conference.venue.name} />
+        <DetailRow
+          label="Event Dates"
+          value={details.datesDisplay || conference.dates.display}
+        />
+        <DetailRow
+          label="Venue"
+          value={details.venueName || conference.venue.name}
+        />
       </dl>
 
       {isGroup && details.groupMembers && details.groupMembers.length > 0 ? (
