@@ -43,6 +43,10 @@ function ConfirmEmailInput({
       aria-invalid={Boolean(error)}
       aria-describedby={describedBy}
       onFocus={(event) => event.currentTarget.removeAttribute("readonly")}
+      onPaste={(event) => event.preventDefault()}
+      onDrop={(event) => event.preventDefault()}
+      onCopy={(event) => event.preventDefault()}
+      onCut={(event) => event.preventDefault()}
       onChange={(event) => onChange(event.target.value)}
       className={className}
     />
