@@ -1,25 +1,17 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { conference } from "@/lib/conference";
-import { PAYMENT_STATUS_LABELS } from "@/lib/types/admin";
 import { useRegistrationLookup } from "@/hooks/use-registrations";
-import { submitReceipt } from "@/lib/api/registrations";
-import { queryKeys } from "@/lib/query-keys";
 import { formatParticipantName } from "@/lib/participant-name";
 import { PaymentStatusBadge } from "@/components/admin/PaymentStatusBadge";
-import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
-import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { LookupResultSkeleton } from "@/components/ui/Skeleton";
-import { useConfirmAction } from "@/hooks/use-confirm-action";
 
 export function RegistrationLookup({
   variant = "default",
 }: {
   variant?: "default" | "sidebar" | "chatbot";
 }) {
-  const queryClient = useQueryClient();
   const isSidebar = variant === "sidebar";
   const isChatbot = variant === "chatbot";
   const compact = isSidebar || isChatbot;
@@ -27,10 +19,6 @@ export function RegistrationLookup({
   const [email, setEmail] = useState("");
   const [searchReference, setSearchReference] = useState("");
   const [searchEmail, setSearchEmail] = useState("");
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [uploadError, setUploadError] = useState("");
-  const confirmHook = useConfirmAction();
-  const { loading, requestConfirm } = confirmHook;
 
   const lookupQuery = useRegistrationLookup(
     searchReference,
@@ -45,45 +33,9 @@ export function RegistrationLookup({
     if (!trimmedRef || !trimmedEmail) return;
     setSearchReference(trimmedRef);
     setSearchEmail(trimmedEmail);
-    setUploadError("");
   }
 
-  function handleReceiptUpload(e: FormEvent) {
-    e.preventDefault();
-    if (!receiptFile || !lookupQuery.data || !searchEmail) return;
-
-    const registration = lookupQuery.data;
-    const file = receiptFile;
-    const emailForUpload = searchEmail;
-
-    requestConfirm({
-      title: "Submit receipt?",
-      message: `Are you sure you want to submit this payment proof for reference ${registration.referenceNumber}?`,
-      confirmLabel: "Submit receipt",
-      loadingMessage: "Uploading receipt...",
-      successTitle: "Receipt submitted",
-      successMessage: "Our team will review your payment shortly.",
-      action: async () => {
-        setUploadError("");
-        try {
-          await submitReceipt(registration.referenceNumber, file, emailForUpload);
-          setReceiptFile(null);
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.registrations.lookup(
-              registration.referenceNumber,
-              emailForUpload
-            ),
-          });
-        } catch (err) {
-          setUploadError(err instanceof Error ? err.message : "Upload failed.");
-          throw err;
-        }
-      },
-    });
-  }
-
-  const canUploadReceipt = Boolean(lookupQuery.data?.canUpload);
-  const isBusy = lookupQuery.isFetching || loading;
+  const isBusy = lookupQuery.isFetching;
 
   return (
     <div
@@ -93,9 +45,6 @@ export function RegistrationLookup({
           : `registration-lookup-wrap ${isSidebar ? "registration-sidebar-block" : "glass-card p-6"}`
       }
     >
-      <LoadingOverlay show={loading} scope="local" variant="form" />
-      <ActionConfirmDialogs hook={confirmHook} />
-
       {!isChatbot ? (
         <>
           <h3
@@ -104,14 +53,12 @@ export function RegistrationLookup({
             Check Registration Status
           </h3>
           <p className={`text-sm mb-4 ${isSidebar ? "registration-sidebar-muted" : "text-muted"}`}>
-            Enter your reference number and the email used at registration to verify status and
-            upload payment proof.
+            Enter your reference number and the email used at registration to verify your status.
           </p>
         </>
       ) : (
         <p className="registration-lookup-chatbot-help mb-3">
-          Enter your reference number and the email used at registration to verify status and upload
-          payment proof.
+          Enter your reference number and the email used at registration to verify your status.
         </p>
       )}
 
@@ -220,41 +167,6 @@ export function RegistrationLookup({
           {lookupQuery.data.paymentNotes && (
             <p className={`mt-3 mb-0 small ${compact ? "registration-sidebar-text" : "text-ink"}`}>
               <strong>Note:</strong> {lookupQuery.data.paymentNotes}
-            </p>
-          )}
-
-          {canUploadReceipt && (
-            <form
-              onSubmit={handleReceiptUpload}
-              className="mt-4 pt-3 border-top border-white border-opacity-10"
-            >
-              <p className={`small mb-2 ${compact ? "registration-sidebar-text" : "text-ink"}`}>
-                Upload proof of payment (
-                {PAYMENT_STATUS_LABELS[lookupQuery.data.paymentStatus]})
-                {lookupQuery.data.hasReceipt ? " — replaces the previous file" : ""}
-              </p>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className={`mb-2 ${compact ? "registration-sidebar-input" : "input-dark"}`}
-                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={!receiptFile || loading}
-                className={`btn-primary w-100 ${compact ? "registration-sidebar-btn" : ""}`}
-              >
-                {loading ? "Uploading..." : "Submit Receipt"}
-              </button>
-            </form>
-          )}
-
-          {uploadError && (
-            <p
-              className={`mt-3 mb-0 small ${compact ? "registration-sidebar-error" : "text-red-400"}`}
-            >
-              {uploadError}
             </p>
           )}
         </div>

@@ -45,7 +45,7 @@ export function RegistrationSuccessModal({
   const isGroup = Boolean(details.groupSize && details.groupSize > 1);
 
   return (
-    <Modal open={open} onClose={onClose} title="Registration Confirmation">
+    <Modal open={open} onClose={onClose} title="Registration Confirmation" elevated>
       <div className="text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface mb-4">
           <svg className="h-8 w-8 text-accent-glow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -118,23 +118,21 @@ export function RegistrationSuccessModal({
           </p>
         ) : details.receiptUploadFailed ? (
           <p>
-            Your registration was saved, but the receipt upload did not complete. Please upload
-            your proof of payment using reference{" "}
-            <strong className="text-ink">{details.referenceNumber}</strong> in the registration
-            lookup section. For assistance, contact{" "}
+            Your registration was saved, but the receipt upload did not complete. Please contact
+            the secretariat for assistance at{" "}
             <a
               href={`mailto:${conference.contact.registrationEmail}`}
               className="text-accent hover:underline"
             >
               {conference.contact.registrationEmail}
             </a>
-            .
+            , and keep your reference{" "}
+            <strong className="text-ink">{details.referenceNumber}</strong> ready.
           </p>
         ) : (
           <p>
             Complete payment using the QR code in the registration form, then upload your proof of
-            payment using your reference number via the registration lookup section. For assistance,
-            contact{" "}
+            payment before submitting. For assistance, contact{" "}
             <a
               href={`mailto:${conference.contact.registrationEmail}`}
               className="text-accent hover:underline"

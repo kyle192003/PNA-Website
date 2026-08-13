@@ -380,7 +380,7 @@ export function RegistrationPaymentQr({
           className="registration-payment-help-trigger"
           onClick={() => setHelpOpen(true)}
         >
-          Need assistance how to pay?
+          CLICK HERE if you need assistance on how to pay.
         </button>
       ) : null}
 

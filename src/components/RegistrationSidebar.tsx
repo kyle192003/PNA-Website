@@ -190,13 +190,23 @@ export function RegistrationSidebar({
         <ul className="registration-sidebar-help-list">
           <li>
             <SidebarMailIcon />
+            <a href="mailto:philippinenursesassociation@yahoo.com.ph">
+              philippinenursesassociation@yahoo.com.ph
+            </a>
+          </li>
+          <li>
+            <SidebarMailIcon />
             <a href={`mailto:${conference.contact.registrationEmail}`}>
               {conference.contact.registrationEmail}
             </a>
           </li>
           <li>
             <SidebarPhoneIcon />
-            <a href={`tel:${conference.contact.phone.replace(/\s/g, "")}`}>{conference.contact.phone}</a>
+            <span>
+              <a href="tel:+63270019859">(632) 7001 9859</a>
+              {" | "}
+              <a href="tel:+639190857360">(0919) 085 7360</a>
+            </span>
           </li>
         </ul>
       </div>

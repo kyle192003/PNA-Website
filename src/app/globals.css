@@ -2830,9 +2830,10 @@ body.pna-mobile-nav-open {
 .registration-sidebar-help-list li {
   display: flex;
   gap: 0.45rem;
-  align-items: center;
+  align-items: flex-start;
   font-size: 0.8rem;
   color: #475569;
+  min-width: 0;
 }
 
 .registration-sidebar-help-list li svg {
@@ -2840,6 +2841,15 @@ body.pna-mobile-nav-open {
   height: 0.9rem;
   color: #15803d;
   flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.registration-sidebar-help-list a,
+.registration-sidebar-help-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 .registration-sidebar-help-list a {
@@ -4965,6 +4975,22 @@ body.pna-mobile-nav-open {
   flex-direction: column;
   gap: 2rem;
   padding: 2rem 0;
+}
+
+.pna-footer-grid--simple {
+  max-width: 48rem;
+}
+
+.pna-footer-contact-line {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: rgba(236, 253, 245, 0.82);
+}
+
+.pna-footer-contact-line .pna-footer-inline-link {
+  display: inline;
+  margin-bottom: 0;
 }
 
 .pna-footer-columns-right {

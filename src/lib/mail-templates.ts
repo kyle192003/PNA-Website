@@ -156,10 +156,11 @@ type WrapEmailOptions = {
  * accent callout, and green footer — table-based for email clients.
  */
 function wrapEmail({ title, headline, bodyHtml }: WrapEmailOptions): string {
-  const siteUrl = getSiteBaseUrl();
-  const contactEmail = conference.contact.registrationEmail;
-  const phone = conference.contact.phone;
-  const venue = conference.venue;
+  const mainEmail = "philippinenursesassociation@yahoo.com.ph";
+  const phones = "(632) 7001 9859 | (0919) 085 7360";
+  const address = "1663 F.T. Benitez Street, Malate, Manila, 1004 Philippines";
+  const websiteHref = "https://pna-events.com";
+  const websiteLabel = "pna-events.com";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -183,8 +184,9 @@ function wrapEmail({ title, headline, bodyHtml }: WrapEmailOptions): string {
                     <img src="cid:${LOGO_CID}" alt="${escapeHtml(conference.logo.alt)}" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:9999px;background:${BRAND.white};object-fit:cover;border:2px solid rgba(255,255,255,0.35);" />
                   </td>
                   <td style="vertical-align:middle;">
-                    <p style="margin:0;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.82);font-weight:600;">${escapeHtml(conference.shortName)}</p>
-                    <p style="margin:6px 0 0;font-size:18px;font-weight:700;color:${BRAND.white};line-height:1.3;">${escapeHtml(conference.organization)}</p>
+                    <p style="margin:0;font-size:18px;font-weight:700;color:${BRAND.white};line-height:1.3;text-transform:uppercase;letter-spacing:0.02em;">
+                      PHILIPPINE NURSES ASSOCIATION (PNA), INC.
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -214,19 +216,20 @@ function wrapEmail({ title, headline, bodyHtml }: WrapEmailOptions): string {
           <tr>
             <td style="background:${BRAND.green};padding:28px 24px;text-align:center;">
               <p style="margin:0 0 10px;font-size:15px;font-weight:700;color:${BRAND.greenLine};">
-                ${escapeHtml(conference.organization)}
+                PHILIPPINE NURSES ASSOCIATION (PNA), INC.
+              </p>
+              <p style="margin:0 0 4px;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.88);">
+                <a href="mailto:${escapeHtml(mainEmail)}" style="color:${BRAND.white};text-decoration:underline;">${escapeHtml(mainEmail)}</a>
               </p>
               <p style="margin:0 0 12px;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.88);">
-                <a href="mailto:${escapeHtml(contactEmail)}" style="color:${BRAND.white};text-decoration:underline;">${escapeHtml(contactEmail)}</a>
-                &nbsp;|&nbsp;
-                ${escapeHtml(phone)}
+                ${escapeHtml(phones)}
               </p>
               <p style="margin:0;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.78);">
-                <span style="color:${BRAND.greenLine};font-weight:600;">${escapeHtml(venue.city)}</span><br />
-                ${escapeHtml(venue.name)}, ${escapeHtml(venue.address)}
+                ${escapeHtml(address)}
               </p>
               <p style="margin:16px 0 0;font-size:11px;color:rgba(255,255,255,0.55);">
-                <a href="${escapeHtml(siteUrl)}" style="color:rgba(255,255,255,0.7);text-decoration:underline;">Visit our website</a>
+                Visit our website
+                <a href="${escapeHtml(websiteHref)}" style="color:rgba(255,255,255,0.7);text-decoration:underline;">${escapeHtml(websiteLabel)}</a>
               </p>
             </td>
           </tr>
@@ -287,7 +290,9 @@ export async function sendRegistrationPendingEmail(
             <p style="margin:0 0 6px;color:#92400e;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;">Application status</p>
             <p style="margin:0;color:#78350f;font-size:15px;line-height:1.6;">
               Your application is currently <strong>pending</strong>. Our secretariat will confirm your
-              participation once we have received and verified your participation fee.
+              participation once we have received and verified your participation fee within 3-5 working
+              days from submission. You will receive a separate email with your official event check-in
+              QR code once confirmed.
             </p>
           </td>
         </tr>
@@ -297,10 +302,6 @@ export async function sendRegistrationPendingEmail(
         Please keep this for payment and follow-up.
       </p>
       ${eventInfo.html}
-      <p style="margin:8px 0 0;font-size:14px;line-height:1.7;color:${BRAND.greenMuted};">
-        After you submit your payment proof on the website, our staff will review it. Once confirmed,
-        you will receive a separate email with your official event check-in QR code.
-      </p>
     `,
   });
 
@@ -309,13 +310,11 @@ export async function sendRegistrationPendingEmail(
     "",
     `Thank you for your interest in joining ${event.title}. We have received your registration application.`,
     "",
-    "Your application is currently pending. Our secretariat will confirm your participation once we have received and verified your participation fee.",
+    "Your application is currently pending. Our secretariat will confirm your participation once we have received and verified your participation fee within 3-5 working days from submission. You will receive a separate email with your official event check-in QR code once confirmed.",
     "",
     `Reference number: ${registration.referenceNumber}`,
     "",
     eventInfo.text,
-    "",
-    "After you submit your payment proof on the website, our staff will review it. Once confirmed, you will receive a separate email with your official event check-in QR code.",
     "",
     SPAM_NOTE,
   ].join("\n");

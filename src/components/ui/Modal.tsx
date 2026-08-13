@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: ReactNode;
-  size?: "default" | "large" | "overview";
+  size?: "default" | "large" | "overview" | "fullscreen";
   hideHeader?: boolean;
   containScroll?: boolean;
   contentClassName?: string;
   dialogClassName?: string;
+  /** Raise above other open modals (e.g. confirmation over registration form). */
+  elevated?: boolean;
   /** Optional id of an existing title element when hideHeader is true. */
   labelledBy?: string;
 }
@@ -26,12 +29,18 @@ export function Modal({
   containScroll = false,
   contentClassName = "p-4 sm:p-6",
   dialogClassName = "",
+  elevated = false,
   labelledBy,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const generatedTitleId = useId();
   const titleId = title ? generatedTitleId : labelledBy;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -89,12 +98,17 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  const useContainedLayout = hideHeader || containScroll;
+  const isFullscreen = size === "fullscreen";
+  const useContainedLayout = hideHeader || containScroll || isFullscreen;
 
-  return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-3 sm:p-4">
+  return createPortal(
+    <div
+      className={`fixed inset-0 flex items-center justify-center ${
+        isFullscreen || elevated ? "z-[1400]" : "z-[1100]"
+      } ${isFullscreen ? "p-0" : "p-3 sm:p-4"}`}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-accent-deep/50 backdrop-blur-sm"
@@ -108,20 +122,28 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full rounded-2xl bg-surface border border-accent/25 shadow-2xl shadow-accent-deep/20 animate-fade-in-up outline-none ${
-          useContainedLayout
-            ? "flex flex-col h-[min(92dvh,880px)] max-h-[min(92dvh,880px)] overflow-hidden"
-            : "overflow-y-auto max-h-[min(92dvh,880px)]"
+        className={`relative w-full bg-surface border border-accent/25 shadow-2xl shadow-accent-deep/20 animate-fade-in-up outline-none ${
+          isFullscreen
+            ? "flex flex-col h-[100dvh] max-h-[100dvh] max-w-none rounded-none overflow-hidden"
+            : useContainedLayout
+              ? "flex flex-col h-[min(92dvh,880px)] max-h-[min(92dvh,880px)] overflow-hidden rounded-2xl"
+              : "overflow-y-auto max-h-[min(92dvh,880px)] rounded-2xl"
         } ${
           size === "large"
             ? "max-w-6xl"
             : size === "overview"
               ? "max-w-4xl"
-              : "max-w-lg"
+              : size === "fullscreen"
+                ? ""
+                : "max-w-lg"
         } ${dialogClassName}`}
       >
         {!hideHeader && (
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-accent/20 bg-surface/95 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 rounded-t-2xl sm:rounded-t-2xl flex-shrink-0">
+          <div
+            className={`sticky top-0 z-10 flex items-center justify-between border-b border-accent/20 bg-surface/95 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0 ${
+              isFullscreen ? "rounded-none" : "rounded-t-2xl"
+            }`}
+          >
             {title && (
               <h2 id={generatedTitleId} className="font-display text-lg font-bold text-ink">
                 {title}
@@ -140,11 +162,14 @@ export function Modal({
           </div>
         )}
         <div
-          className={`${useContainedLayout ? "flex flex-col flex-1 min-h-0 overflow-hidden" : ""} ${contentClassName}`}
+          className={`${
+            useContainedLayout ? "flex flex-col flex-1 min-h-0 overflow-y-auto" : ""
+          } ${contentClassName}`}
         >
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

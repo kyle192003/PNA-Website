@@ -1,23 +1,25 @@
 import Image from "next/image";
 import Link from "next/link";
-import { conference } from "@/lib/conference";
-import { getHomepageEvents } from "@/lib/events";
-import {
-  resolveEventVenueDisplay,
-  resolveRegistrationDeadlineDisplay,
-} from "@/lib/event-utils";
 
-const footerBottomLinks = [
-  { href: "/events", label: "Events" },
-  { href: "/register", label: "Register" },
-  { href: "/contact", label: "Contact" },
-] as const;
+const FOOTER = {
+  organization: "Philippine Nurses Association (PNA), Inc.",
+  emails: [
+    "philippinenursesassociation@yahoo.com.ph",
+    "pnanatcon2026@gmail.com",
+  ],
+  phones: ["(632) 7001 9859", "(0919) 085 7360"],
+  address: "1663 F.T. Benitez Street, Malate, Manila, 1004 Philippines",
+  website: {
+    href: "https://pna-events.com",
+    label: "pna-events.com",
+  },
+  logo: {
+    src: "/images/pna-logo.webp",
+  },
+} as const;
 
-export async function Footer() {
+export function Footer() {
   const currentYear = new Date().getFullYear();
-  const { featured } = await getHomepageEvents();
-  const venue = resolveEventVenueDisplay(featured);
-  const registrationCloses = resolveRegistrationDeadlineDisplay(featured);
 
   return (
     <footer className="pna-footer">
@@ -26,14 +28,14 @@ export async function Footer() {
           <Link href="/" className="pna-footer-brand">
             <span className="pna-footer-brand-mark pna-footer-brand-mark--image">
               <Image
-                src={conference.logo.src}
+                src={FOOTER.logo.src}
                 alt=""
                 width={48}
                 height={48}
                 className="pna-brand-logo"
               />
             </span>
-            <span className="pna-footer-brand-name font-display">{conference.organization}</span>
+            <span className="pna-footer-brand-name font-display">{FOOTER.organization}</span>
           </Link>
 
           <a
@@ -49,57 +51,33 @@ export async function Footer() {
 
         <div className="pna-footer-divider" aria-hidden="true" />
 
-        <div className="pna-footer-grid">
+        <div className="pna-footer-grid pna-footer-grid--simple">
           <div className="pna-footer-column">
-            <h3 className="pna-footer-heading">Secretariat</h3>
-            <address className="pna-footer-address">
-              {venue.name}
-              {venue.address ? (
-                <>
-                  <br />
-                  {venue.address}
-                </>
-              ) : null}
-              {venue.city ? (
-                <>
-                  <br />
-                  {venue.city}
-                </>
-              ) : null}
-            </address>
-            <a href={`mailto:${conference.contact.email}`} className="pna-footer-inline-link">
-              {conference.contact.email}
-            </a>
-            <p className="pna-footer-text mb-0">{conference.contact.phone}</p>
-            <Link href="/contact" className="pna-footer-location-link">
-              <LocationIcon />
-              Contact Secretariat
-            </Link>
-          </div>
-
-          <div className="pna-footer-columns-right">
-            <div className="pna-footer-column">
-              <h3 className="pna-footer-heading">What We Offer</h3>
-              <ul className="pna-footer-list">
-                {conference.benefits.map((benefit) => (
-                  <li key={benefit.title}>{benefit.title}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="pna-footer-column">
-              <h3 className="pna-footer-heading">Registration</h3>
-              <ul className="pna-footer-list">
-                {Object.values(conference.registration.fees).map((fee) => (
-                  <li key={fee.label}>
-                    {fee.label}: ₱{fee.amount.toLocaleString("en-PH")}
-                  </li>
-                ))}
-              </ul>
-              <p className="pna-footer-meta mb-0">
-                Registration closes {registrationCloses}
-              </p>
-            </div>
+            <h3 className="pna-footer-heading">Contact</h3>
+            <p className="pna-footer-contact-line">
+              {FOOTER.emails.map((email, index) => (
+                <span key={email}>
+                  {index > 0 ? " | " : null}
+                  <a href={`mailto:${email}`} className="pna-footer-inline-link">
+                    {email}
+                  </a>
+                </span>
+              ))}
+              {" | "}
+              {FOOTER.phones.join(" | ")}
+            </p>
+            <address className="pna-footer-address">{FOOTER.address}</address>
+            <p className="pna-footer-contact-line mb-0">
+              Visit our website{" "}
+              <a
+                href={FOOTER.website.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pna-footer-inline-link"
+              >
+                {FOOTER.website.label}
+              </a>
+            </p>
           </div>
         </div>
 
@@ -107,15 +85,8 @@ export async function Footer() {
 
         <div className="pna-footer-bottom">
           <p className="pna-footer-copy mb-0">
-            Copyright &copy; {currentYear} {conference.organization}. All rights reserved.
+            Copyright &copy; {currentYear} {FOOTER.organization}. All rights reserved.
           </p>
-          <nav className="pna-footer-bottom-nav" aria-label="Footer links">
-            {footerBottomLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="pna-footer-bottom-link">
-                {link.label}
-              </Link>
-            ))}
-          </nav>
         </div>
       </div>
     </footer>
@@ -126,19 +97,6 @@ function FacebookIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M13.5 8.5V6.7c0-.8.6-1 1-1h1.6V3h-2.2C12.8 3 11 4.8 11 7.2V8.5H9v2.4h2v7.1h2.5v-7.1H16l.4-2.4h-2.9Z" />
-    </svg>
-  );
-}
-
-function LocationIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <circle cx="12" cy="11" r="2.25" stroke="currentColor" strokeWidth="1.75" />
     </svg>
   );
 }
