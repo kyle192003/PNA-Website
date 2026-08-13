@@ -54,8 +54,12 @@ export async function Footer() {
             <h3 className="pna-footer-heading">Secretariat</h3>
             <address className="pna-footer-address">
               {venue.name}
-              <br />
-              {venue.address}
+              {venue.address ? (
+                <>
+                  <br />
+                  {venue.address}
+                </>
+              ) : null}
               {venue.city ? (
                 <>
                   <br />

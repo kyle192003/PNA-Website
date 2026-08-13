@@ -39,10 +39,15 @@ export function resolveEventVenueDisplay(event?: EventVenueFields | null): {
   address: string;
   city: string | null;
 } {
+  const name = event?.venueName?.trim() || conference.venue.name;
+  const address = event?.venueAddress?.trim() || conference.venue.address;
   const usingEvent = Boolean(event?.venueName?.trim() || event?.venueAddress?.trim());
+  const sameLine =
+    name.localeCompare(address, undefined, { sensitivity: "accent" }) === 0;
+
   return {
-    name: event?.venueName?.trim() || conference.venue.name,
-    address: event?.venueAddress?.trim() || conference.venue.address,
+    name,
+    address: sameLine ? "" : address,
     city: usingEvent ? null : conference.venue.city,
   };
 }
