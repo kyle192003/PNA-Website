@@ -287,12 +287,12 @@ export async function sendRegistrationPendingEmail(
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:8px 0 20px;border-collapse:collapse;">
         <tr>
           <td style="background:#fffbeb;border-left:4px solid #f59e0b;padding:16px 18px;">
-            <p style="margin:0 0 6px;color:#92400e;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;">Application status</p>
+            <p style="margin:0 0 6px;color:#92400e;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;">Registration status</p>
             <p style="margin:0;color:#78350f;font-size:15px;line-height:1.6;">
-              Your application is currently <strong>pending</strong>. Our secretariat will confirm your
-              participation once we have received and verified your participation fee within 3-5 working
-              days from submission. You will receive a separate email with your official event check-in
-              QR code once confirmed.
+              Your registration is currently <strong>pending</strong>. Our secretariat will confirm your
+              payment once we have received and verified your registration fee within 3-5 days from
+              submission. You will receive a separate email with your official event check-in QR code
+              once confirmed.
             </p>
           </td>
         </tr>
@@ -310,7 +310,7 @@ export async function sendRegistrationPendingEmail(
     "",
     `Thank you for your interest in joining ${event.title}. We have received your registration application.`,
     "",
-    "Your application is currently pending. Our secretariat will confirm your participation once we have received and verified your participation fee within 3-5 working days from submission. You will receive a separate email with your official event check-in QR code once confirmed.",
+    "Your registration is currently pending. Our secretariat will confirm your payment once we have received and verified your registration fee within 3-5 days from submission. You will receive a separate email with your official event check-in QR code once confirmed.",
     "",
     `Reference number: ${registration.referenceNumber}`,
     "",
