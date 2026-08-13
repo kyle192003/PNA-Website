@@ -11,7 +11,7 @@ export const conference = {
     "Strengthening Institutions Through Collaborative Governance and National Excellence",
   tagline:
     "Advancing public service, institutional integrity, and inclusive national development across the Republic of the Philippines.",
-  membershipRenewalUrl: "https://www.philippinernurses.org",
+  membershipRenewalUrl: "https://www.philippinenurses.org",
   hero: {
     headline: "Advancing Governance, Service, and National Development",
     description:

@@ -1,6 +1,6 @@
 /**
  * Short-lived IndexedDB cache for registration upload files.
- * Survives refresh / tab discard for a few minutes so users don't re-upload.
+ * Survives refresh / tab discard temporarily, then expires after 20 minutes.
  */
 
 export type RegistrationCachedFileKey =
@@ -18,8 +18,8 @@ export const REGISTRATION_CACHED_FILE_KEYS: RegistrationCachedFileKey[] = [
   "bir2307File",
 ];
 
-/** Keep uploads for 10 minutes (within the requested 5–10 minute window). */
-const TTL_MS = 10 * 60 * 1000;
+/** Keep uploads for 20 minutes, then remove them. */
+const TTL_MS = 20 * 60 * 1000;
 const DB_NAME = "pna-registration-files";
 const DB_VERSION = 1;
 const STORE_NAME = "files";

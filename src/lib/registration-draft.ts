@@ -7,6 +7,7 @@ import type {
   SponsorConsent,
 } from "@/lib/types/admin";
 import { parseNcrZoneFromChapter } from "@/lib/conference";
+import { clearRegistrationCachedFiles } from "@/lib/registration-file-cache";
 
 export type RegistrationMode = RegistrationModeChoice;
 
@@ -59,8 +60,17 @@ export type RegistrationDraft = {
 
 const DRAFT_PREFIX = "pna-registration-draft:";
 
+/** Temporary form cache — cleared after 20 minutes of inactivity. */
+const DRAFT_TTL_MS = 20 * 60 * 1000;
+
 function draftKey(eventId?: string | null): string {
   return `${DRAFT_PREFIX}${eventId?.trim() || "general"}`;
+}
+
+function isDraftExpired(savedAt: string, now = Date.now()): boolean {
+  const savedMs = Date.parse(savedAt);
+  if (!Number.isFinite(savedMs)) return true;
+  return now - savedMs > DRAFT_TTL_MS;
 }
 
 export function createEmptyGroupMember(): GroupMemberDraft {
@@ -117,6 +127,12 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
     const raw = window.localStorage.getItem(draftKey(eventId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<RegistrationDraft>;
+    const savedAt = parsed.savedAt ?? "";
+    if (isDraftExpired(savedAt)) {
+      clearRegistrationDraft(eventId);
+      void clearRegistrationCachedFiles(eventId);
+      return null;
+    }
     return {
       mode: parsed.mode === "group" ? "group" : "single",
       firstName: parsed.firstName ?? "",
