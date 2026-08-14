@@ -22,9 +22,9 @@ function fileUrl(token: string, id: string, kind: string) {
   return `/api/accountant-review/files/${encodeURIComponent(id)}/${encodeURIComponent(kind)}?t=${encodeURIComponent(token)}`;
 }
 
-export function AccountantReviewPanel() {
+export function AccountantReviewPanel({ token: tokenProp }: { token?: string }) {
   const searchParams = useSearchParams();
-  const token = searchParams.get("t") ?? "";
+  const token = tokenProp?.trim() || searchParams.get("t") || "";
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 

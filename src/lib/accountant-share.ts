@@ -5,7 +5,6 @@ import {
   ACCOUNTANT_SHARE_TTL_MS,
   buildAccountantShareUrl,
   createAccountantShareNonce,
-  createAccountantShareToken,
   verifyAccountantShareToken,
 } from "@/lib/accountant-share-token";
 
@@ -48,9 +47,7 @@ async function writeShare(share: AccountantShareRecord | null): Promise<void> {
 }
 
 function buildUrl(share: AccountantShareRecord): string {
-  return buildAccountantShareUrl(
-    createAccountantShareToken(share.nonce, Date.parse(share.expiresAt))
-  );
+  return buildAccountantShareUrl(share.nonce);
 }
 
 export async function createAccountantShareLink(notifyEmail?: string | null): Promise<{
@@ -118,12 +115,31 @@ export function tokenFromSearch(request: Request, bodyToken?: string): string | 
   return searchParams.get("t")?.trim() || bodyToken?.trim() || undefined;
 }
 
+const LEGACY_SIGNED_TOKEN_MIN_LENGTH = 40;
+
 export async function authorizeAccountantToken(token: string | null | undefined) {
-  const verified = verifyAccountantShareToken(token);
-  if (!verified.ok) {
-    return { ok: false as const, error: verified.error, status: 400 as const };
+  if (!token?.trim()) {
+    return {
+      ok: false as const,
+      error: "Missing review link. Open the link that was shared with you.",
+      status: 400 as const,
+    };
   }
-  const active = await requireActiveAccountantShare(verified.nonce);
+
+  const trimmed = token.trim();
+  if (trimmed.length >= LEGACY_SIGNED_TOKEN_MIN_LENGTH) {
+    const verified = verifyAccountantShareToken(trimmed);
+    if (!verified.ok) {
+      return { ok: false as const, error: verified.error, status: 400 as const };
+    }
+    const active = await requireActiveAccountantShare(verified.nonce);
+    if (!active.ok) {
+      return { ok: false as const, error: active.error, status: active.status };
+    }
+    return { ok: true as const, share: active.share };
+  }
+
+  const active = await requireActiveAccountantShare(trimmed);
   if (!active.ok) {
     return { ok: false as const, error: active.error, status: active.status };
   }

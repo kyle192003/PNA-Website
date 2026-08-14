@@ -5,6 +5,7 @@ import { getSigningSecret } from "@/lib/security/secrets";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
 export const ACCOUNTANT_SHARE_TTL_MS = 5 * 24 * 60 * 60 * 1000;
+export const ACCOUNTANT_SHARE_PATH = "/a";
 
 type AccountantSharePayload = {
   nonce: string;
@@ -16,7 +17,7 @@ function signPayload(payload: string): string {
 }
 
 export function createAccountantShareNonce(): string {
-  return randomBytes(16).toString("hex");
+  return randomBytes(8).toString("base64url");
 }
 
 export function createAccountantShareToken(nonce: string, exp: number): string {
@@ -28,8 +29,8 @@ export function createAccountantShareToken(nonce: string, exp: number): string {
   return Buffer.from(`${payload}.${signature}`).toString("base64url");
 }
 
-export function buildAccountantShareUrl(token: string): string {
-  return `${getSiteBaseUrl()}/accountant-review?t=${encodeURIComponent(token)}`;
+export function buildAccountantShareUrl(code: string): string {
+  return `${getSiteBaseUrl()}${ACCOUNTANT_SHARE_PATH}/${encodeURIComponent(code)}`;
 }
 
 export function verifyAccountantShareToken(
