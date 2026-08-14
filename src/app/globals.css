@@ -13733,20 +13733,26 @@ a.admin-action-btn:hover {
 
 .accountant-page {
   flex: 1;
-  padding: 1.25rem 1rem 2.5rem;
+  padding: 1.25rem 1.25rem 2.5rem;
 }
 
 .accountant-shell {
   position: relative;
-  width: min(100%, 78rem);
+  width: min(100%, 112rem);
   margin: 0 auto;
-  padding: 1.35rem 1.15rem 1.5rem;
+  padding: 1.6rem 1.5rem 1.75rem;
   border-radius: 1.25rem;
   background: #ffffff;
   border: 1px solid rgba(15, 61, 36, 0.1);
   box-shadow:
     0 18px 40px rgba(15, 61, 36, 0.08),
     0 2px 8px rgba(15, 61, 36, 0.04);
+}
+
+.accountant-shell .evaluation-card-desc {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .accountant-header {
@@ -13767,28 +13773,31 @@ a.admin-action-btn:hover {
 
 .accountant-layout {
   display: grid;
-  gap: 1rem;
+  gap: 1.75rem;
 }
 
 @media (min-width: 900px) {
   .accountant-layout {
-    grid-template-columns: 16.5rem minmax(0, 1fr);
+    grid-template-columns: minmax(22rem, 26rem) minmax(0, 1fr);
     align-items: start;
+    gap: 2rem;
   }
 }
 
 .accountant-queue {
   display: grid;
-  gap: 0.45rem;
-  max-height: 28rem;
-  overflow: auto;
+  gap: 0.55rem;
+  padding-right: 0.85rem;
+  margin-right: 0.15rem;
+  scrollbar-gutter: stable;
 }
 
 .accountant-queue-item {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.2rem;
+  width: 100%;
   text-align: left;
-  padding: 0.7rem 0.8rem;
+  padding: 0.8rem 0.9rem;
   border: 1px solid rgba(21, 128, 61, 0.14);
   border-radius: 0.75rem;
   background: #f8faf9;
@@ -13802,7 +13811,11 @@ a.admin-action-btn:hover {
 
 .accountant-queue-name {
   font-weight: 700;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .accountant-queue-meta {
@@ -13810,9 +13823,113 @@ a.admin-action-btn:hover {
   color: #64748b;
 }
 
+.accountant-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding-right: 0.15rem;
+}
+
+.accountant-pager-status {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4b6b5c;
+}
+
 .accountant-detail {
+  position: relative;
   display: grid;
   gap: 1rem;
+}
+
+.accountant-detail-content.is-loading {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pna-skeleton-accountant-detail {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+.pna-skeleton-accountant-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.pna-skeleton-accountant-badge {
+  width: 7.5rem;
+  height: 1.75rem;
+  border-radius: 999px;
+}
+
+.pna-skeleton-accountant-facts {
+  display: grid;
+  gap: 0.65rem 1rem;
+}
+
+@media (min-width: 700px) {
+  .pna-skeleton-accountant-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1200px) {
+  .pna-skeleton-accountant-facts {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.pna-skeleton-accountant-fact-label {
+  height: 0.65rem;
+  width: 5.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.pna-skeleton-accountant-fact-value {
+  height: 0.9rem;
+  width: 88%;
+}
+
+.pna-skeleton-accountant-docs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: 0.85rem;
+}
+
+.pna-skeleton-accountant-doc-frame {
+  width: 100%;
+  height: 10.5rem;
+  border-radius: 0.75rem;
+}
+
+.pna-skeleton-accountant-doc-caption {
+  width: 72%;
+  height: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.pna-skeleton-accountant-actions {
+  display: grid;
+  gap: 1rem;
+}
+
+.pna-skeleton-accountant-action-btn {
+  width: 11rem;
+  height: 2.5rem;
+  border-radius: 0.65rem;
+}
+
+.pna-skeleton-accountant-reject {
+  width: 100%;
+  height: 6.5rem;
+  border-radius: 0.75rem;
 }
 
 .accountant-detail-head {
@@ -13838,6 +13955,12 @@ a.admin-action-btn:hover {
 @media (min-width: 700px) {
   .accountant-facts {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1200px) {
+  .accountant-facts {
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
 

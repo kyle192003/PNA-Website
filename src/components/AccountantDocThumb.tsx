@@ -7,12 +7,18 @@ export function AccountantDocThumb({
   src,
   label,
   isPdf,
+  onReady,
 }: {
   src: string;
   label: string;
   isPdf: boolean;
+  onReady?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  function handleReady() {
+    onReady?.();
+  }
 
   return (
     <>
@@ -24,11 +30,23 @@ export function AccountantDocThumb({
           aria-label={`Zoom ${label}`}
         >
           {isPdf ? (
-            <iframe src={src} title={label} className="accountant-doc-iframe" tabIndex={-1} />
+            <iframe
+              src={src}
+              title={label}
+              className="accountant-doc-iframe"
+              tabIndex={-1}
+              onLoad={handleReady}
+            />
           ) : (
             // Native img: authenticated token URLs are not in the Next image optimizer.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={src} alt={label} className="accountant-doc-image" />
+            <img
+              src={src}
+              alt={label}
+              className="accountant-doc-image"
+              onLoad={handleReady}
+              onError={handleReady}
+            />
           )}
         </button>
         <figcaption>

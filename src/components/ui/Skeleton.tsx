@@ -113,6 +113,48 @@ export function SitePageSkeleton() {
   );
 }
 
+export function AccountantReviewDetailSkeleton() {
+  return (
+    <div className="pna-skeleton-accountant-detail" aria-hidden="true">
+      <div className="pna-skeleton-accountant-detail-head">
+        <div className="pna-skeleton-stack">
+          <Skeleton className="pna-skeleton-block pna-skeleton-block--title" />
+          <Skeleton className="pna-skeleton-block pna-skeleton-block--sm" />
+        </div>
+        <Skeleton className="pna-skeleton-accountant-badge" />
+      </div>
+
+      <div className="pna-skeleton-accountant-facts">
+        {Array.from({ length: 18 }, (_, index) => (
+          <div key={index} className="pna-skeleton-accountant-fact">
+            <Skeleton className="pna-skeleton-accountant-fact-label" />
+            <Skeleton className="pna-skeleton-accountant-fact-value" />
+          </div>
+        ))}
+      </div>
+
+      <div className="pna-skeleton-stack">
+        <Skeleton className="pna-skeleton-block" style={{ width: "9rem" }} />
+        <Skeleton className="pna-skeleton-block pna-skeleton-block--sm" style={{ width: "72%" }} />
+      </div>
+
+      <div className="pna-skeleton-accountant-docs">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="pna-skeleton-accountant-doc">
+            <Skeleton className="pna-skeleton-accountant-doc-frame" />
+            <Skeleton className="pna-skeleton-accountant-doc-caption" />
+          </div>
+        ))}
+      </div>
+
+      <div className="pna-skeleton-accountant-actions">
+        <Skeleton className="pna-skeleton-accountant-action-btn" />
+        <Skeleton className="pna-skeleton-accountant-reject" />
+      </div>
+    </div>
+  );
+}
+
 export function AdminEditPageSkeleton() {
   return (
     <div className="admin-page">
