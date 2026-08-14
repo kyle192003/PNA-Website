@@ -13,6 +13,7 @@ import type {
 } from "@/lib/types/admin";
 import { MEMBERSHIP_TYPE_LABELS, SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
 import {
+  capitalizeNameInput,
   getDateOfBirthAgeValidationError,
   getEmailValidationError,
   getMaxDateOfBirthForMinAge,
@@ -2323,10 +2324,19 @@ export function RegistrationForm({
           return { ...member, phone: toPhMobileLocalDigits(value) };
         }
         if (field === "firstName") {
-          return { ...member, firstName: value.slice(0, NAME_LIMITS.firstName) };
+          return {
+            ...member,
+            firstName: capitalizeNameInput(value).slice(0, NAME_LIMITS.firstName),
+          };
         }
         if (field === "lastName") {
-          return { ...member, lastName: value.slice(0, NAME_LIMITS.lastName) };
+          return {
+            ...member,
+            lastName: capitalizeNameInput(value).slice(0, NAME_LIMITS.lastName),
+          };
+        }
+        if (field === "middleName") {
+          return { ...member, middleName: capitalizeNameInput(value) };
         }
         if (field === "foodPreference") {
           return { ...member, foodPreference: value as FoodPreference };
@@ -2512,7 +2522,9 @@ export function RegistrationForm({
                     id="lastName"
                     required
                     value={formData.lastName}
-                    onChange={(v) => updateField("lastName", v.slice(0, NAME_LIMITS.lastName))}
+                    onChange={(v) =>
+                      updateField("lastName", capitalizeNameInput(v).slice(0, NAME_LIMITS.lastName))
+                    }
                     onBlur={() => markFieldTouched("lastName")}
                     error={errors.lastName}
                     maxLength={NAME_LIMITS.lastName}
@@ -2523,7 +2535,12 @@ export function RegistrationForm({
                     id="firstName"
                     required
                     value={formData.firstName}
-                    onChange={(v) => updateField("firstName", v.slice(0, NAME_LIMITS.firstName))}
+                    onChange={(v) =>
+                      updateField(
+                        "firstName",
+                        capitalizeNameInput(v).slice(0, NAME_LIMITS.firstName)
+                      )
+                    }
                     onBlur={() => markFieldTouched("firstName")}
                     error={errors.firstName}
                     maxLength={NAME_LIMITS.firstName}
@@ -2534,7 +2551,7 @@ export function RegistrationForm({
                     id="middleName"
                     optional
                     value={formData.middleName}
-                    onChange={(v) => updateField("middleName", v)}
+                    onChange={(v) => updateField("middleName", capitalizeNameInput(v))}
                     onBlur={() => markFieldTouched("middleName")}
                     error={errors.middleName}
                     placeholder="Santos"

@@ -20,6 +20,23 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_REGEX.test(email.trim());
 }
 
+/** True when the email contains letters and every letter is uppercase. */
+export function isAllCapsEmail(email: string): boolean {
+  const letters = email.trim().replace(/[^a-zA-Z]/g, "");
+  return letters.length > 0 && letters === letters.toUpperCase();
+}
+
+/**
+ * Capitalize the first letter of each name segment as the user types
+ * (spaces, hyphens, apostrophes). Later letters stay as typed.
+ */
+export function capitalizeNameInput(value: string): string {
+  if (!value) return value;
+  return value.replace(/(^|[\s'-]+)(\S)/g, (_match, boundary: string, char: string) => {
+    return `${boundary}${char.toUpperCase()}`;
+  });
+}
+
 export function isValidPhoneNumber(phone: string): boolean {
   const compact = phone.trim().replace(/[\s().-]/g, "");
   if (!compact) return false;
@@ -52,6 +69,9 @@ export function toPhMobileInternational(phone: string): string | null {
 export function getEmailValidationError(email: string, label = "Email"): string | null {
   if (!email.trim()) return `${label} is required.`;
   if (!isValidEmail(email)) return `Please enter a valid ${label.toLowerCase()} address.`;
+  if (isAllCapsEmail(email)) {
+    return `Please enter your ${label.toLowerCase()} without ALL CAPS.`;
+  }
   const suggestion = getSuggestedEmailDomain(email);
   if (suggestion) return `Please check the email domain. You mean @${suggestion}?`;
   return null;

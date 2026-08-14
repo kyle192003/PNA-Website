@@ -1,12 +1,15 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import {
   applyEmailDomain,
   getEmailConfirmationError,
   getSuggestedEmailDomain,
 } from "@/lib/email-domain";
 import { isValidEmail } from "@/lib/form-validation";
+
+const EMAIL_VALIDITY_NOTE =
+  "Please ensure that you enter a VALID AND WORKING EMAIL ADDRESS. All reference numbers and confirmation emails shall be sent through the email address you used to register.";
 
 function ConfirmEmailInput({
   id,
@@ -85,9 +88,18 @@ export function EmailConfirmField({
   variant?: "registration" | "contact";
 }) {
   const suggestionId = useId();
+  const noteId = useId();
   const confirmId = `${id}-confirm`;
+  const [emailFocused, setEmailFocused] = useState(false);
   const suggestion = getSuggestedEmailDomain(value);
   const showConfirm = !disabled && isValidEmail(value) && !suggestion;
+  const showValidityNote =
+    variant === "registration" &&
+    !disabled &&
+    emailFocused &&
+    value.trim().length > 0 &&
+    !suggestion &&
+    !showConfirm;
   const domainError = Boolean(error && !showConfirm);
   const confirmMismatch =
     showConfirm && confirmValue.trim()
@@ -108,6 +120,13 @@ export function EmailConfirmField({
     onConfirmChange("");
   }
 
+  function emailDescribedBy() {
+    if (suggestion) return suggestionId;
+    if (showValidityNote) return noteId;
+    if (mainError) return `${id}-error`;
+    return undefined;
+  }
+
   if (variant === "contact") {
     return (
       <div className={`contact-field${mainError || confirmError ? " contact-field--error" : ""}`}>
@@ -126,11 +145,13 @@ export function EmailConfirmField({
             autoComplete="email"
             spellCheck={false}
             aria-invalid={Boolean(mainError)}
-            aria-describedby={
-              suggestion ? suggestionId : mainError ? `${id}-error` : undefined
-            }
+            aria-describedby={emailDescribedBy()}
             onChange={(event) => handleEmailChange(event.target.value)}
-            onBlur={onBlur}
+            onFocus={() => setEmailFocused(true)}
+            onBlur={() => {
+              setEmailFocused(false);
+              onBlur?.();
+            }}
             className={`contact-field-control${mainError ? " contact-field-control--error" : ""}`}
           />
           {suggestion ? (
@@ -183,17 +204,24 @@ export function EmailConfirmField({
           id={id}
           value={value}
           onChange={(e) => handleEmailChange(e.target.value)}
-          onBlur={onBlur}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="email"
           spellCheck={false}
           aria-invalid={Boolean(mainError)}
-          aria-describedby={
-            suggestion ? suggestionId : mainError ? `${id}-error` : undefined
-          }
+          aria-describedby={emailDescribedBy()}
+          onFocus={() => setEmailFocused(true)}
+          onBlur={() => {
+            setEmailFocused(false);
+            onBlur?.();
+          }}
           className={`input-dark ${mainError ? "input-dark-error" : ""}`}
         />
+        {showValidityNote ? (
+          <div id={noteId} className="email-validity-note" role="note">
+            <p className="email-validity-note-text">{EMAIL_VALIDITY_NOTE}</p>
+          </div>
+        ) : null}
         {suggestion ? (
           <div id={suggestionId} className="email-confirm-panel" role="note">
             <button type="button" className="email-confirm-suggestion" onClick={applySuggestion}>
