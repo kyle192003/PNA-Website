@@ -16,6 +16,13 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   rejected: "Rejected",
 };
 
+export interface ReceiptReuploadLink {
+  nonce: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
 export interface EventRateFee {
   amount: number;
   label: string;
@@ -265,6 +272,13 @@ export type RegistrationModeChoice = "single" | "group";
 
 export type FoodPreference = "regular" | "vegetarian" | "no_pork" | "allergy";
 
+export const FOOD_PREFERENCE_LABELS: Record<FoodPreference, string> = {
+  regular: "Regular",
+  vegetarian: "Vegetarian",
+  no_pork: "No pork",
+  allergy: "Allergy / special diet",
+};
+
 export type SponsorConsent = "yes" | "no";
 
 export type RegistrationGroupRole = "primary" | "member";
@@ -360,6 +374,7 @@ export interface RegistrationRecord {
   paymentReference: string;
   paymentNotes: string;
   adminNotes: string;
+  receiptReupload?: ReceiptReuploadLink | null;
   groupId: string | null;
   groupRole: RegistrationGroupRole | null;
   groupSize: number | null;
@@ -459,10 +474,24 @@ export interface GroupRegistrationInput {
 
 export type InquiryStatus = "new" | "read" | "replied";
 
+export type InquiryReplySource = "admin" | "share";
+
 export interface InquiryReply {
   id: string;
   body: string;
   sentAt: string;
+  fromName?: string;
+  fromEmail?: string;
+  source?: InquiryReplySource;
+}
+
+export type InquiryShareLinkStatus = "active" | "used" | "expired";
+
+export interface InquiryShareLink {
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  usedByEmail?: string | null;
 }
 
 export interface ContactInquiry {
@@ -477,6 +506,7 @@ export interface ContactInquiry {
   readAt: string | null;
   repliedAt?: string | null;
   replies?: InquiryReply[];
+  shareLink?: InquiryShareLink | null;
 }
 
 export interface ContactInquiryInput {

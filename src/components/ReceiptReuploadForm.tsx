@@ -55,6 +55,7 @@ export function ReceiptReuploadForm() {
   const [file, setFile] = useState<File | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
   const [referenceConfirmed, setReferenceConfirmed] = useState(false);
+  const [submitConfirmed, setSubmitConfirmed] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "unavailable">("idle");
   const [ocrMessage, setOcrMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +100,7 @@ export function ReceiptReuploadForm() {
     setFile(next);
     setPaymentReference("");
     setReferenceConfirmed(false);
+    setSubmitConfirmed(false);
     setOcrMessage("");
     setOcrStatus("idle");
     setSubmitError("");
@@ -157,6 +159,12 @@ export function ReceiptReuploadForm() {
       setSubmitError("Please confirm the payment reference looks correct before submitting.");
       return;
     }
+    if (!submitConfirmed) {
+      setSubmitError(
+        "Please confirm this receipt is correct and ready for the accountant to review within 3-5 days."
+      );
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError("");
@@ -177,6 +185,7 @@ export function ReceiptReuploadForm() {
       setFile(null);
       setPaymentReference("");
       setReferenceConfirmed(false);
+      setSubmitConfirmed(false);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -224,8 +233,9 @@ export function ReceiptReuploadForm() {
           <h1 className="evaluation-card-title font-display">Receipt submitted</h1>
           <p className="evaluation-card-done">
             Thank you, {info.name}. Your new payment proof for{" "}
-            <strong>{info.referenceNumber}</strong> is under review. We will email you once it is
-            verified.
+            <strong>{info.referenceNumber}</strong> is under review. This reupload link has now
+            expired. Our accountant will verify your payment within 3-5 days, and we will email you
+            once it is confirmed.
           </p>
         </div>
       </div>
@@ -327,6 +337,7 @@ export function ReceiptReuploadForm() {
                   onChange={(event) => {
                     setPaymentReference(event.target.value);
                     setReferenceConfirmed(false);
+                    setSubmitConfirmed(false);
                   }}
                   placeholder="e.g. GCash Ref No. or bank transfer reference"
                   autoComplete="off"
@@ -343,6 +354,18 @@ export function ReceiptReuploadForm() {
                     Yes, this payment reference looks right (or I corrected it to match my receipt).
                   </span>
                 </label>
+                <label className="d-flex align-items-start gap-2 mt-3 mb-0">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={submitConfirmed}
+                    onChange={(event) => setSubmitConfirmed(event.target.checked)}
+                  />
+                  <span className="evaluation-card-desc mb-0 text-start">
+                    I confirm this receipt is correct and ready for the accountant to review within
+                    3-5 days. After I submit, this reupload link will expire.
+                  </span>
+                </label>
               </div>
             ) : null}
 
@@ -356,7 +379,7 @@ export function ReceiptReuploadForm() {
               <button
                 type="submit"
                 className="btn-pill-arrow evaluation-submit"
-                disabled={!file || !paymentReference.trim() || !referenceConfirmed || submitting}
+                disabled={!file || !paymentReference.trim() || !referenceConfirmed || !submitConfirmed || submitting}
               >
                 {submitting ? "Uploading..." : "Submit new receipt"}
               </button>

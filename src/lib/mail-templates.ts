@@ -17,6 +17,7 @@ import { sendMail, type MailAttachment } from "@/lib/mail";
 import { getAdminNotifyEmail } from "@/lib/security/server-env";
 import { createReceiptReuploadToken } from "@/lib/receipt-reupload-token";
 import { getSiteBaseUrl } from "@/lib/site-url";
+import { getActiveAccountantReviewUrl, getAccountantNotifyEmail } from "@/lib/accountant-share";
 import type { ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
 import { buildDefaultSpecialInviteNote } from "@/lib/types/admin";
 
@@ -289,7 +290,7 @@ export async function sendRegistrationPendingEmail(
           <td style="background:#fffbeb;border-left:4px solid #f59e0b;padding:16px 18px;">
             <p style="margin:0 0 6px;color:#92400e;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;">Registration status</p>
             <p style="margin:0;color:#78350f;font-size:15px;line-height:1.6;">
-              Your registration is currently <strong>pending</strong>. Our secretariat will confirm your
+              Your registration is currently <strong>pending</strong>. Our accountant will confirm your
               payment once we have received and verified your registration fee within 3-5 days from
               submission. You will receive a separate email with your official event check-in QR code
               once confirmed.
@@ -310,7 +311,7 @@ export async function sendRegistrationPendingEmail(
     "",
     `Thank you for your interest in joining ${event.title}. We have received your registration application.`,
     "",
-    "Your registration is currently pending. Our secretariat will confirm your payment once we have received and verified your registration fee within 3-5 days from submission. You will receive a separate email with your official event check-in QR code once confirmed.",
+    "Your registration is currently pending. Our accountant will confirm your payment once we have received and verified your registration fee within 3-5 days from submission. You will receive a separate email with your official event check-in QR code once confirmed.",
     "",
     `Reference number: ${registration.referenceNumber}`,
     "",
@@ -397,7 +398,12 @@ async function sendReceiptReuploadEmail(
   const name = participantDisplayName(registration);
   const eventInfo = eventBlock(event);
   const trimmedReason = reason.trim() || "Please upload a clearer payment receipt.";
-  const reuploadToken = createReceiptReuploadToken(registration.referenceNumber);
+  const reupload = registration.receiptReupload;
+  const reuploadToken = createReceiptReuploadToken(
+    registration.referenceNumber,
+    reupload?.nonce,
+    reupload ? Date.parse(reupload.expiresAt) : undefined
+  );
   const reuploadUrl = `${getSiteBaseUrl()}/receipt-reupload?t=${encodeURIComponent(reuploadToken)}`;
   const isRejected = kind === "rejected";
   const statusLabel = isRejected ? "rejected" : "flagged for review";
@@ -811,21 +817,120 @@ export async function sendInquiryReplyEmail(payload: {
   });
 }
 
+/** Alerts the secretariat when someone uses a one-time inquiry share link. */
+export async function sendAdminInquiryShareReplyNotification(payload: {
+  inquiryId: string;
+  inquiryName: string;
+  inquiryEmail: string;
+  originalMessage: string;
+  fromName: string;
+  fromEmail: string;
+  replyBody: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const to = getAdminNotifyEmail() || conference.contact.email;
+  const subject = `Inquiry reply from ${payload.fromName}`;
+  const adminUrl = `${getSiteBaseUrl()}/admin/inquiries`;
+  const gmailUrl = buildGmailComposeUrl(payload.fromEmail, payload.inquiryName);
+
+  const html = wrapEmail({
+    title: subject,
+    headline: "One-time inquiry reply received",
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
+        Someone replied to a shared inquiry using the temporary link. That link is now expired.
+        Continue the conversation in Gmail.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border-collapse:collapse;">
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Inquiry ID</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(payload.inquiryId)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Replied by</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(payload.fromName)} &lt;${escapeHtml(payload.fromEmail)}&gt;</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Original inquiry</p>
+            <p style="margin:0;font-size:15px;color:${BRAND.text};">${escapeHtml(payload.inquiryName)} &lt;${escapeHtml(payload.inquiryEmail)}&gt;</p>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Their reply</p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.75;color:${BRAND.text};white-space:pre-wrap;">${escapeHtml(payload.replyBody)}</p>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.greenMuted};">Original message</p>
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:${BRAND.greenMuted};white-space:pre-wrap;">${escapeHtml(payload.originalMessage)}</p>
+      ${emailCta(gmailUrl, "Reply in Gmail")}
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:${BRAND.greenMuted};">
+        Or open the <a href="${escapeHtml(adminUrl)}" style="color:${BRAND.greenMid};">admin inquiries page</a>.
+      </p>
+    `,
+  });
+
+  const text = [
+    "Someone replied to a shared inquiry using the temporary link. That link is now expired.",
+    "",
+    `Replied by: ${payload.fromName} <${payload.fromEmail}>`,
+    `Original inquiry: ${payload.inquiryName} <${payload.inquiryEmail}>`,
+    `Inquiry ID: ${payload.inquiryId}`,
+    "",
+    "Their reply:",
+    payload.replyBody,
+    "",
+    "Original message:",
+    payload.originalMessage,
+    "",
+    `Reply in Gmail: ${gmailUrl}`,
+    `Admin inbox: ${adminUrl}`,
+  ].join("\n");
+
+  return sendBrandedMail({
+    to,
+    subject,
+    html,
+    text,
+    replyTo: payload.fromEmail,
+  });
+}
+
+function buildGmailComposeUrl(toEmail: string, inquiryName: string): string {
+  const params = new URLSearchParams({
+    view: "cm",
+    fs: "1",
+    to: toEmail,
+    su: `Re: Inquiry from ${inquiryName}`,
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
 export type AdminReceiptSubmittedPayload = {
   registration: RegistrationRecord;
   eventTitle: string;
   isReupload: boolean;
 };
 
-/** Alerts the secretariat when a participant submits (or re-submits) payment proof. */
+/** Alerts the secretariat and accountant when a participant submits (or re-submits) payment proof. */
 export async function sendAdminReceiptSubmittedNotification(
   payload: AdminReceiptSubmittedPayload
 ): Promise<{ ok: boolean; error?: string }> {
-  const to = getAdminNotifyEmail() || conference.contact.email;
+  const adminTo = getAdminNotifyEmail() || conference.contact.email;
+  const accountantTo = await getAccountantNotifyEmail();
+  const recipients = Array.from(
+    new Set([adminTo, accountantTo].filter((value): value is string => Boolean(value)))
+  );
+  const to = recipients.join(", ");
   const name = participantDisplayName(payload.registration);
   const adminUrl = `${getSiteBaseUrl()}/admin/participants`;
+  const accountantUrl = await getActiveAccountantReviewUrl();
   const kindLabel = payload.isReupload ? "re-uploaded" : "uploaded";
   const subject = `Payment receipt ${kindLabel}: ${payload.registration.referenceNumber}`;
+  const reviewCta = accountantUrl
+    ? emailCta(accountantUrl, "Open accountant review")
+    : emailCta(adminUrl, "Open participants");
 
   const html = wrapEmail({
     title: subject,
@@ -836,7 +941,12 @@ export async function sendAdminReceiptSubmittedNotification(
       <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:${BRAND.text};">
         <strong>${escapeHtml(name)}</strong> ${kindLabel} payment proof for
         <strong>${escapeHtml(payload.registration.referenceNumber)}</strong>
-        (${escapeHtml(payload.eventTitle)}). Review it in the admin participants panel.
+        (${escapeHtml(payload.eventTitle)}).         Please review this payment within 3-5 days of submission.
+        ${
+          payload.isReupload
+            ? "The one-time reupload link used by the participant has now expired."
+            : ""
+        }
       </p>
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border-collapse:collapse;">
         <tr>
@@ -858,19 +968,19 @@ export async function sendAdminReceiptSubmittedNotification(
           </td>
         </tr>
       </table>
-      ${emailCta(adminUrl, "Open participants")}
+      ${reviewCta}
     `,
   });
 
   const text = [
-    `A participant ${kindLabel} payment proof.`,
+    `A participant ${kindLabel} payment proof. Please review within 3-5 days.`,
     "",
     `Participant: ${name}`,
     `Email: ${payload.registration.email}`,
     `Reference: ${payload.registration.referenceNumber}`,
     `Event: ${payload.eventTitle}`,
     "",
-    `Admin: ${adminUrl}`,
+    accountantUrl ? `Accountant review: ${accountantUrl}` : `Admin: ${adminUrl}`,
   ].join("\n");
 
   return sendBrandedMail({ to, subject, html, text });

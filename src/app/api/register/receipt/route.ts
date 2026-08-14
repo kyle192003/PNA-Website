@@ -8,7 +8,12 @@ import {
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
-import { getRegistrationByReference, submitReceipt } from "@/lib/registrations";
+import {
+  consumeReceiptReupload,
+  getReceiptReuploadError,
+  getRegistrationByReference,
+  submitReceipt,
+} from "@/lib/registrations";
 import { saveReceipt } from "@/lib/uploads";
 
 export async function POST(request: Request) {
@@ -28,6 +33,7 @@ export async function POST(request: Request) {
 
     let referenceNumber = referenceFromForm?.toUpperCase() ?? "";
     const isReupload = Boolean(token);
+    let reuploadNonce: string | undefined;
 
     if (token) {
       const verified = verifyReceiptReuploadToken(token);
@@ -35,6 +41,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: verified.error }, { status: 400 });
       }
       referenceNumber = verified.referenceNumber;
+      reuploadNonce = verified.nonce;
+      const existing = await getRegistrationByReference(referenceNumber);
+      if (!existing) {
+        return NextResponse.json({ error: "Registration not found." }, { status: 404 });
+      }
+      const reuploadError = getReceiptReuploadError(existing, verified.nonce);
+      if (reuploadError) {
+        return NextResponse.json({ error: reuploadError }, { status: 410 });
+      }
     }
 
     if (!referenceNumber) {
@@ -84,6 +99,9 @@ export async function POST(request: Request) {
 
     const receiptUrl = await saveReceipt(registration.id, file);
     const updated = await submitReceipt(referenceNumber, receiptUrl, { paymentReference });
+    if (updated && reuploadNonce) {
+      await consumeReceiptReupload(updated.id, reuploadNonce);
+    }
 
     const event = updated?.eventId ? await getEventById(updated.eventId) : null;
     const eventTitle = event?.title ?? "PNA Conference Registration";

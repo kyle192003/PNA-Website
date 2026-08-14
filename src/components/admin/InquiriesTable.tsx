@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ContactInquiry, InquiryStatus } from "@/lib/types/admin";
+import type { ContactInquiry, InquiryReply, InquiryStatus } from "@/lib/types/admin";
 import { INQUIRY_STATUS_LABELS } from "@/lib/types/admin";
 import { InquiryStatusBadge } from "@/components/admin/InquiryStatusBadge";
 import { ActionConfirmDialogs } from "@/components/ui/ActionConfirmDialogs";
@@ -13,6 +13,36 @@ import { PnaSelect } from "@/components/ui/PnaSelect";
 
 function notifyInquiriesUpdated() {
   window.dispatchEvent(new CustomEvent("admin-inquiries-updated"));
+}
+
+function getShareLinkStatus(inquiry: ContactInquiry): "active" | "used" | "expired" | null {
+  const link = inquiry.shareLink;
+  if (!link) return null;
+  if (link.usedAt) return "used";
+  if (Date.parse(link.expiresAt) <= Date.now()) return "expired";
+  return "active";
+}
+
+function latestShareReply(inquiry: ContactInquiry): InquiryReply | null {
+  const replies = inquiry.replies ?? [];
+  for (let i = replies.length - 1; i >= 0; i -= 1) {
+    if (replies[i].source === "share" && replies[i].fromEmail) return replies[i];
+  }
+  return null;
+}
+
+function gmailComposeUrl(inquiry: ContactInquiry): string {
+  const shareReply = latestShareReply(inquiry);
+  const to = shareReply?.fromEmail || inquiry.email;
+  const greetingName = (shareReply?.fromName || inquiry.name).trim().split(/\s+/)[0] || "there";
+  const params = new URLSearchParams({
+    view: "cm",
+    fs: "1",
+    to,
+    su: `Re: Inquiry from ${inquiry.name}`,
+    body: `Hi ${greetingName},\n\n`,
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
 }
 
 export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string }) {
@@ -28,6 +58,10 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [replySuccess, setReplySuccess] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
@@ -75,10 +109,113 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
     setReplyDraft("");
     setReplyError(null);
     setReplySuccess(null);
+    setShareUrl(null);
+    setShareNotice(null);
+    setShareError(null);
     requestAnimationFrame(() => setDetailOpen(true));
     if (inquiry.status === "new") {
       void markAsRead(inquiry.id, false);
     }
+    if (getShareLinkStatus(inquiry) === "active") {
+      void loadShareUrl(inquiry.id);
+    }
+  }
+
+  async function loadShareUrl(id: string) {
+    const res = await fetch(`/api/admin/inquiries/${id}/share`);
+    const data = await res.json();
+    if (!res.ok) return;
+    if (typeof data.url === "string") setShareUrl(data.url);
+    if (data.inquiry) {
+      setSelected((current) => (current?.id === data.inquiry.id ? data.inquiry : current));
+    }
+  }
+
+  async function copyText(value: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function copyShareLink(id: string) {
+    setShareBusy(true);
+    setShareError(null);
+    setShareNotice(null);
+    try {
+      let url = shareUrl;
+      if (!url) {
+        const res = await fetch(`/api/admin/inquiries/${id}/share`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not load the share link.");
+        url = typeof data.url === "string" ? data.url : null;
+        if (data.inquiry) setSelected(data.inquiry);
+      }
+      if (!url) {
+        throw new Error("This share link is no longer active. Create a new one.");
+      }
+      setShareUrl(url);
+      const copied = await copyText(url);
+      setShareNotice(copied ? "Share link copied. It expires after one reply or in 7 days." : url);
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "Could not copy the share link.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  async function createShareLink(id: string): Promise<boolean> {
+    setShareBusy(true);
+    setShareError(null);
+    setShareNotice(null);
+    try {
+      const res = await fetch(`/api/admin/inquiries/${id}/share`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not create a share link.");
+      setSelected(data.inquiry);
+      setShareUrl(data.url);
+      setInquiries((current) =>
+        current.map((inquiry) => (inquiry.id === data.inquiry.id ? data.inquiry : inquiry))
+      );
+      const copied = await copyText(data.url);
+      setShareNotice(
+        copied
+          ? "Share link copied. It expires after one reply or in 7 days."
+          : data.url
+      );
+      notifyInquiriesUpdated();
+      return true;
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "Could not create a share link.");
+      return false;
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  function requestNewShareLink(inquiry: ContactInquiry) {
+    const status = getShareLinkStatus(inquiry);
+    if (status !== "active") {
+      void createShareLink(inquiry.id);
+      return;
+    }
+
+    requestConfirm({
+      title: "Replace the current share link?",
+      message:
+        "Creating a new link will expire the one you already shared. Anyone with the old link will no longer be able to reply.",
+      confirmLabel: "Create new link",
+      variant: "danger",
+      loadingMessage: "Creating share link...",
+      successTitle: "Share link created",
+      successMessage: "The new one-time reply link is on your clipboard.",
+      action: async () => {
+        const created = await createShareLink(inquiry.id);
+        if (!created) throw new Error("Could not create a share link.");
+      },
+    });
   }
 
   async function sendReply() {
@@ -337,6 +474,68 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
               <p className="admin-detail-message-body">{selected.message}</p>
             </div>
 
+            <div className="admin-inquiry-share">
+              <p className="admin-label mb-0">One-time share link</p>
+              <p className="admin-inquiry-reply-hint">
+                Share this with someone so they can reply once using their email. The link then
+                expires, and you continue in Gmail.
+              </p>
+              {getShareLinkStatus(selected) === "active" ? (
+                <p className="admin-inquiry-share-status">
+                  Active until {new Date(selected.shareLink!.expiresAt).toLocaleString()}.
+                </p>
+              ) : getShareLinkStatus(selected) === "used" ? (
+                <p className="admin-inquiry-share-status">
+                  Used by {selected.shareLink?.usedByEmail ?? "a recipient"} on{" "}
+                  {selected.shareLink?.usedAt
+                    ? new Date(selected.shareLink.usedAt).toLocaleString()
+                    : "an earlier date"}
+                  . This link has expired.
+                </p>
+              ) : getShareLinkStatus(selected) === "expired" ? (
+                <p className="admin-inquiry-share-status">
+                  The previous link expired on{" "}
+                  {new Date(selected.shareLink!.expiresAt).toLocaleString()}.
+                </p>
+              ) : (
+                <p className="admin-inquiry-share-status">No share link yet.</p>
+              )}
+              {shareError ? <p className="admin-inquiry-reply-error">{shareError}</p> : null}
+              {shareNotice ? <p className="admin-inquiry-reply-success">{shareNotice}</p> : null}
+              <div className="admin-inquiry-reply-actions">
+                {getShareLinkStatus(selected) === "active" ? (
+                  <button
+                    type="button"
+                    className="admin-action-btn admin-action-btn--paid"
+                    onClick={() => void copyShareLink(selected.id)}
+                    disabled={shareBusy || loading || replySending}
+                  >
+                    {shareBusy ? "Working..." : "Copy share link"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="admin-action-btn admin-action-btn--pending"
+                  onClick={() => requestNewShareLink(selected)}
+                  disabled={shareBusy || loading || replySending}
+                >
+                  {getShareLinkStatus(selected) === "active"
+                    ? "New link"
+                    : getShareLinkStatus(selected)
+                      ? "Create new link"
+                      : "Create share link"}
+                </button>
+                <a
+                  className="admin-action-btn admin-action-btn--paid"
+                  href={gmailComposeUrl(selected)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Reply in Gmail
+                </a>
+              </div>
+            </div>
+
             <div className="admin-inquiry-reply">
               <label className="admin-label" htmlFor="inquiry-reply">
                 Reply by email
@@ -355,7 +554,8 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
                 maxLength={5000}
               />
               <p className="admin-inquiry-reply-hint">
-                Sends through the website SMTP mailer using the branded PNA template.
+                Optional website email if you still want to send a branded template. After a
+                one-time share reply, continue the conversation in Gmail.
               </p>
               {replyError ? <p className="admin-inquiry-reply-error">{replyError}</p> : null}
               {replySuccess ? <p className="admin-inquiry-reply-success">{replySuccess}</p> : null}
@@ -372,11 +572,13 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
 
               {(selected.replies?.length ?? 0) > 0 ? (
                 <div className="admin-inquiry-reply-history">
-                  <p className="admin-label mb-0">Sent replies</p>
+                  <p className="admin-label mb-0">Replies</p>
                   {[...(selected.replies ?? [])].reverse().map((reply) => (
                     <div key={reply.id} className="admin-inquiry-reply-item">
                       <p className="admin-inquiry-reply-meta">
-                        Sent {new Date(reply.sentAt).toLocaleString()}
+                        {reply.source === "share"
+                          ? `Reply from ${reply.fromName || "recipient"}${reply.fromEmail ? ` · ${reply.fromEmail}` : ""} · ${new Date(reply.sentAt).toLocaleString()}`
+                          : `Sent ${new Date(reply.sentAt).toLocaleString()}`}
                       </p>
                       <p className="admin-inquiry-reply-body">{reply.body}</p>
                     </div>

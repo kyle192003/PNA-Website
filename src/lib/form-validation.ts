@@ -141,6 +141,41 @@ export function validateContactInquiry(data: ContactInquiryFormData): ContactInq
   return errors;
 }
 
+export interface InquiryShareReplyFormData {
+  name: string;
+  email: string;
+  message: string;
+}
+
+export type InquiryShareReplyFieldErrors = Partial<
+  Record<keyof InquiryShareReplyFormData, string>
+>;
+
+export function validateInquiryShareReply(
+  data: InquiryShareReplyFormData
+): InquiryShareReplyFieldErrors {
+  const errors: InquiryShareReplyFieldErrors = {};
+
+  if (!data.name.trim()) {
+    errors.name = "Full name is required.";
+  } else if (data.name.trim().length < 2) {
+    errors.name = "Please enter your full name.";
+  } else if (data.name.trim().length > 100) {
+    errors.name = "Name must be at most 100 characters.";
+  }
+
+  const emailError = getEmailValidationError(data.email, "E-mail");
+  if (emailError) errors.email = emailError;
+
+  if (!data.message.trim()) {
+    errors.message = "Reply is required.";
+  } else if (data.message.trim().length > 5000) {
+    errors.message = "Reply must be 5000 characters or fewer.";
+  }
+
+  return errors;
+}
+
 export function getFirstValidationError(
   errors: Record<string, string | undefined>
 ): string | null {

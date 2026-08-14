@@ -18,6 +18,7 @@ import { PnaSelect } from "@/components/ui/PnaSelect";
 import type { ParticipantInsightStats } from "@/lib/financial-types";
 import { formatPeso } from "@/lib/registration-fees";
 import { conference } from "@/lib/conference";
+import { RECEIPT_ISSUE_REASONS } from "@/lib/receipt-issue-reasons";
 
 const statusConfirmCopy: Record<
   PaymentStatus,
@@ -80,12 +81,6 @@ const statusSuccessCopy: Record<
 };
 
 /** One-click reasons: selecting one flags the issue and emails the participant. */
-const RECEIPT_ISSUE_REASONS = [
-  "Receipt is blurry — please re-upload a clearer photo.",
-  "Reference number is missing or unreadable on the receipt.",
-  "Amount does not match the registration fee.",
-  "Incomplete proof — please upload the full receipt/screenshot.",
-] as const;
 
 export function ParticipantsTable({
   events,
@@ -113,6 +108,8 @@ export function ParticipantsTable({
   const [adminNotes, setAdminNotes] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
@@ -340,6 +337,61 @@ export function ParticipantsTable({
     requestStatusUpdate("receipt_issue", reason);
   }
 
+  async function copyAccountantLink(createNew: boolean): Promise<boolean> {
+    setShareBusy(true);
+    setShareNotice(null);
+    try {
+      let url: string | null = null;
+      if (!createNew) {
+        const current = await fetch("/api/admin/accountant-share");
+        const currentData = await current.json();
+        if (current.ok && typeof currentData.url === "string") url = currentData.url;
+      }
+      if (!url) {
+        const res = await fetch("/api/admin/accountant-share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not create the accountant link.");
+        url = data.url;
+      }
+      if (!url) throw new Error("Could not create the accountant link.");
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareNotice(
+          "Accountant review link copied. It stays valid for 5 days and shows all payments waiting for approval."
+        );
+      } catch {
+        setShareNotice(url);
+      }
+      return true;
+    } catch (error) {
+      setShareNotice(error instanceof Error ? error.message : "Could not create the accountant link.");
+      return false;
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  function requestNewAccountantLink() {
+    requestConfirm({
+      title: "Replace the accountant review link?",
+      message:
+        "Creating a new link will expire the one already shared. The accountant will need the new URL to review pending payments.",
+      confirmLabel: "Create new link",
+      variant: "danger",
+      loadingMessage: "Creating accountant link...",
+      successTitle: "Accountant link created",
+      successMessage: "The new 5-day review link is on your clipboard.",
+      action: async () => {
+        const created = await copyAccountantLink(true);
+        if (!created) throw new Error("Could not create the accountant link.");
+      },
+    });
+  }
+
   return (
     <div className="admin-page admin-participants">
       <LoadingOverlay show={loading} scope="local" variant="form" />
@@ -348,10 +400,29 @@ export function ParticipantsTable({
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title font-display">Participants</h1>
-          <p className="admin-muted">Track ticket purchases and review payment receipts.</p>
+          <p className="admin-muted">
+            Track ticket purchases and review payment receipts.
+            {shareNotice ? ` ${shareNotice}` : ""}
+          </p>
         </div>
 
         <div className="admin-page-header-actions">
+          <button
+            type="button"
+            className="admin-action-btn admin-action-btn--pending"
+            onClick={() => void copyAccountantLink(false)}
+            disabled={shareBusy || loading}
+          >
+            {shareBusy ? "Working..." : "Copy accountant link"}
+          </button>
+          <button
+            type="button"
+            className="admin-link-btn"
+            onClick={() => requestNewAccountantLink()}
+            disabled={shareBusy || loading}
+          >
+            New accountant link
+          </button>
           <label className="admin-participants-search">
             <svg className="admin-participants-search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.75" />

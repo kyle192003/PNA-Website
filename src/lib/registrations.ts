@@ -21,6 +21,7 @@ import type {
   GroupRegistrationInput,
   MembershipType,
   PaymentStatus,
+  ReceiptReuploadLink,
   RegistrationGroupMemberNote,
   RegistrationGroupRole,
   RegistrationInput,
@@ -31,6 +32,10 @@ import type {
   SponsorConsent,
 } from "@/lib/types/admin";
 import { SPECIAL_ROLE_LABELS } from "@/lib/types/admin";
+import {
+  RECEIPT_REUPLOAD_TTL_MS,
+  createReceiptReuploadNonce,
+} from "@/lib/receipt-reupload-token";
 
 const REGISTRATIONS_FILENAME = "registrations.json";
 
@@ -38,6 +43,18 @@ export { MAX_GROUP_SIZE };
 
 function createCheckInToken(): string {
   return randomBytes(24).toString("base64url");
+}
+
+function normalizeReceiptReupload(raw: unknown): ReceiptReuploadLink | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Partial<ReceiptReuploadLink>;
+  if (!value.nonce || !value.createdAt || !value.expiresAt) return null;
+  return {
+    nonce: String(value.nonce),
+    createdAt: String(value.createdAt),
+    expiresAt: String(value.expiresAt),
+    usedAt: value.usedAt ? String(value.usedAt) : null,
+  };
 }
 
 function deriveLegacyPayment(raw: RegistrationRecord): {
@@ -192,6 +209,7 @@ function normalizeRegistration(raw: RegistrationRecord): RegistrationRecord {
     paymentReference: raw.paymentReference ?? "",
     paymentNotes: raw.paymentNotes ?? "",
     adminNotes: raw.adminNotes ?? "",
+    receiptReupload: normalizeReceiptReupload(raw.receiptReupload),
     groupId: raw.groupId ?? null,
     groupRole:
       raw.groupRole === "primary" || raw.groupRole === "member" ? raw.groupRole : null,
@@ -714,6 +732,7 @@ export async function updateRegistrationPayment(
     bir2303Url?: string | null;
     bir2307Url?: string | null;
     seniorPwdIdUrl?: string | null;
+    receiptReupload?: ReceiptReuploadLink | null;
   }
 ): Promise<RegistrationRecord | null> {
   const registrations = await readRegistrations();
@@ -737,6 +756,9 @@ export async function updateRegistrationPayment(
     ...(updates.bir2303Url !== undefined ? { bir2303Url: updates.bir2303Url } : {}),
     ...(updates.bir2307Url !== undefined ? { bir2307Url: updates.bir2307Url } : {}),
     ...(updates.seniorPwdIdUrl !== undefined ? { seniorPwdIdUrl: updates.seniorPwdIdUrl } : {}),
+    ...(updates.receiptReupload !== undefined
+      ? { receiptReupload: updates.receiptReupload }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -809,6 +831,53 @@ export async function updateRegistrationPaymentCascading(
   // Keep the originally requested record first for callers.
   updated.sort((a, b) => (a.id === id ? -1 : b.id === id ? 1 : 0));
   return updated;
+}
+
+export async function issueReceiptReuploadLink(
+  id: string
+): Promise<RegistrationRecord | null> {
+  const now = new Date();
+  const receiptReupload: ReceiptReuploadLink = {
+    nonce: createReceiptReuploadNonce(),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + RECEIPT_REUPLOAD_TTL_MS).toISOString(),
+    usedAt: null,
+  };
+  return updateRegistrationPayment(id, { receiptReupload });
+}
+
+export function getReceiptReuploadError(
+  registration: RegistrationRecord,
+  nonce?: string
+): string | null {
+  const link = registration.receiptReupload;
+  if (!nonce) return null;
+  if (!link || link.nonce !== nonce) {
+    return "This reupload link is no longer valid.";
+  }
+  if (link.usedAt) {
+    return "This reupload link has already been used and has expired.";
+  }
+  if (Date.parse(link.expiresAt) <= Date.now()) {
+    return "This reupload link has expired. Contact the secretariat for a new one.";
+  }
+  return null;
+}
+
+export async function consumeReceiptReupload(
+  id: string,
+  nonce?: string
+): Promise<RegistrationRecord | null> {
+  const registration = await getRegistrationById(id);
+  if (!registration) return null;
+  const link = registration.receiptReupload;
+  if (!nonce || !link || link.nonce !== nonce) return registration;
+  return updateRegistrationPayment(id, {
+    receiptReupload: {
+      ...link,
+      usedAt: new Date().toISOString(),
+    },
+  });
 }
 
 export async function markRegistrationCheckedIn(

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
 
   let inquiries = await getAllInquiries();
 
-  if (status === "new" || status === "read") {
+  if (status === "new" || status === "read" || status === "replied") {
     inquiries = inquiries.filter((inquiry) => inquiry.status === status);
   }
 

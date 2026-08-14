@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { formatParticipantName } from "@/lib/participant-name";
+import { getReceiptReuploadError, getRegistrationByReference } from "@/lib/registrations";
 import { verifyReceiptReuploadToken } from "@/lib/receipt-reupload-token";
-import { getRegistrationByReference } from "@/lib/registrations";
 import { PAYMENT_STATUS_LABELS } from "@/lib/types/admin";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +20,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Registration not found." }, { status: 404 });
   }
 
+  const reuploadError = getReceiptReuploadError(registration, verified.nonce);
+  if (reuploadError) {
+    return NextResponse.json({ error: reuploadError }, { status: 410 });
+  }
+
   const canUpload =
-    registration.paymentStatus === "pending" ||
-    registration.paymentStatus === "receipt_issue" ||
-    registration.paymentStatus === "rejected" ||
-    registration.paymentStatus === "receipt_submitted";
+    !reuploadError &&
+    (registration.paymentStatus === "pending" ||
+      registration.paymentStatus === "receipt_issue" ||
+      registration.paymentStatus === "rejected" ||
+      registration.paymentStatus === "receipt_submitted");
 
   return NextResponse.json({
     referenceNumber: registration.referenceNumber,
