@@ -133,11 +133,10 @@ function validatePrimaryFields(
     return { error: "PNA ID number is required." };
   }
   if (
-    !isNonMember &&
-    (typeof body.pnaZone !== "string" ||
-      !body.pnaZone.trim() ||
-      typeof body.pnaChapter !== "string" ||
-      !body.pnaChapter.trim())
+    typeof body.pnaZone !== "string" ||
+    !body.pnaZone.trim() ||
+    typeof body.pnaChapter !== "string" ||
+    !body.pnaChapter.trim()
   ) {
     return { error: "PNA zone/region and chapter are required." };
   }
@@ -214,8 +213,8 @@ function validatePrimaryFields(
       position: String(body.position ?? ""),
       membershipType: body.membershipType as MembershipType,
       pnaIdNumber: isNonMember ? "" : String(body.pnaIdNumber ?? ""),
-      pnaZone: isNonMember ? "" : String(body.pnaZone ?? ""),
-      pnaChapter: isNonMember ? "" : String(body.pnaChapter ?? ""),
+      pnaZone: String(body.pnaZone ?? ""),
+      pnaChapter: String(body.pnaChapter ?? ""),
       prcLicenseNumber: String(body.prcLicenseNumber ?? ""),
       prcInitialRegistrationDate: String(body.prcInitialRegistrationDate ?? ""),
       prcExpirationDate: String(body.prcExpirationDate ?? ""),
@@ -385,20 +384,13 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
-        const memberIsNonMember = raw.membershipType === "non_member";
-        if (
-          !memberIsNonMember &&
-          (typeof raw.pnaZone !== "string" || !raw.pnaZone.trim())
-        ) {
+        if (typeof raw.pnaZone !== "string" || !raw.pnaZone.trim()) {
           return NextResponse.json(
             { error: `${label}: PNA zone/region is required.` },
             { status: 400 }
           );
         }
-        if (
-          !memberIsNonMember &&
-          (typeof raw.pnaChapter !== "string" || !raw.pnaChapter.trim())
-        ) {
+        if (typeof raw.pnaChapter !== "string" || !raw.pnaChapter.trim()) {
           return NextResponse.json(
             { error: `${label}: PNA chapter is required.` },
             { status: 400 }
@@ -443,8 +435,8 @@ export async function POST(request: Request) {
           phone: contact.phone,
           dateOfBirth: String(raw.dateOfBirth ?? ""),
           membershipType: raw.membershipType as MembershipType,
-          pnaZone: memberIsNonMember ? "" : String(raw.pnaZone ?? ""),
-          pnaChapter: memberIsNonMember ? "" : String(raw.pnaChapter ?? ""),
+          pnaZone: String(raw.pnaZone ?? ""),
+          pnaChapter: String(raw.pnaChapter ?? ""),
           prcLicenseNumber: String(raw.prcLicenseNumber ?? ""),
           prcInitialRegistrationDate: String(raw.prcInitialRegistrationDate ?? ""),
           prcExpirationDate: String(raw.prcExpirationDate ?? ""),

@@ -308,13 +308,11 @@ function getFieldError(field: FormFieldKey, data: FormData): string | undefined 
       if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaIdNumber.trim() ? undefined : "PNA ID number is required";
     case "pnaZone":
-      if (isNonMemberType(data.membershipType)) return undefined;
       return data.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaNcrZone":
-      if (isNonMemberType(data.membershipType) || !isNcrRegion(data.pnaZone)) return undefined;
+      if (!isNcrRegion(data.pnaZone)) return undefined;
       return data.pnaNcrZone ? undefined : "Please select an NCR zone";
     case "pnaChapter":
-      if (isNonMemberType(data.membershipType)) return undefined;
       if (isNcrRegion(data.pnaZone) && !data.pnaNcrZone) return undefined;
       if (!data.pnaChapter.trim()) return "PNA chapter is required";
       if (
@@ -597,15 +595,13 @@ function getMemberFieldError(
     case "membershipType":
       return member.membershipType ? undefined : "Please select a membership type";
     case "pnaZone":
-      if (isNonMemberType(member.membershipType)) return undefined;
       return member.pnaZone ? undefined : "Please select a PNA zone/region";
     case "pnaNcrZone":
-      if (isNonMemberType(member.membershipType) || !isNcrRegion(member.pnaZone)) {
+      if (!isNcrRegion(member.pnaZone)) {
         return undefined;
       }
       return member.pnaNcrZone ? undefined : "Please select an NCR zone";
     case "pnaChapter":
-      if (isNonMemberType(member.membershipType)) return undefined;
       if (isNcrRegion(member.pnaZone) && !member.pnaNcrZone) return undefined;
       if (!member.pnaChapter.trim()) return "PNA chapter is required";
       if (
@@ -696,7 +692,7 @@ function getSectionStatus(
 
   if (label === "Membership") {
     const fields: FormFieldKey[] = isNonMemberType(data.membershipType)
-      ? ["membershipType"]
+      ? ["membershipType", "pnaZone", "pnaNcrZone", "pnaChapter"]
       : MEMBERSHIP_FIELDS;
     const errs = fields.map((field) => getFieldError(field, data));
     const isComplete = errs.every((error) => !error);
@@ -1953,10 +1949,8 @@ export function RegistrationForm({
             pnaIdNumber: isNonMemberType(formData.membershipType)
               ? ""
               : formData.pnaIdNumber.trim(),
-            pnaZone: isNonMemberType(formData.membershipType) ? "" : formData.pnaZone,
-            pnaChapter: isNonMemberType(formData.membershipType)
-              ? ""
-              : formData.pnaChapter.trim(),
+            pnaZone: formData.pnaZone,
+            pnaChapter: formData.pnaChapter.trim(),
             prcLicenseNumber: formData.prcLicenseNumber.trim(),
             prcInitialRegistrationDate: formData.prcInitialRegistrationDate,
             prcExpirationDate: formData.prcExpirationDate,
@@ -2014,10 +2008,8 @@ export function RegistrationForm({
                 phone: toPhMobileInternational(member.phone) ?? member.phone,
                 dateOfBirth: member.dateOfBirth,
                 membershipType: member.membershipType as MembershipType,
-                pnaZone: isNonMemberType(member.membershipType) ? "" : member.pnaZone,
-                pnaChapter: isNonMemberType(member.membershipType)
-                  ? ""
-                  : member.pnaChapter.trim(),
+                pnaZone: member.pnaZone,
+                pnaChapter: member.pnaChapter.trim(),
                 prcLicenseNumber: member.prcLicenseNumber.trim(),
                 prcInitialRegistrationDate: member.prcInitialRegistrationDate,
                 prcExpirationDate: member.prcExpirationDate,
@@ -2143,9 +2135,6 @@ export function RegistrationForm({
             ...prev,
             membershipType,
             pnaIdNumber: "",
-            pnaZone: "",
-            pnaNcrZone: "",
-            pnaChapter: "",
             registrationRate: "regular",
             seniorPwdIdNumber: "",
           };
@@ -2353,9 +2342,6 @@ export function RegistrationForm({
             return {
               ...member,
               membershipType,
-              pnaZone: "",
-              pnaNcrZone: "",
-              pnaChapter: "",
               sameAffiliationAsPrimary: false,
               registrationRate: "regular" as const,
               seniorPwdIdNumber: "",
@@ -2713,10 +2699,7 @@ export function RegistrationForm({
                     />
                   </FadeReveal>
                   <FadeReveal
-                    show={
-                      !isNonMemberType(formData.membershipType) &&
-                      Boolean(formData.membershipType)
-                    }
+                    show={Boolean(formData.membershipType)}
                     className="registration-membership-cell registration-fade-reveal--flush"
                   >
                     <RegionSelectField
@@ -2734,10 +2717,7 @@ export function RegistrationForm({
                     />
                   </FadeReveal>
                   <FadeReveal
-                    show={
-                      !isNonMemberType(formData.membershipType) &&
-                      Boolean(formData.membershipType)
-                    }
+                    show={Boolean(formData.membershipType)}
                     className="registration-membership-cell registration-fade-reveal--flush"
                   >
                     <SelectField
@@ -3327,10 +3307,7 @@ export function RegistrationForm({
                                 </FadeReveal>
                               </div>
                               <FadeReveal
-                                show={
-                                  !isNonMemberType(member.membershipType) &&
-                                  Boolean(member.membershipType)
-                                }
+                                show={Boolean(member.membershipType)}
                                 className="registration-membership-cell registration-fade-reveal--flush"
                               >
                                 <RegionSelectField
@@ -3354,10 +3331,7 @@ export function RegistrationForm({
                                 />
                               </FadeReveal>
                               <FadeReveal
-                                show={
-                                  !isNonMemberType(member.membershipType) &&
-                                  Boolean(member.membershipType)
-                                }
+                                show={Boolean(member.membershipType)}
                                 className="registration-membership-cell registration-fade-reveal--flush"
                               >
                                 <SelectField
