@@ -11,6 +11,30 @@ import { isValidEmail } from "@/lib/form-validation";
 const EMAIL_VALIDITY_NOTE =
   "Please ensure that you enter a VALID AND WORKING EMAIL ADDRESS. All reference numbers and confirmation emails shall be sent through the email address you used to register.";
 
+function EmailVerifiedMark() {
+  return (
+    <span className="email-verified-badge" role="status">
+      <svg
+        className="email-verified-badge-icon"
+        width={14}
+        height={14}
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M5 13l4 4L19 7"
+          stroke="currentColor"
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      Verified
+    </span>
+  );
+}
+
 function ConfirmEmailInput({
   id,
   value,
@@ -92,14 +116,20 @@ export function EmailConfirmField({
   const confirmId = `${id}-confirm`;
   const [emailFocused, setEmailFocused] = useState(false);
   const suggestion = getSuggestedEmailDomain(value);
-  const showConfirm = !disabled && isValidEmail(value) && !suggestion;
+  const needsConfirm = !disabled && isValidEmail(value) && !suggestion;
+  const isVerified =
+    needsConfirm &&
+    Boolean(confirmValue.trim()) &&
+    !getEmailConfirmationError(value, confirmValue);
+  const showConfirm = needsConfirm && !isVerified;
   const showValidityNote =
     variant === "registration" &&
     !disabled &&
     emailFocused &&
     value.trim().length > 0 &&
     !suggestion &&
-    !showConfirm;
+    !showConfirm &&
+    !isVerified;
   const domainError = Boolean(error && !showConfirm);
   const confirmMismatch =
     showConfirm && confirmValue.trim()
@@ -133,6 +163,7 @@ export function EmailConfirmField({
         <label htmlFor={id} className="contact-field-label">
           {label}
           {required ? <span className="contact-field-required">*</span> : null}
+          {isVerified ? <EmailVerifiedMark /> : null}
         </label>
         <div className="email-confirm-wrap">
           <input
@@ -197,6 +228,7 @@ export function EmailConfirmField({
         {label}{" "}
         {required ? <span className="text-accent">*</span> : null}
         {optional ? <span className="registration-form-optional"> (Optional)</span> : null}
+        {isVerified ? <EmailVerifiedMark /> : null}
       </label>
       <div className="email-confirm-wrap">
         <input
