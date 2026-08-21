@@ -158,7 +158,7 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
       }
       setShareUrl(url);
       const copied = await copyText(url);
-      setShareNotice(copied ? "Share link copied. It expires after one reply or in 7 days." : url);
+      setShareNotice(copied ? "Link copied." : "Copied link unavailable. Try again.");
     } catch (error) {
       setShareError(error instanceof Error ? error.message : "Could not copy the share link.");
     } finally {
@@ -180,11 +180,7 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
         current.map((inquiry) => (inquiry.id === data.inquiry.id ? data.inquiry : inquiry))
       );
       const copied = await copyText(data.url);
-      setShareNotice(
-        copied
-          ? "Share link copied. It expires after one reply or in 7 days."
-          : data.url
-      );
+      setShareNotice(copied ? "Link copied." : "Link created. Copy it again.");
       notifyInquiriesUpdated();
       return true;
     } catch (error) {
@@ -204,13 +200,12 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
 
     requestConfirm({
       title: "Replace the current share link?",
-      message:
-        "Creating a new link will expire the one you already shared. Anyone with the old link will no longer be able to reply.",
+      message: "The old share link will stop working.",
       confirmLabel: "Create new link",
       variant: "danger",
       loadingMessage: "Creating share link...",
       successTitle: "Share link created",
-      successMessage: "The new one-time reply link is on your clipboard.",
+      successMessage: "Link copied.",
       action: async () => {
         const created = await createShareLink(inquiry.id);
         if (!created) throw new Error("Could not create a share link.");
@@ -477,26 +472,20 @@ export function InquiriesTable({ initialQuery = "" }: { initialQuery?: string })
             <div className="admin-inquiry-share">
               <p className="admin-label mb-0">One-time share link</p>
               <p className="admin-inquiry-reply-hint">
-                Share this with someone so they can reply once using their email. The link then
-                expires, and you continue in Gmail.
+                Lets one person reply once. Then continue in Gmail.
               </p>
               {getShareLinkStatus(selected) === "active" ? (
                 <p className="admin-inquiry-share-status">
-                  Active until {new Date(selected.shareLink!.expiresAt).toLocaleString()}.
+                  Active until {new Date(selected.shareLink!.expiresAt).toLocaleDateString()}.
                 </p>
               ) : getShareLinkStatus(selected) === "used" ? (
                 <p className="admin-inquiry-share-status">
-                  Used by {selected.shareLink?.usedByEmail ?? "a recipient"} on{" "}
-                  {selected.shareLink?.usedAt
-                    ? new Date(selected.shareLink.usedAt).toLocaleString()
-                    : "an earlier date"}
-                  . This link has expired.
+                  Used
+                  {selected.shareLink?.usedByEmail ? ` by ${selected.shareLink.usedByEmail}` : ""}.
+                  Link expired.
                 </p>
               ) : getShareLinkStatus(selected) === "expired" ? (
-                <p className="admin-inquiry-share-status">
-                  The previous link expired on{" "}
-                  {new Date(selected.shareLink!.expiresAt).toLocaleString()}.
-                </p>
+                <p className="admin-inquiry-share-status">Previous link expired.</p>
               ) : (
                 <p className="admin-inquiry-share-status">No share link yet.</p>
               )}
