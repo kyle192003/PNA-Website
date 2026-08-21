@@ -275,7 +275,8 @@ export function AccountantSharePanel({
         body: JSON.stringify({
           action: "send",
           sendEmail: true,
-          createNewLink: true,
+          // Reuse the active link until the admin-set expiry. Only mint a new URL if expired.
+          createNewLink: false,
           ...settingsPayload(),
         }),
       });

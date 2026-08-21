@@ -229,11 +229,23 @@ export async function createAccountantShareLink(
       ? normalizeEmails(options.notifyEmails)
       : existing.notifyEmails;
 
+  const weeklySend =
+    options.weeklySend !== undefined && options.weeklySend !== null
+      ? normalizeWeekly(options.weeklySend, existing.weeklySend)
+      : existing.weeklySend;
+
+  const now = new Date();
+  const reuse =
+    options.reuseActiveLink === true &&
+    getAccountantShareStatus(existing) === "active" &&
+    Boolean(existing.nonce);
+
   let expiryDays = clampExpiryDays(
     options.expiryDays !== undefined ? options.expiryDays : existing.expiryDays
   );
-  let expiresAtMs = Date.now() + expiryDays * 24 * 60 * 60 * 1000;
+  let expiresAtMs: number | null = null;
 
+  // Explicit admin/calendar expiry always wins when it is still in the future.
   if (options.expiresAt) {
     const parsed = Date.parse(options.expiresAt);
     if (Number.isFinite(parsed) && parsed > Date.now()) {
@@ -242,16 +254,15 @@ export async function createAccountantShareLink(
     }
   }
 
-  const weeklySend =
-    options.weeklySend !== undefined && options.weeklySend !== null
-      ? normalizeWeekly(options.weeklySend, existing.weeklySend)
-      : existing.weeklySend;
-
-  const now = new Date();
-  const reuse =
-    options.reuseActiveLink &&
-    getAccountantShareStatus(existing) === "active" &&
-    existing.nonce;
+  // Reusing an active link must keep the admin-set expiry unless a new expiresAt was provided.
+  // This stops receipt alerts / resends from restarting the clock or minting a new URL early.
+  if (expiresAtMs == null) {
+    if (reuse && existing.expiresAt && Date.parse(existing.expiresAt) > Date.now()) {
+      expiresAtMs = Date.parse(existing.expiresAt);
+    } else {
+      expiresAtMs = Date.now() + expiryDays * 24 * 60 * 60 * 1000;
+    }
+  }
 
   const share: AccountantShareRecord = {
     nonce: reuse ? existing.nonce : createAccountantShareNonce(),
@@ -276,7 +287,8 @@ export async function createAccountantShareLink(
 
 /**
  * Guarantees a non-expired review URL before emailing accounting.
- * Renews automatically when the current link is missing or expired.
+ * Renews only when the current link is missing or past the admin-set expiry.
+ * An empty review queue never invalidates the link.
  */
 export async function ensureFreshAccountantShareForEmail(
   options: CreateAccountantShareOptions = {}
@@ -285,7 +297,6 @@ export async function ensureFreshAccountantShareForEmail(
   const isActive = current.status === "active" && Boolean(current.url);
   const forceNew = options.reuseActiveLink === false;
 
-  // Expired / missing links must never be emailed — mint a fresh URL.
   if (!isActive || forceNew) {
     const renewed = await createAccountantShareLink({
       ...options,
@@ -294,9 +305,12 @@ export async function ensureFreshAccountantShareForEmail(
     return { ...renewed, renewed: true };
   }
 
+  // Keep the same URL + admin expiry; only refresh stored emails/schedule if provided.
   const refreshed = await createAccountantShareLink({
     ...options,
     reuseActiveLink: true,
+    // Do not pass a blank expiresAt that would restart the clock.
+    expiresAt: options.expiresAt ?? undefined,
   });
   return { ...refreshed, renewed: false };
 }

@@ -265,7 +265,11 @@ export function AccountantReviewPanel({ token: tokenProp }: { token?: string }) 
 
         {queue.length === 0 ? (
           <p className="evaluation-card-done mb-0">
-            There are no receipts waiting for approval right now.
+            There are no receipts waiting for approval right now. This review link stays valid until{" "}
+            {expiresAt
+              ? new Date(expiresAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })
+              : "the expiry date set by the admin"}
+            . New receipts will appear here automatically.
           </p>
         ) : (
           <div className="accountant-layout">

@@ -181,7 +181,7 @@ export async function POST(request: Request) {
 
     const weeklySend = parseWeeklySend(data.weeklySend);
     const sendEmail = booleanField(data.sendEmail) === true;
-    const createNewLink = booleanField(data.createNewLink) !== false;
+    const createNewLink = booleanField(data.createNewLink) === true;
 
     if (action === "send" || sendEmail) {
       const sent = await sendAccountantShareNow({
