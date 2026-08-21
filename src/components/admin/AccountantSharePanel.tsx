@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatLongDate, todayIsoInTimeZone } from "@/lib/event-date";
 import { getEmailValidationError } from "@/lib/form-validation";
+import { SuccessDialog } from "@/components/ui/MessageDialog";
 
 const WEEKDAY_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
 const WEEKDAY_FULL = [
@@ -107,16 +108,17 @@ function formatExpiry(iso: string | null): string {
 export function AccountantSharePanel({
   open,
   onClose,
-  onNotice,
 }: {
   open: boolean;
   onClose: () => void;
-  onNotice: (message: string) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [sendSuccessOpen, setSendSuccessOpen] = useState(false);
+  const [sendSuccessMessage, setSendSuccessMessage] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
   const [emailDraft, setEmailDraft] = useState("");
   const [expiryDate, setExpiryDate] = useState(() => addDaysIso(todayIsoInTimeZone(), 5));
@@ -149,6 +151,7 @@ export function AccountantSharePanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setSuccess(null);
     setEmailDraft("");
 
     void (async () => {
@@ -238,7 +241,9 @@ export function AccountantSharePanel({
   async function saveSettings() {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
+      // PATCH only — never emails accounting.
       const res = await fetch("/api/admin/accountant-share", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -247,7 +252,7 @@ export function AccountantSharePanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save settings.");
       setShare(data as ShareState);
-      onNotice(data.message ?? "Accounting settings saved.");
+      setSuccess("Settings saved. No email was sent.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save settings.");
     } finally {
@@ -255,52 +260,14 @@ export function AccountantSharePanel({
     }
   }
 
-  async function copyLink(createNew: boolean) {
-    setBusy(true);
-    setError(null);
-    try {
-      let url: string | null = null;
-      if (!createNew) {
-        const current = await fetch("/api/admin/accountant-share");
-        const currentData = await current.json();
-        if (current.ok && typeof currentData.url === "string") url = currentData.url;
-      }
-      if (!url) {
-        const res = await fetch("/api/admin/accountant-share", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "create",
-            createNewLink: true,
-            ...settingsPayload(),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Could not create the accountant link.");
-        setShare(data as ShareState);
-        url = data.url;
-      }
-      if (!url) throw new Error("Could not create the accountant link.");
-      try {
-        await navigator.clipboard.writeText(url);
-        onNotice(`Accountant review link copied. Expires ${formatLongDate(expiryDate)}.`);
-      } catch {
-        onNotice(url);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not copy the accountant link.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function sendToAccounting(createNewLink: boolean) {
+  async function sendToAccounting() {
     if (!emails.length) {
       setError("Add at least one accounting email before sending.");
       return;
     }
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       const res = await fetch("/api/admin/accountant-share", {
         method: "POST",
@@ -308,18 +275,21 @@ export function AccountantSharePanel({
         body: JSON.stringify({
           action: "send",
           sendEmail: true,
-          createNewLink,
+          createNewLink: true,
           ...settingsPayload(),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not email the accounting link.");
       setShare(data as ShareState);
-      onNotice(
-        data.message ??
-          `Accounting email sent${data.pendingCount != null ? ` (${data.pendingCount} pending)` : ""}. The message includes the link expiry date.`
+      const recipients = Array.isArray(data.notifyEmails)
+        ? data.notifyEmails.join(", ")
+        : emails.join(", ");
+      setSendSuccessMessage(
+        `The pending-payments review link was emailed to ${recipients}. The email includes the expiry date (${formatLongDate(expiryDate)}).`
       );
       onClose();
+      setSendSuccessOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not email the accounting link.");
     } finally {
@@ -333,9 +303,18 @@ export function AccountantSharePanel({
     setViewMonth(date.getUTCMonth());
   }
 
-  if (!open || !mounted) return null;
+  if (!mounted) return null;
 
-  return createPortal(
+  return (
+    <>
+      <SuccessDialog
+        open={sendSuccessOpen}
+        title="Email sent"
+        message={sendSuccessMessage}
+        onClose={() => setSendSuccessOpen(false)}
+      />
+      {open
+        ? createPortal(
     <div className="admin-accountant-modal" role="presentation">
       <button
         type="button"
@@ -376,6 +355,7 @@ export function AccountantSharePanel({
         ) : (
           <div className="admin-accountant-modal-body">
             {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
+            {success ? <div className="admin-alert admin-alert--success">{success}</div> : null}
 
             <section className="admin-accountant-section">
               <h3 className="admin-accountant-section-title">1. Accounting email</h3>
@@ -587,18 +567,10 @@ export function AccountantSharePanel({
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => void sendToAccounting(true)}
+                onClick={() => void sendToAccounting()}
                 disabled={busy || !emails.length}
               >
                 {busy ? "Sending…" : "Send email to accounting now"}
-              </button>
-              <button
-                type="button"
-                className="admin-action-btn admin-action-btn--pending"
-                onClick={() => void sendToAccounting(false)}
-                disabled={busy || !emails.length}
-              >
-                {busy ? "Working…" : "Email current link"}
               </button>
               <button
                 type="button"
@@ -606,21 +578,20 @@ export function AccountantSharePanel({
                 onClick={() => void saveSettings()}
                 disabled={busy}
               >
-                Save settings
-              </button>
-              <button
-                type="button"
-                className="admin-link-btn"
-                onClick={() => void copyLink(false)}
-                disabled={busy}
-              >
-                Copy link only
+                Save settings only
               </button>
             </div>
+            <p className="admin-field-help mb-0">
+              Save settings only updates emails, expiry, and weekly schedule. It does not send an
+              email.
+            </p>
           </div>
         )}
       </div>
     </div>,
-    document.body
+            document.body
+          )
+        : null}
+    </>
   );
 }

@@ -126,7 +126,8 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({
       ...result,
-      message: "Accounting link settings saved.",
+      emailed: false,
+      message: "Accounting link settings saved. No email was sent.",
     });
   } catch (error) {
     const message =

@@ -110,7 +110,6 @@ export function ParticipantsTable({
   const [paymentNotes, setPaymentNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
-  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [accountantPanelOpen, setAccountantPanelOpen] = useState(false);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
@@ -341,7 +340,6 @@ export function ParticipantsTable({
 
   async function copyAccountantLink(createNew: boolean): Promise<boolean> {
     setShareBusy(true);
-    setShareNotice(null);
     try {
       let url: string | null = null;
       if (!createNew) {
@@ -362,15 +360,11 @@ export function ParticipantsTable({
       if (!url) throw new Error("Could not create the accountant link.");
       try {
         await navigator.clipboard.writeText(url);
-        setShareNotice(
-          "Accountant review link copied. Open Send to accounting to choose emails, expiry, and weekly delivery."
-        );
       } catch {
-        setShareNotice(url);
+        // Clipboard may be blocked; still treat as success so the confirm dialog can finish.
       }
       return true;
-    } catch (error) {
-      setShareNotice(error instanceof Error ? error.message : "Could not create the accountant link.");
+    } catch {
       return false;
     } finally {
       setShareBusy(false);
@@ -401,7 +395,6 @@ export function ParticipantsTable({
       <AccountantSharePanel
         open={accountantPanelOpen}
         onClose={() => setAccountantPanelOpen(false)}
-        onNotice={(message) => setShareNotice(message)}
       />
 
       <div className="admin-page-header">
@@ -409,7 +402,6 @@ export function ParticipantsTable({
           <h1 className="admin-page-title font-display">Participants</h1>
           <p className="admin-muted">
             Track ticket purchases and review payment receipts.
-            {shareNotice ? ` ${shareNotice}` : ""}
           </p>
         </div>
 
