@@ -18,7 +18,7 @@ export type ExportChart = {
 };
 
 export type ExportReport = {
-  type: "financial" | "participants" | "evaluation";
+  type: "financial" | "participants" | "evaluation" | "approved-participants";
   title: string;
   eventLabel: string;
   exportedAt: string;

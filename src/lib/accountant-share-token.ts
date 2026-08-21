@@ -4,7 +4,12 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { getSigningSecret } from "@/lib/security/secrets";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
-export const ACCOUNTANT_SHARE_TTL_MS = 5 * 24 * 60 * 60 * 1000;
+export const ACCOUNTANT_SHARE_DEFAULT_EXPIRY_DAYS = 5;
+export const ACCOUNTANT_SHARE_MIN_EXPIRY_DAYS = 1;
+export const ACCOUNTANT_SHARE_MAX_EXPIRY_DAYS = 30;
+/** @deprecated Prefer configurable expiryDays on the share record. */
+export const ACCOUNTANT_SHARE_TTL_MS =
+  ACCOUNTANT_SHARE_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 export const ACCOUNTANT_SHARE_PATH = "/a";
 
 type AccountantSharePayload = {

@@ -13605,6 +13605,321 @@ a.admin-action-btn:hover {
   }
 }
 
+/* Accountant share settings modal */
+.admin-accountant-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.admin-accountant-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 40, 28, 0.45);
+  cursor: pointer;
+}
+
+.admin-accountant-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 40rem;
+  max-height: min(92vh, 52rem);
+  overflow: auto;
+  padding: 1.35rem 1.35rem 1.2rem;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 61, 36, 0.22);
+}
+
+.admin-accountant-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-accountant-modal-close {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 9999px;
+  background: #f3f4f6;
+  color: #14532d;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-accountant-modal-close:hover {
+  background: #e5e7eb;
+}
+
+.admin-accountant-section {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.15rem;
+  border-bottom: 1px solid rgba(21, 128, 61, 0.12);
+}
+
+.admin-accountant-section:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.admin-accountant-section-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 750;
+  color: #14532d;
+}
+
+.admin-accountant-email-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.admin-accountant-email-row .admin-input {
+  flex: 1 1 14rem;
+}
+
+.admin-accountant-email-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.admin-accountant-email-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.7rem;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  border: 1px solid rgba(21, 128, 61, 0.2);
+  color: #14532d;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.admin-accountant-email-chips button {
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(21, 128, 61, 0.12);
+  color: #14532d;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-accountant-empty {
+  margin: 0.65rem 0 0;
+  font-size: 0.8125rem;
+  color: #6b8f7a;
+}
+
+.admin-accountant-calendar {
+  margin-top: 0.65rem;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(21, 128, 61, 0.16);
+  background: linear-gradient(180deg, #f8fdf9 0%, #ffffff 100%);
+}
+
+.admin-accountant-calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.admin-accountant-calendar-month {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #14532d;
+}
+
+.admin-accountant-calendar-nav-btn {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #14532d;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-accountant-calendar-nav-btn:hover:not(:disabled) {
+  background: #ecfdf5;
+}
+
+.admin-accountant-calendar-weekdays,
+.admin-accountant-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.admin-accountant-calendar-weekdays {
+  margin-bottom: 0.35rem;
+}
+
+.admin-accountant-calendar-weekdays span,
+.admin-accountant-calendar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6b8f7a;
+  text-transform: uppercase;
+}
+
+.admin-accountant-calendar-day {
+  min-height: 2.15rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #14532d;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-accountant-calendar-day:hover:not(:disabled) {
+  background: #ecfdf5;
+}
+
+.admin-accountant-calendar-day.is-today {
+  box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.35);
+}
+
+.admin-accountant-calendar-day.is-selected {
+  background: #16a34a;
+  color: #fff;
+  box-shadow: none;
+}
+
+.admin-accountant-calendar-day:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.admin-accountant-summary {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  color: #3f7a57;
+  line-height: 1.45;
+}
+
+.admin-accountant-weekday-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0.65rem 0 0.85rem;
+}
+
+.admin-accountant-weekday {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 3.1rem;
+  padding: 0.35rem 0.15rem;
+  border: 1px solid rgba(21, 128, 61, 0.16);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #14532d;
+  cursor: pointer;
+}
+
+.admin-accountant-weekday:hover:not(:disabled) {
+  background: #f0fdf4;
+  border-color: rgba(21, 128, 61, 0.35);
+}
+
+.admin-accountant-weekday.is-selected {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.admin-accountant-weekday:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin-accountant-weekday-short {
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.admin-accountant-weekday-full {
+  display: none;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (min-width: 640px) {
+  .admin-accountant-weekday-full {
+    display: block;
+  }
+}
+
+.admin-accountant-hour {
+  max-width: 10rem;
+}
+
+.admin-accountant-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #14532d;
+  cursor: pointer;
+}
+
+.admin-accountant-check input {
+  margin-top: 0.2rem;
+}
+
+.admin-accountant-status {
+  margin: 0.25rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(180deg, #f8fdf9 0%, #ffffff 100%);
+  border: 1px solid rgba(21, 128, 61, 0.14);
+}
+
+.admin-accountant-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
 /* Receipt reupload (tokenized participant page) */
 .evaluation-card--receipt {
   width: min(100%, 36rem);

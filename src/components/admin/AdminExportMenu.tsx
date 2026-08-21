@@ -14,9 +14,11 @@ const MENU_ANIMATION_MS = 180;
 export function AdminExportMenu({
   type,
   eventId,
+  label = "Export",
 }: {
-  type: "financial" | "participants" | "evaluation";
+  type: "financial" | "participants" | "evaluation" | "approved-participants";
   eventId?: string | null;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [rendered, setRendered] = useState(false);
@@ -110,7 +112,7 @@ export function AdminExportMenu({
         disabled={Boolean(loading)}
         onClick={() => setOpen((current) => !current)}
       >
-        {loading ? `Exporting ${FORMAT_LABELS[loading]}...` : "Export"}
+        {loading ? `Exporting ${FORMAT_LABELS[loading]}...` : label}
         <svg className="admin-export-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path
             d="M5 7.5L10 12.5L15 7.5"

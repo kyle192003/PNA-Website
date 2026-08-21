@@ -17,7 +17,7 @@ import { sendMail, type MailAttachment } from "@/lib/mail";
 import { getAdminNotifyEmail } from "@/lib/security/server-env";
 import { createReceiptReuploadToken } from "@/lib/receipt-reupload-token";
 import { getSiteBaseUrl } from "@/lib/site-url";
-import { getActiveAccountantReviewUrl, getAccountantNotifyEmail } from "@/lib/accountant-share";
+import { getActiveAccountantReviewUrl, getAccountantNotifyEmails } from "@/lib/accountant-share";
 import type { ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
 import { buildDefaultSpecialInviteNote } from "@/lib/types/admin";
 
@@ -918,9 +918,9 @@ export async function sendAdminReceiptSubmittedNotification(
   payload: AdminReceiptSubmittedPayload
 ): Promise<{ ok: boolean; error?: string }> {
   const adminTo = getAdminNotifyEmail() || conference.contact.email;
-  const accountantTo = await getAccountantNotifyEmail();
+  const accountantEmails = await getAccountantNotifyEmails();
   const recipients = Array.from(
-    new Set([adminTo, accountantTo].filter((value): value is string => Boolean(value)))
+    new Set([adminTo, ...accountantEmails].filter((value): value is string => Boolean(value)))
   );
   const to = recipients.join(", ");
   const name = participantDisplayName(payload.registration);
@@ -984,6 +984,75 @@ export async function sendAdminReceiptSubmittedNotification(
   ].join("\n");
 
   return sendBrandedMail({ to, subject, html, text });
+}
+
+/** Sends the pending-payments review link to configured accounting emails. */
+export async function sendAccountantShareLinkEmail(payload: {
+  to: string[];
+  reviewUrl: string;
+  expiresAt: string;
+  pendingCount: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  const recipients = Array.from(
+    new Set(payload.to.map((email) => email.trim().toLowerCase()).filter(Boolean))
+  );
+  if (!recipients.length) {
+    return { ok: false, error: "No accounting emails are configured." };
+  }
+
+  const expiresLabel = (() => {
+    const date = new Date(payload.expiresAt);
+    if (Number.isNaN(date.getTime())) return payload.expiresAt;
+    return date.toLocaleString("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  })();
+
+  const subject =
+    payload.pendingCount > 0
+      ? `Pending payments ready for review (${payload.pendingCount})`
+      : "Accountant review link for pending payments";
+
+  const html = wrapEmail({
+    title: subject,
+    headline: "Pending payments review",
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:${BRAND.text};font-size:15px;line-height:1.65;">
+        Use the secure review link below to approve or flag payment receipts waiting for accounting.
+      </p>
+      <p style="margin:0 0 8px;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
+        <strong style="color:${BRAND.green};">Queue:</strong>
+        ${payload.pendingCount} payment${payload.pendingCount === 1 ? "" : "s"} awaiting review
+      </p>
+      <p style="margin:0 0 8px;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
+        <strong style="color:${BRAND.green};">Link expires:</strong>
+        ${escapeHtml(expiresLabel)} (Asia/Manila)
+      </p>
+      ${emailCta(payload.reviewUrl, "Open pending payments")}
+      <p style="margin:20px 0 0;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
+        If the button does not work, open this URL:<br />
+        <a href="${escapeHtml(payload.reviewUrl)}" style="color:${BRAND.greenMid};word-break:break-all;">${escapeHtml(payload.reviewUrl)}</a>
+      </p>
+    `,
+  });
+
+  const text = [
+    "Pending payments review",
+    "",
+    `Queue: ${payload.pendingCount} payment(s) awaiting review`,
+    `Link expires: ${expiresLabel} (Asia/Manila)`,
+    "",
+    `Open review: ${payload.reviewUrl}`,
+    "",
+    SPAM_NOTE,
+  ].join("\n");
+
+  return sendBrandedMail({ to: recipients.join(", "), subject, html, text });
 }
 
 /** Exclusive one-time invite for complimentary Committee / Speaker registration. */

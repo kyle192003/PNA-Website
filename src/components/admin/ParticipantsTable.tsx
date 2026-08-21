@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ConferenceEvent, PaymentStatus, RegistrationRecord } from "@/lib/types/admin";
 import { PAYMENT_STATUS_LABELS } from "@/lib/types/admin";
 import { formatParticipantName } from "@/lib/participant-name";
+import { AccountantSharePanel } from "@/components/admin/AccountantSharePanel";
 import { AdminBillInsights } from "@/components/admin/AdminBillInsights";
 import { AdminExportMenu } from "@/components/admin/AdminExportMenu";
 import { AdminHorizontalBarChart } from "@/components/admin/dashboard/AdminBarCharts";
@@ -110,6 +111,7 @@ export function ParticipantsTable({
   const [formError, setFormError] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [accountantPanelOpen, setAccountantPanelOpen] = useState(false);
   const confirmHook = useConfirmAction();
   const { loading, requestConfirm } = confirmHook;
 
@@ -351,7 +353,7 @@ export function ParticipantsTable({
         const res = await fetch("/api/admin/accountant-share", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ action: "create", createNewLink: true }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Could not create the accountant link.");
@@ -361,7 +363,7 @@ export function ParticipantsTable({
       try {
         await navigator.clipboard.writeText(url);
         setShareNotice(
-          "Accountant review link copied. It stays valid for 5 days and shows all payments waiting for approval."
+          "Accountant review link copied. Open Send to accounting to choose emails, expiry, and weekly delivery."
         );
       } catch {
         setShareNotice(url);
@@ -384,7 +386,7 @@ export function ParticipantsTable({
       variant: "danger",
       loadingMessage: "Creating accountant link...",
       successTitle: "Accountant link created",
-      successMessage: "The new 5-day review link is on your clipboard.",
+      successMessage: "The new review link is on your clipboard.",
       action: async () => {
         const created = await copyAccountantLink(true);
         if (!created) throw new Error("Could not create the accountant link.");
@@ -396,6 +398,11 @@ export function ParticipantsTable({
     <div className="admin-page admin-participants">
       <LoadingOverlay show={loading} scope="local" variant="form" />
       <ActionConfirmDialogs hook={confirmHook} />
+      <AccountantSharePanel
+        open={accountantPanelOpen}
+        onClose={() => setAccountantPanelOpen(false)}
+        onNotice={(message) => setShareNotice(message)}
+      />
 
       <div className="admin-page-header">
         <div>
@@ -410,6 +417,14 @@ export function ParticipantsTable({
           <button
             type="button"
             className="admin-action-btn admin-action-btn--pending"
+            onClick={() => setAccountantPanelOpen(true)}
+            disabled={shareBusy || loading}
+          >
+            Send to accounting
+          </button>
+          <button
+            type="button"
+            className="admin-link-btn"
             onClick={() => void copyAccountantLink(false)}
             disabled={shareBusy || loading}
           >

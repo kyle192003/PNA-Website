@@ -138,6 +138,106 @@ export async function buildFinancialExport(
   };
 }
 
+export async function buildApprovedParticipantsExport(
+  eventId?: string | null
+): Promise<ExportReport> {
+  const [stats, registrations, eventLabel] = await Promise.all([
+    getFinancialStats(eventId),
+    getAllRegistrations(),
+    resolveEventLabel(eventId),
+  ]);
+  const scoped = scopeRegistrations(registrations, eventId).filter(
+    (registration) => registration.paymentStatus === "paid"
+  );
+
+  const categoryMap = new Map<string, number>();
+  const categoryCountMap = new Map<string, number>();
+  for (const registration of scoped) {
+    const label = categoryLabel(registration.category, registration.feeLabel);
+    categoryMap.set(label, (categoryMap.get(label) ?? 0) + (registration.paymentAmount || 0));
+    categoryCountMap.set(label, (categoryCountMap.get(label) ?? 0) + 1);
+  }
+
+  const revenueByCategory = Array.from(categoryMap.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const countByCategory = Array.from(categoryCountMap.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+
+  return {
+    type: "approved-participants",
+    title: "Approved Participants Report",
+    eventLabel,
+    exportedAt: new Date().toISOString(),
+    highlightLabel: "Collected from approved",
+    highlightValue: formatPeso(stats.totalCollected),
+    summary: [
+      { label: "Approved participants", value: stats.paidCount },
+      { label: "Total collected", value: formatPeso(stats.totalCollected) },
+      { label: "Average ticket (all registered)", value: formatPeso(stats.averageTicket) },
+      { label: "Outstanding (not approved)", value: formatPeso(stats.totalOutstanding) },
+    ],
+    breakdownTitle: "Approved revenue by category",
+    breakdown: revenueByCategory.map((item) => ({
+      label: item.label,
+      value: formatPeso(item.value),
+    })),
+    charts: [
+      {
+        title: "Approved Revenue by Category",
+        subtitle: "Collected peso value for paid participants only",
+        kind: "bar",
+        valuePrefix: "PHP ",
+        points: revenueByCategory,
+      },
+      {
+        title: "Approved Participants by Category",
+        subtitle: "Headcount of paid participants",
+        kind: "bar",
+        points: countByCategory,
+      },
+      {
+        title: "Collections Trend",
+        subtitle: "Paid collections by day",
+        kind: "line",
+        valuePrefix: "PHP ",
+        points: stats.collectedByDay,
+      },
+    ],
+    detailHeaders: [
+      "Reference",
+      "Name",
+      "Email",
+      "Phone",
+      "Organization",
+      "Category",
+      "Fee tier",
+      "Amount",
+      "Payment reference",
+      "Approved / updated",
+      "Registered",
+    ],
+    detailRows: scoped.map((registration) => [
+      registration.referenceNumber,
+      formatParticipantName(registration),
+      registration.email,
+      registration.phone,
+      registration.organization,
+      categoryLabel(registration.category, registration.feeLabel),
+      registration.specialRole
+        ? "Complimentary"
+        : registration.feeTier === "regular"
+          ? "Regular"
+          : "Early bird",
+      formatPeso(registration.paymentAmount ?? 0),
+      registration.paymentReference || "",
+      formatDate(registration.updatedAt),
+      formatDate(registration.createdAt),
+    ]),
+  };
+}
+
 export async function buildParticipantsExport(
   eventId?: string | null
 ): Promise<ExportReport> {

@@ -37,7 +37,12 @@ export default async function AdminFinancialPage({
           <Link href="/admin/participants" className="btn-primary">
             Review payments
           </Link>
-          <AdminExportMenu type="financial" eventId={selectedEventId || null} />
+          <AdminExportMenu type="financial" eventId={selectedEventId || null} label="Export financial" />
+          <AdminExportMenu
+            type="approved-participants"
+            eventId={selectedEventId || null}
+            label="Export approved"
+          />
         </div>
       </div>
 
@@ -158,8 +163,16 @@ export default async function AdminFinancialPage({
         <div className="admin-card-header">
           <div>
             <h2 className="admin-card-title">Recent paid participants</h2>
-            <p className="admin-muted mb-0">Latest confirmed collections</p>
+            <p className="admin-muted mb-0">
+              Latest confirmed collections. Use Export approved for the full approved list with graph
+              summaries.
+            </p>
           </div>
+          <AdminExportMenu
+            type="approved-participants"
+            eventId={selectedEventId || null}
+            label="Export approved"
+          />
         </div>
         <div className="admin-table-wrap">
           {stats.recentPaid.length === 0 ? (
