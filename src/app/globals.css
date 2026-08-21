@@ -13913,6 +13913,14 @@ a.admin-action-btn:hover {
   border: 1px solid rgba(21, 128, 61, 0.14);
 }
 
+.admin-accountant-send-preview {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: #fffbeb;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+}
+
 .admin-accountant-actions {
   display: flex;
   flex-wrap: wrap;

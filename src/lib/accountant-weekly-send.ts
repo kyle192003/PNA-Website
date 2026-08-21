@@ -1,10 +1,11 @@
 import "server-only";
 
 import {
-  createAccountantShareLink,
+  ensureFreshAccountantShareForEmail,
   getAccountantShareLink,
   markAccountantShareWeeklySent,
   type AccountantShareStatusPayload,
+  type AccountantWeeklySchedule,
 } from "@/lib/accountant-share";
 import { listAccountantReviewQueue } from "@/lib/accountant-review";
 import { sendAccountantShareLinkEmail } from "@/lib/mail-templates";
@@ -51,22 +52,26 @@ export type AccountantWeeklySendResult = {
   recipients?: string[];
   url?: string | null;
   expiresAt?: string | null;
+  renewed?: boolean;
 };
 
 async function ensureShareAndSend(options?: {
-  reuseActiveLink?: boolean;
+  /** When true, always mint a brand-new URL even if one is still active. */
+  forceNewLink?: boolean;
   notifyEmails?: string[];
   expiryDays?: number;
   expiresAt?: string | null;
-  weeklySend?: Partial<import("@/lib/accountant-share").AccountantWeeklySchedule> | null;
+  weeklySend?: Partial<AccountantWeeklySchedule> | null;
 }): Promise<{
-  share: AccountantShareStatusPayload & { url: string };
+  share: AccountantShareStatusPayload & { url: string; renewed: boolean };
   pendingCount: number;
   mail: { ok: boolean; error?: string };
 }> {
   const pendingCount = (await listAccountantReviewQueue()).length;
-  const share = await createAccountantShareLink({
-    reuseActiveLink: options?.reuseActiveLink ?? true,
+
+  // Always renew expired/missing links before emailing so accounting never gets a dead URL.
+  const share = await ensureFreshAccountantShareForEmail({
+    reuseActiveLink: !options?.forceNewLink,
     notifyEmails: options?.notifyEmails,
     expiryDays: options?.expiryDays,
     expiresAt: options?.expiresAt,
@@ -97,15 +102,16 @@ export async function sendAccountantShareNow(options?: {
   notifyEmails?: string[];
   expiryDays?: number;
   expiresAt?: string | null;
-  weeklySend?: Partial<import("@/lib/accountant-share").AccountantWeeklySchedule> | null;
+  weeklySend?: Partial<AccountantWeeklySchedule> | null;
 }): Promise<{
   ok: boolean;
   error?: string;
+  renewed?: boolean;
   share: AccountantShareStatusPayload & { url: string };
   pendingCount: number;
 }> {
   const result = await ensureShareAndSend({
-    reuseActiveLink: !options?.createNewLink,
+    forceNewLink: options?.createNewLink === true,
     notifyEmails: options?.notifyEmails,
     expiryDays: options?.expiryDays,
     expiresAt: options?.expiresAt,
@@ -116,6 +122,7 @@ export async function sendAccountantShareNow(options?: {
     return {
       ok: false,
       error: result.mail.error ?? "Could not send the accounting email.",
+      renewed: result.share.renewed,
       share: result.share,
       pendingCount: result.pendingCount,
     };
@@ -123,6 +130,7 @@ export async function sendAccountantShareNow(options?: {
 
   return {
     ok: true,
+    renewed: result.share.renewed,
     share: result.share,
     pendingCount: result.pendingCount,
   };
@@ -170,7 +178,8 @@ export async function runAccountantWeeklyShareJob(
     };
   }
 
-  const result = await ensureShareAndSend({ reuseActiveLink: true });
+  // Renews automatically when the previous weekly link has expired.
+  const result = await ensureShareAndSend({ forceNewLink: false });
   if (!result.mail.ok) {
     return {
       attempted: true,
@@ -180,6 +189,7 @@ export async function runAccountantWeeklyShareJob(
       recipients: result.share.notifyEmails,
       url: result.share.url,
       expiresAt: result.share.expiresAt,
+      renewed: result.share.renewed,
     };
   }
 
@@ -191,5 +201,6 @@ export async function runAccountantWeeklyShareJob(
     recipients: result.share.notifyEmails,
     url: result.share.url,
     expiresAt: result.share.expiresAt,
+    renewed: result.share.renewed,
   };
 }

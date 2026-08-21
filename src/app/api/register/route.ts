@@ -39,7 +39,6 @@ const membershipTypes: MembershipType[] = [
   "lifetime",
   "regular",
   "renewal_member",
-  "non_member",
 ];
 const rates: RegistrationRateChoice[] = ["regular", "seniorPwd"];
 const modes: RegistrationModeChoice[] = ["single", "group"];
@@ -125,11 +124,7 @@ function validatePrimaryFields(
   if (!membershipTypes.includes(body.membershipType as MembershipType)) {
     return { error: "Please select a valid membership type." };
   }
-  const isNonMember = body.membershipType === "non_member";
-  if (
-    !isNonMember &&
-    (typeof body.pnaIdNumber !== "string" || !body.pnaIdNumber.trim())
-  ) {
+  if (typeof body.pnaIdNumber !== "string" || !body.pnaIdNumber.trim()) {
     return { error: "PNA ID number is required." };
   }
   if (
@@ -212,7 +207,7 @@ function validatePrimaryFields(
       institutionAddress: String(body.institutionAddress ?? ""),
       position: String(body.position ?? ""),
       membershipType: body.membershipType as MembershipType,
-      pnaIdNumber: isNonMember ? "" : String(body.pnaIdNumber ?? ""),
+      pnaIdNumber: String(body.pnaIdNumber ?? ""),
       pnaZone: String(body.pnaZone ?? ""),
       pnaChapter: String(body.pnaChapter ?? ""),
       prcLicenseNumber: String(body.prcLicenseNumber ?? ""),

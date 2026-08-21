@@ -17,7 +17,7 @@ import { sendMail, type MailAttachment } from "@/lib/mail";
 import { getAdminNotifyEmail } from "@/lib/security/server-env";
 import { createReceiptReuploadToken } from "@/lib/receipt-reupload-token";
 import { getSiteBaseUrl } from "@/lib/site-url";
-import { getActiveAccountantReviewUrl, getAccountantNotifyEmails } from "@/lib/accountant-share";
+import { ensureFreshAccountantShareForEmail, getAccountantNotifyEmails } from "@/lib/accountant-share";
 import type { ConferenceEvent, RegistrationRecord } from "@/lib/types/admin";
 import { buildDefaultSpecialInviteNote } from "@/lib/types/admin";
 
@@ -913,6 +913,20 @@ export type AdminReceiptSubmittedPayload = {
   isReupload: boolean;
 };
 
+function formatAccountantExpiryLabel(expiresAt: string): string {
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return expiresAt;
+  return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /** Alerts the secretariat and accountant when a participant submits (or re-submits) payment proof. */
 export async function sendAdminReceiptSubmittedNotification(
   payload: AdminReceiptSubmittedPayload
@@ -925,12 +939,33 @@ export async function sendAdminReceiptSubmittedNotification(
   const to = recipients.join(", ");
   const name = participantDisplayName(payload.registration);
   const adminUrl = `${getSiteBaseUrl()}/admin/participants`;
-  const accountantUrl = await getActiveAccountantReviewUrl();
+
+  // If accounting emails are configured, renew an expired link before including it in the alert.
+  let accountantUrl: string | null = null;
+  let accountantExpiresLabel: string | null = null;
+  if (accountantEmails.length) {
+    try {
+      const fresh = await ensureFreshAccountantShareForEmail({ reuseActiveLink: true });
+      accountantUrl = fresh.url;
+      if (fresh.expiresAt) {
+        accountantExpiresLabel = formatAccountantExpiryLabel(fresh.expiresAt);
+      }
+    } catch (error) {
+      console.warn("[mail] Could not renew accountant review link for receipt alert:", error);
+    }
+  }
+
   const kindLabel = payload.isReupload ? "re-uploaded" : "uploaded";
   const subject = `Payment receipt ${kindLabel}: ${payload.registration.referenceNumber}`;
   const reviewCta = accountantUrl
     ? emailCta(accountantUrl, "Open accountant review")
     : emailCta(adminUrl, "Open participants");
+  const expiryNotice = accountantUrl && accountantExpiresLabel
+    ? emailCallout(
+        "Review link expiry",
+        `<p style="margin:0;">This accountant review link expires on <strong>${escapeHtml(accountantExpiresLabel)}</strong> (Asia/Manila). After that date, ask the admin to send a new link.</p>`
+      )
+    : "";
 
   const html = wrapEmail({
     title: subject,
@@ -968,6 +1003,7 @@ export async function sendAdminReceiptSubmittedNotification(
           </td>
         </tr>
       </table>
+      ${expiryNotice}
       ${reviewCta}
     `,
   });
@@ -981,6 +1017,9 @@ export async function sendAdminReceiptSubmittedNotification(
     `Event: ${payload.eventTitle}`,
     "",
     accountantUrl ? `Accountant review: ${accountantUrl}` : `Admin: ${adminUrl}`,
+    ...(accountantExpiresLabel
+      ? [`Review link expires: ${accountantExpiresLabel} (Asia/Manila)`]
+      : []),
   ].join("\n");
 
   return sendBrandedMail({ to, subject, html, text });
@@ -1000,23 +1039,11 @@ export async function sendAccountantShareLinkEmail(payload: {
     return { ok: false, error: "No accounting emails are configured." };
   }
 
-  const expiresLabel = (() => {
-    const date = new Date(payload.expiresAt);
-    if (Number.isNaN(date.getTime())) return payload.expiresAt;
-    return date.toLocaleString("en-PH", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  })();
-
+  const expiresLabel = formatAccountantExpiryLabel(payload.expiresAt);
   const subject =
     payload.pendingCount > 0
-      ? `Pending payments ready for review (${payload.pendingCount})`
-      : "Accountant review link for pending payments";
+      ? `Pending payments ready for review (${payload.pendingCount}) — link expires ${expiresLabel}`
+      : `Accountant review link — expires ${expiresLabel}`;
 
   const html = wrapEmail({
     title: subject,
@@ -1025,18 +1052,22 @@ export async function sendAccountantShareLinkEmail(payload: {
       <p style="margin:0 0 16px;color:${BRAND.text};font-size:15px;line-height:1.65;">
         Use the secure review link below to approve or flag payment receipts waiting for accounting.
       </p>
-      <p style="margin:0 0 8px;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
+      ${emailCallout(
+        "Important: link expiry",
+        `<p style="margin:0 0 8px;">This review link expires on <strong>${escapeHtml(expiresLabel)}</strong> (Asia/Manila).</p>
+         <p style="margin:0;">Please finish reviewing pending payments before that date. After expiry, the admin must send a new link.</p>`
+      )}
+      <p style="margin:20px 0 8px;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
         <strong style="color:${BRAND.green};">Queue:</strong>
         ${payload.pendingCount} payment${payload.pendingCount === 1 ? "" : "s"} awaiting review
-      </p>
-      <p style="margin:0 0 8px;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
-        <strong style="color:${BRAND.green};">Link expires:</strong>
-        ${escapeHtml(expiresLabel)} (Asia/Manila)
       </p>
       ${emailCta(payload.reviewUrl, "Open pending payments")}
       <p style="margin:20px 0 0;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
         If the button does not work, open this URL:<br />
         <a href="${escapeHtml(payload.reviewUrl)}" style="color:${BRAND.greenMid};word-break:break-all;">${escapeHtml(payload.reviewUrl)}</a>
+      </p>
+      <p style="margin:16px 0 0;color:${BRAND.greenMuted};font-size:13px;line-height:1.6;">
+        <strong style="color:${BRAND.green};">Expires:</strong> ${escapeHtml(expiresLabel)} (Asia/Manila)
       </p>
     `,
   });
@@ -1044,10 +1075,13 @@ export async function sendAccountantShareLinkEmail(payload: {
   const text = [
     "Pending payments review",
     "",
+    `IMPORTANT: This review link expires on ${expiresLabel} (Asia/Manila).`,
+    "Please finish reviewing pending payments before that date.",
+    "",
     `Queue: ${payload.pendingCount} payment(s) awaiting review`,
-    `Link expires: ${expiresLabel} (Asia/Manila)`,
     "",
     `Open review: ${payload.reviewUrl}`,
+    `Link expires: ${expiresLabel} (Asia/Manila)`,
     "",
     SPAM_NOTE,
   ].join("\n");

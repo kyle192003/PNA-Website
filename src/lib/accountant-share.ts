@@ -274,6 +274,33 @@ export async function createAccountantShareLink(
   };
 }
 
+/**
+ * Guarantees a non-expired review URL before emailing accounting.
+ * Renews automatically when the current link is missing or expired.
+ */
+export async function ensureFreshAccountantShareForEmail(
+  options: CreateAccountantShareOptions = {}
+): Promise<AccountantShareStatusPayload & { url: string; renewed: boolean }> {
+  const current = await getAccountantShareLink();
+  const isActive = current.status === "active" && Boolean(current.url);
+  const forceNew = options.reuseActiveLink === false;
+
+  // Expired / missing links must never be emailed — mint a fresh URL.
+  if (!isActive || forceNew) {
+    const renewed = await createAccountantShareLink({
+      ...options,
+      reuseActiveLink: false,
+    });
+    return { ...renewed, renewed: true };
+  }
+
+  const refreshed = await createAccountantShareLink({
+    ...options,
+    reuseActiveLink: true,
+  });
+  return { ...refreshed, renewed: false };
+}
+
 export async function markAccountantShareWeeklySent(at = new Date()): Promise<void> {
   const share = await readShare();
   share.weeklySend = {

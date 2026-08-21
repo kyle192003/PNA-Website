@@ -507,32 +507,6 @@ export function EventForm({
                   Shown only after early bird ends.
                 </p>
               </div>
-              <div className="col-md-4">
-                <label className="admin-label" htmlFor="feeNonMember">
-                  Non-Member amount (₱)
-                </label>
-                <input
-                  id="feeNonMember"
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="admin-input"
-                  value={fees.nonMember.amount}
-                  onChange={(e) =>
-                    setFees((prev) => ({
-                      ...prev,
-                      nonMember: {
-                        ...prev.nonMember,
-                        amount: Number(e.target.value) || 0,
-                      },
-                    }))
-                  }
-                  disabled={loading}
-                />
-                <p className="admin-field-help mt-2 mb-0">
-                  Fixed rate for non-members only.
-                </p>
-              </div>
             </div>
             <p className="admin-field-help">
               Defaults come from the site schedule. Changing these only affects this event.

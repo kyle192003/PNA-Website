@@ -317,7 +317,7 @@ export function AccountantSharePanel({
       setShare(data as ShareState);
       onNotice(
         data.message ??
-          `Accounting review link emailed${data.pendingCount != null ? ` (${data.pendingCount} pending)` : ""}.`
+          `Accounting email sent${data.pendingCount != null ? ` (${data.pendingCount} pending)` : ""}. The message includes the link expiry date.`
       );
       onClose();
     } catch (err) {
@@ -568,7 +568,38 @@ export function AccountantSharePanel({
               </div>
             ) : null}
 
+            <div className="admin-accountant-send-preview">
+              <p className="admin-accountant-summary mb-0">
+                When you send now, accounting will receive the review link and a clear note that it
+                expires on <strong>{formatLongDate(expiryDate)}</strong> (end of day, Asia/Manila).
+                {emails.length ? (
+                  <>
+                    {" "}
+                    Recipients: <strong>{emails.join(", ")}</strong>.
+                  </>
+                ) : (
+                  <> Add at least one accounting email above first.</>
+                )}
+              </p>
+            </div>
+
             <div className="admin-accountant-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void sendToAccounting(true)}
+                disabled={busy || !emails.length}
+              >
+                {busy ? "Sending…" : "Send email to accounting now"}
+              </button>
+              <button
+                type="button"
+                className="admin-action-btn admin-action-btn--pending"
+                onClick={() => void sendToAccounting(false)}
+                disabled={busy || !emails.length}
+              >
+                {busy ? "Working…" : "Email current link"}
+              </button>
               <button
                 type="button"
                 className="admin-link-btn"
@@ -583,23 +614,7 @@ export function AccountantSharePanel({
                 onClick={() => void copyLink(false)}
                 disabled={busy}
               >
-                Copy current link
-              </button>
-              <button
-                type="button"
-                className="admin-action-btn admin-action-btn--pending"
-                onClick={() => void sendToAccounting(false)}
-                disabled={busy}
-              >
-                {busy ? "Working…" : "Email current link"}
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void sendToAccounting(true)}
-                disabled={busy}
-              >
-                {busy ? "Working…" : "Create & email new link"}
+                Copy link only
               </button>
             </div>
           </div>

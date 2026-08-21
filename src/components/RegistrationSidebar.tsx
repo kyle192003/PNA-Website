@@ -123,12 +123,6 @@ export function RegistrationSidebar({
                 </div>
               </>
             )}
-            <div className="registration-sidebar-fee-row">
-              <p className="registration-sidebar-fee-label">{fees.nonMember.label}</p>
-              <strong className="registration-sidebar-fee-amount">
-                {formatPeso(fees.nonMember.amount)}
-              </strong>
-            </div>
             <p className="registration-sidebar-card-copy mt-3 mb-0">
               <strong>Registration Includes:</strong> {conference.registration.includes}
             </p>

@@ -205,7 +205,10 @@ export async function POST(request: Request) {
         ...sent.share,
         pendingCount: sent.pendingCount,
         emailed: true,
-        message: `Accounting review link emailed to ${sent.share.notifyEmails.join(", ")}.`,
+        renewed: sent.renewed === true,
+        message: sent.renewed
+          ? `Previous link had expired, so a new review link was created and emailed to ${sent.share.notifyEmails.join(", ")}. The email includes the expiry date.`
+          : `Accounting review link emailed to ${sent.share.notifyEmails.join(", ")}. The email includes the expiry date.`,
       });
     }
 

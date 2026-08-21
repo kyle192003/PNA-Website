@@ -103,8 +103,7 @@ function normalizeDraftMember(raw: Partial<GroupMemberDraft>): GroupMemberDraft 
     membershipType:
       raw.membershipType === "lifetime" ||
       raw.membershipType === "regular" ||
-      raw.membershipType === "renewal_member" ||
-      raw.membershipType === "non_member"
+      raw.membershipType === "renewal_member"
         ? raw.membershipType
         : "",
     pnaZone: raw.pnaZone ?? "",
@@ -149,8 +148,7 @@ export function loadRegistrationDraft(eventId?: string | null): RegistrationDraf
       membershipType:
         parsed.membershipType === "lifetime" ||
         parsed.membershipType === "regular" ||
-        parsed.membershipType === "renewal_member" ||
-        parsed.membershipType === "non_member"
+        parsed.membershipType === "renewal_member"
           ? parsed.membershipType
           : "",
       pnaIdNumber: parsed.pnaIdNumber ?? "",

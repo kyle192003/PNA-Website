@@ -255,7 +255,6 @@ export async function fetchEarlyBirdStatus(eventId?: string | null): Promise<{
   earlyBirdAmount: number;
   regularAmount: number;
   seniorPwdAmount: number;
-  nonMemberAmount: number;
 }> {
   const params = new URLSearchParams();
   if (eventId) params.set("eventId", eventId);

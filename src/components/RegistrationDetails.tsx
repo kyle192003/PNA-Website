@@ -42,11 +42,6 @@ export function RegistrationDetails({ variant = "default" }: { variant?: "defaul
             amount: fees.earlyBird.amount,
           },
         ]),
-    {
-      label: fees.nonMember.label,
-      caption: fees.nonMember.caption,
-      amount: fees.nonMember.amount,
-    },
   ];
 
   return (
