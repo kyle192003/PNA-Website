@@ -4,7 +4,6 @@ import {
   consumeInquiryShareReply,
   getPublicInquiryByShareToken,
 } from "@/lib/inquiries";
-import { verifyInquiryShareToken } from "@/lib/inquiry-share-token";
 import { sendAdminInquiryShareReplyNotification } from "@/lib/mail-templates";
 import {
   getFirstValidationError,
@@ -19,18 +18,26 @@ import { readJsonBody, stringField } from "@/lib/security/safe-input";
 
 export const dynamic = "force-dynamic";
 
-function tokenFromRequest(request: Request, bodyToken?: string): string | undefined {
+function codeFromRequest(request: Request, bodyCode?: string): string | undefined {
   const { searchParams } = new URL(request.url);
-  return searchParams.get("t")?.trim() || bodyToken?.trim() || undefined;
+  return (
+    searchParams.get("c")?.trim() ||
+    searchParams.get("t")?.trim() ||
+    bodyCode?.trim() ||
+    undefined
+  );
 }
 
 export async function GET(request: Request) {
-  const verified = verifyInquiryShareToken(tokenFromRequest(request));
-  if (!verified.ok) {
-    return NextResponse.json({ error: verified.error }, { status: 400 });
+  const code = codeFromRequest(request);
+  if (!code) {
+    return NextResponse.json(
+      { error: "Missing reply link. Open the link that was shared with you." },
+      { status: 400 }
+    );
   }
 
-  const result = await getPublicInquiryByShareToken(verified.inquiryId, verified.nonce);
+  const result = await getPublicInquiryByShareToken(code);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
@@ -50,10 +57,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const token = tokenFromRequest(request, stringField(parsed.data.token));
-  const verified = verifyInquiryShareToken(token);
-  if (!verified.ok) {
-    return NextResponse.json({ error: verified.error }, { status: 400 });
+  const code = codeFromRequest(
+    request,
+    stringField(parsed.data.code) ?? stringField(parsed.data.token)
+  );
+  if (!code) {
+    return NextResponse.json(
+      { error: "Missing reply link. Open the link that was shared with you." },
+      { status: 400 }
+    );
   }
 
   const name = stringField(parsed.data.name) ?? "";
@@ -71,8 +83,7 @@ export async function POST(request: Request) {
   }
 
   const result = await consumeInquiryShareReply({
-    inquiryId: verified.inquiryId,
-    nonce: verified.nonce,
+    code,
     fromName: name,
     fromEmail: email,
     body: message,

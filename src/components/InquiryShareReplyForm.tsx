@@ -37,9 +37,9 @@ function InquiryReplyIcon() {
   );
 }
 
-export function InquiryShareReplyForm() {
+export function InquiryShareReplyForm({ code: codeProp }: { code?: string }) {
   const searchParams = useSearchParams();
-  const token = searchParams.get("t") ?? "";
+  const code = codeProp?.trim() || searchParams.get("c") || searchParams.get("t") || "";
 
   const [inquiry, setInquiry] = useState<PublicInquiry | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -60,10 +60,10 @@ export function InquiryShareReplyForm() {
       setLoading(true);
       setLoadError("");
       try {
-        if (!token) {
+        if (!code) {
           throw new Error("Missing reply link. Open the link that was shared with you.");
         }
-        const res = await fetch(`/api/inquiry-reply?t=${encodeURIComponent(token)}`, {
+        const res = await fetch(`/api/inquiry-reply?c=${encodeURIComponent(code)}`, {
           cache: "no-store",
         });
         const data = await res.json();
@@ -84,7 +84,7 @@ export function InquiryShareReplyForm() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [code]);
 
   function validateForm(): boolean {
     const nextErrors = validateInquiryShareReply({ name, email, message });
@@ -105,7 +105,7 @@ export function InquiryShareReplyForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token,
+          code,
           name,
           email,
           emailConfirm,

@@ -5,6 +5,7 @@ import { getSigningSecret } from "@/lib/security/secrets";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
 export const INQUIRY_SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const INQUIRY_SHARE_PATH = "/r";
 
 type InquirySharePayload = {
   inquiryId: string;
@@ -17,9 +18,10 @@ function signPayload(payload: string): string {
 }
 
 export function createInquiryShareNonce(): string {
-  return randomBytes(16).toString("hex");
+  return randomBytes(8).toString("base64url");
 }
 
+/** @deprecated Prefer short path codes via buildInquiryShareUrl(nonce). Kept for legacy ?t= links. */
 export function createInquiryShareToken(
   inquiryId: string,
   nonce: string,
@@ -34,8 +36,8 @@ export function createInquiryShareToken(
   return Buffer.from(`${payload}.${signature}`).toString("base64url");
 }
 
-export function buildInquiryShareUrl(token: string): string {
-  return `${getSiteBaseUrl()}/inquiry-reply?t=${encodeURIComponent(token)}`;
+export function buildInquiryShareUrl(code: string): string {
+  return `${getSiteBaseUrl()}${INQUIRY_SHARE_PATH}/${encodeURIComponent(code)}`;
 }
 
 export function verifyInquiryShareToken(

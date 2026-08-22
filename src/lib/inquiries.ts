@@ -4,8 +4,8 @@ import { readJsonDocument, writeJsonDocument } from "@/lib/json-store";
 import {
   buildInquiryShareUrl,
   createInquiryShareNonce,
-  createInquiryShareToken,
   INQUIRY_SHARE_TTL_MS,
+  verifyInquiryShareToken,
 } from "@/lib/inquiry-share-token";
 import type {
   ContactInquiry,
@@ -115,13 +115,49 @@ export function getShareLinkStatus(
   return "active";
 }
 
-function buildShareUrl(inquiryId: string, shareLink: StoredShareLink): string {
-  const token = createInquiryShareToken(
-    inquiryId,
-    shareLink.nonce,
-    Date.parse(shareLink.expiresAt)
-  );
-  return buildInquiryShareUrl(token);
+function buildShareUrl(shareLink: StoredShareLink): string {
+  return buildInquiryShareUrl(shareLink.nonce);
+}
+
+function findByShareNonce(
+  inquiries: StoredInquiry[],
+  nonce: string
+): { index: number; inquiry: StoredInquiry } | null {
+  const index = inquiries.findIndex((inquiry) => inquiry.shareLink?.nonce === nonce);
+  if (index === -1) return null;
+  return { index, inquiry: inquiries[index] };
+}
+
+const LEGACY_SIGNED_TOKEN_MIN_LENGTH = 40;
+
+export async function resolveInquiryShareCode(
+  code: string | null | undefined
+): Promise<ShareLinkState> {
+  if (!code?.trim()) {
+    return {
+      ok: false,
+      error: "Missing reply link. Open the link that was shared with you.",
+      status: 400,
+    };
+  }
+
+  const trimmed = code.trim();
+  const inquiries = await readInquiries();
+
+  if (trimmed.length >= LEGACY_SIGNED_TOKEN_MIN_LENGTH) {
+    const verified = verifyInquiryShareToken(trimmed);
+    if (!verified.ok) {
+      return { ok: false, error: verified.error, status: 400 };
+    }
+    const inquiry = findByField(inquiries, "id", verified.inquiryId) ?? null;
+    return resolveShareLinkState(inquiry, verified.nonce);
+  }
+
+  const found = findByShareNonce(inquiries, trimmed);
+  if (!found) {
+    return { ok: false, error: "This reply link is no longer valid.", status: 410 };
+  }
+  return resolveShareLinkState(found.inquiry, trimmed);
 }
 
 async function readInquiries(): Promise<StoredInquiry[]> {
@@ -257,7 +293,7 @@ export async function createInquiryShareLink(
 
   return {
     inquiry: toAdminInquiry(updated),
-    url: buildShareUrl(updated.id, shareLink),
+    url: buildShareUrl(shareLink),
     expiresAt,
   };
 }
@@ -271,9 +307,7 @@ export async function getInquiryShareLink(
 
   const status = getShareLinkStatus(inquiry.shareLink);
   const url =
-    status === "active" && inquiry.shareLink
-      ? buildShareUrl(inquiry.id, inquiry.shareLink)
-      : null;
+    status === "active" && inquiry.shareLink ? buildShareUrl(inquiry.shareLink) : null;
 
   return {
     inquiry: toAdminInquiry(inquiry),
@@ -311,15 +345,12 @@ export function resolveShareLinkState(
 }
 
 export async function getPublicInquiryByShareToken(
-  inquiryId: string,
-  nonce: string
+  code: string
 ): Promise<
   | { ok: true; inquiry: PublicInquiryShareView }
   | { ok: false; error: string; status: 400 | 404 | 410 }
 > {
-  const inquiries = await readInquiries();
-  const inquiry = findByField(inquiries, "id", inquiryId) ?? null;
-  const resolved = resolveShareLinkState(inquiry, nonce);
+  const resolved = await resolveInquiryShareCode(code);
   if (!resolved.ok) return resolved;
 
   return {
@@ -334,8 +365,7 @@ export async function getPublicInquiryByShareToken(
 }
 
 export async function consumeInquiryShareReply(input: {
-  inquiryId: string;
-  nonce: string;
+  code: string;
   fromName: string;
   fromEmail: string;
   body: string;
@@ -344,10 +374,13 @@ export async function consumeInquiryShareReply(input: {
   | { ok: false; error: string; status: 400 | 404 | 410 }
 > {
   const inquiries = await readInquiries();
-  const index = inquiries.findIndex((inquiry) => inquiry.id === input.inquiryId);
-  const current = index === -1 ? null : inquiries[index];
-  const resolved = resolveShareLinkState(current, input.nonce);
+  const resolved = await resolveInquiryShareCode(input.code);
   if (!resolved.ok) return resolved;
+
+  const index = inquiries.findIndex((inquiry) => inquiry.id === resolved.inquiry.id);
+  if (index === -1) {
+    return { ok: false, error: "Inquiry not found.", status: 404 };
+  }
 
   const now = new Date().toISOString();
   const reply: InquiryReply = {

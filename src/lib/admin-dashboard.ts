@@ -1,5 +1,5 @@
 import { conference } from "@/lib/conference";
-import type { DashboardChartPoint } from "@/lib/dashboard-chart";
+import { buildDailySeries, type DashboardChartPoint } from "@/lib/dashboard-chart";
 import { getAllEvents } from "@/lib/events";
 import { getAllRegistrations, getAdminStats } from "@/lib/registrations";
 import type { AdminStats, RegistrationRecord } from "@/lib/types/admin";
@@ -25,23 +25,10 @@ function getRegistrationsByDay(
   filter?: (registration: RegistrationRecord) => boolean
 ): DashboardChartPoint[] {
   const filtered = filter ? registrations.filter(filter) : registrations;
-  const points: DashboardChartPoint[] = [];
-
-  for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    date.setDate(date.getDate() - offset);
-
-    const key = date.toISOString().slice(0, 10);
-    const label = date.toLocaleDateString("en-US", { weekday: "short" });
-
-    points.push({
-      label,
-      value: filtered.filter((registration) => registration.createdAt.startsWith(key)).length,
-    });
-  }
-
-  return points;
+  return buildDailySeries(
+    filtered.map((registration) => ({ at: registration.createdAt })),
+    dayCount
+  );
 }
 
 function getPaymentStatusBreakdown(stats: AdminStats): DashboardChartPoint[] {
